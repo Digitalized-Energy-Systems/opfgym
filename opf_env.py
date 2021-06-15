@@ -3,7 +3,7 @@ import gym
 import numpy as np
 import pandapower as pp
 
-from penalties import (voltage_violation, line_overload, apparent_overpower)
+from .penalties import (voltage_violation, line_overload, apparent_overpower)
 
 
 class OpfEnv(gym.Env):
@@ -76,7 +76,7 @@ class OpfEnv(gym.Env):
         return penalty
 
     def _set_random_state(self):
-        """ Standard pre - implemented method to set power system to a new random
+        """ Standard pre-implemented method to set power system to a new random
         state from uniform sampling. Uses the observation space as basis.
         """
         for unit_type, actuator, idxs in self.sample_keys:
