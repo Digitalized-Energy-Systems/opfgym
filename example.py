@@ -51,16 +51,19 @@ def example1():
     # See all loads and ...
     obs_keys = [('load', 'p_mw', net['load'].index),
                 ('load', 'q_mvar', net['load'].index)]
-    low = net.load['min_p_mw'].to_numpy()
-    high = net.load['max_p_mw'].to_numpy()
-    obs_space = gym.spaces.Box(low, high)
+    p_low = net.load['min_p_mw'].to_numpy()
+    p_high = net.load['max_p_mw'].to_numpy()
+    q_low = net.load['min_q_mvar'].to_numpy()
+    q_high = net.load['max_q_mvar'].to_numpy()
+    obs_space = gym.spaces.Box(
+        np.append(p_low, q_low), np.append(p_high, q_high))
 
     # ... control all sgens (everything else assumed to be constant)
     act_keys = [('sgen', 'p_mw', net['sgen'].index),
                 ('sgen', 'q_mvar', net['sgen'].index)]
     low = np.append(np.zeros(len(net['sgen'].index)),
                     -np.ones(len(net['sgen'].index)))
-    high = np.zeros(2 * len(net['sgen'].index))
+    high = np.ones(2 * len(net['sgen'].index))
     act_space = gym.spaces.Box(low, high)
 
     def objective(net):
@@ -68,7 +71,6 @@ def example1():
         return -min_p_loss(net)
 
     pp.runpp(net)
-    print(net.res_bus)
 
     # Create the environment
     env = opf_env.OpfEnv(net, objective, obs_keys,
