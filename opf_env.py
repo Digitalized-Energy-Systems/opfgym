@@ -51,14 +51,23 @@ class OpfEnv(gym.Env):
         obs = self._get_obs()
         info = {'penalty': self._calc_penalty()}
 
-        return obs, reward, done, info
+        print(action)
+        print(obs)
+        print(reward)
+        print(info['penalty'])
+
+        return obs, reward - info['penalty'], done, info
 
     def _apply_actions(self, action):
         """ Apply agent actions to the power system at hand. """
         counter = 0
         for unit_type, actuator, idxs in self.act_keys:
             a = action[counter:counter + len(idxs)]
-            self.net[unit_type][actuator].loc[idxs] = a
+            # Actions are relative to the maximum possible value
+            # Attention: If negative actions are possible, min=max!
+            # TODO: maybe use action wrapper instead?!
+            new_values = a * self.net[unit_type][f'max_{actuator}'].loc[idxs]
+            self.net[unit_type][actuator].loc[idxs] = new_values
             counter += len(idxs)
 
         assert counter == len(action)
@@ -74,6 +83,11 @@ class OpfEnv(gym.Env):
         penalty += line_overload(self.net, self.overload_penalty)
         penalty += apparent_overpower(self.net, self.apparent_power_penalty)
         return penalty
+
+    def _ignore_invalid_actions(self):
+        """ Prevent the agent from "cheating" by ignoring invalid actions, for
+        example too high power values of the generators. """
+        pass
 
     def _set_random_state(self):
         """ Standard pre-implemented method to set power system to a new random

@@ -45,7 +45,8 @@ def example1():
     net.sgen['max_p_mw'] = net.sgen['p_mw']
     net.sgen['min_p_mw'] = np.zeros(len(net.sgen.index))
     net.sgen['max_s_mva'] = net.sgen['max_p_mw'] / 0.95  # = cos phi
-    # Reactive power constraints not defined because they are variable
+    net.sgen['max_q_mvar'] = net.sgen['max_s_mva']
+    net.sgen['min_q_mvar'] = -net.sgen['max_s_mva']
 
     # Define the RL problem
     # See all loads and ...
