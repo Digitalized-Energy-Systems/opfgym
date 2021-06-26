@@ -55,6 +55,7 @@ class OpfEnv(gym.Env):
         print(obs)
         print(reward)
         print(info['penalty'])
+        print('')
 
         return obs, reward - info['penalty'], done, info
 

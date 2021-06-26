@@ -4,7 +4,7 @@ import pandapower.networks as pn
 import pandapower as pp
 
 from . import opf_env
-from .objectives import min_p_loss
+from .objectives import max_p_feedin
 
 """ TODO: Create more examples and use as benchmark later
 - Prices as observations (eg eco dispatch/q-market)
@@ -37,12 +37,12 @@ def example1():
 
     # Set the unit constraints...
     # for sampling and
-    net.load['max_p_mw'] = net.load['p_mw'] * 0.5
+    net.load['max_p_mw'] = net.load['p_mw'] * 1.0
     net.load['min_p_mw'] = net.load['p_mw'] * 0.05
     net.load['max_q_mvar'] = net.load['max_p_mw'] * 0.3
     net.load['min_q_mvar'] = net.load['min_p_mw'] * 0.3
     # ...for actions
-    net.sgen['max_p_mw'] = net.sgen['p_mw']
+    net.sgen['max_p_mw'] = net.sgen['p_mw'] * 1.0
     net.sgen['min_p_mw'] = np.zeros(len(net.sgen.index))
     net.sgen['max_s_mva'] = net.sgen['max_p_mw'] / 0.95  # = cos phi
     net.sgen['max_q_mvar'] = net.sgen['max_s_mva']
@@ -69,7 +69,7 @@ def example1():
 
     def objective(net):
         """ Formulate objective function as maximization problem """
-        return -min_p_loss(net)
+        return -max_p_feedin(net)
 
     pp.runpp(net)
 
