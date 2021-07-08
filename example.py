@@ -7,7 +7,6 @@ from . import opf_env
 from .objectives import max_p_feedin
 
 """ TODO: Create more examples and use as benchmark later
-- Prices as observations (eg eco dispatch/q-market)
 - Multi-step problems (storage systems as actuators? Ramps? Controllable loads?)
 - Not fully observable (some measurements missing) or measurements that get
 influenced by actions (eg. voltages)
@@ -19,7 +18,7 @@ def min_example():
     """ Some standard non-economic single-step OPF:
 
     Actuators: active and reactive power of all gens
-    Sensors: active and reactive power of all loads
+    Sensors: active and reactive power of all loads; active power limit of gens
     Objective: maximize feed-in (min p reduction)
     Constraints: Voltage band, line/trafo load, apparent power,
         min/max active/reactive power
@@ -36,28 +35,27 @@ def min_example():
     net.trafo['max_loading_percent'] = 80
 
     # Set the unit constraints...
-    # for sampling and
+    # for sampling and...
     net.load['max_p_mw'] = net.load['p_mw'] * 1.0
     net.load['min_p_mw'] = net.load['p_mw'] * 0.05
     net.load['max_q_mvar'] = net.load['max_p_mw'] * 0.3
     net.load['min_q_mvar'] = net.load['min_p_mw'] * 0.3
+    net.sgen['max_max_p_mw'] = net.sgen['p_mw'] * 1.0  # technical limit
+    net.sgen['min_max_p_mw'] = 0.0
     # ...for actions
-    net.sgen['max_p_mw'] = net.sgen['p_mw'] * 1.0
+    net.sgen['max_p_mw'] = net.sgen['p_mw'] * 1.0  # wind/solar limit
     net.sgen['min_p_mw'] = np.zeros(len(net.sgen.index))
     net.sgen['max_s_mva'] = net.sgen['max_p_mw'] / 0.95  # = cos phi
     net.sgen['max_q_mvar'] = net.sgen['max_s_mva']
     net.sgen['min_q_mvar'] = -net.sgen['max_s_mva']
 
     # Define the RL problem
-    # See all loads and ...
+    # See all loads and max generator active power...
     obs_keys = [('load', 'p_mw', net['load'].index),
-                ('load', 'q_mvar', net['load'].index)]
-    p_low = net.load['min_p_mw'].to_numpy()
-    p_high = net.load['max_p_mw'].to_numpy()
-    q_low = net.load['min_q_mvar'].to_numpy()
-    q_high = net.load['max_q_mvar'].to_numpy()
-    obs_space = gym.spaces.Box(
-        np.append(p_low, q_low), np.append(p_high, q_high))
+                ('load', 'q_mvar', net['load'].index),
+                ('sgen', 'max_p_mw', net['sgen'].index)]
+    # TODO: Use relative observations instead?!
+    obs_space = get_obs_space(net, obs_keys)
 
     # ... control all sgens (everything else assumed to be constant)
     act_keys = [('sgen', 'p_mw', net['sgen'].index),
@@ -129,18 +127,7 @@ def market_example():
                 ('load', 'q_mvar', net['load'].index),
                 ('sgen', 'p_price', net['sgen'].index),
                 ('sgen', 'q_price', net['sgen'].index)]
-    p_low = net.load['min_p_mw'].to_numpy()
-    p_high = net.load['max_p_mw'].to_numpy()
-    q_low = net.load['min_q_mvar'].to_numpy()
-    q_high = net.load['max_q_mvar'].to_numpy()
-    p_price_low = net.sgen['min_p_price'].to_numpy()
-    p_price_high = net.sgen['max_p_price'].to_numpy()
-    q_price_low = net.sgen['min_q_price'].to_numpy()
-    q_price_high = net.sgen['max_q_price'].to_numpy()
-    obs_space = gym.spaces.Box(
-        np.concatenate((p_low, q_low, p_price_low, q_price_low), axis=0),
-        np.concatenate((p_high, q_high, p_price_high, q_price_high), axis=0))
-    print(np.concatenate((p_low, q_low, p_price_low, q_price_low), axis=0))
+    obs_space = get_obs_space(net, obs_keys)
 
     # ... and control all sgens (everything else assumed to be constant)
     act_keys = [('sgen', 'p_mw', net['sgen'].index),
@@ -163,6 +150,16 @@ def market_example():
                          obs_space, act_keys, act_space)
 
     return env
+
+
+def get_obs_space(net, obs_keys: list):
+    lows, highs = [], []
+    for unit_type, column, idxs in obs_keys:
+        lows.append(net[unit_type][f'min_{column}'].loc[idxs])
+        highs.append(net[unit_type][f'max_{column}'].loc[idxs])
+
+    return gym.spaces.Box(
+        np.concatenate(lows, axis=0), np.concatenate(highs, axis=0))
 
 
 if __name__ == '__main__':

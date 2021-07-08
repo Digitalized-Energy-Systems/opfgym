@@ -47,12 +47,12 @@ def apparent_overpower(net, penalty, autocorrect=True):
         print('apparent power over max: ', violations * penalty)
 
     if autocorrect:
-        correct_overpower(net)
+        correct_apparent_overpower(net)
 
     return violations * penalty
 
 
-def correct_overpower(net):
+def correct_apparent_overpower(net):
     """ Apparent power is not automatically bounded by the agent. Invalid
     actions need to be ignored, if necessary. Assumption: Always reduce
     reactive power, if apparent power is too high. """
@@ -61,3 +61,25 @@ def correct_overpower(net):
     q_mvar_max = (s_mva2 - p_mw2)**0.5
     new_values = np.minimum(net.sgen['q_mvar'].abs(), q_mvar_max)
     net.sgen['q_mvar'] = np.sign(net.sgen['q_mvar']) * new_values
+
+
+def active_overpower(net, penalty, autocorrect=True):
+    power = net.sgen.p_mw.to_numpy()
+    max_power = net.sgen.max_s_mva.to_numpy()
+    mask = power > max_power
+    violations = (power - max_power)[mask].sum()
+    if violations > 0:
+        print('active power over max: ', violations * penalty)
+
+    if autocorrect:
+        correct_active_overpower(net)
+
+    return violations * penalty
+
+
+def correct_active_overpower(net):
+    """ Active power is not automatically bounded by the agent. Invalid
+    actions need to be ignored, if necessary. """
+    new_values = np.minimum(
+        net.sgen['p_mw'].to_numpy(), net.sgen['max_p_mw'].to_numpy())
+    net.sgen['p_mw'] = new_values

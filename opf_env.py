@@ -3,14 +3,16 @@ import gym
 import numpy as np
 import pandapower as pp
 
-from .penalties import (voltage_violation, line_overload, apparent_overpower)
+from .penalties import (
+    voltage_violation, line_overload, apparent_overpower, active_overpower)
 
 
 class OpfEnv(gym.Env):
     def __init__(self, net, objective,
                  obs_keys, obs_space, act_keys, act_space, sample_keys=None,
                  u_penalty=20, overload_penalty=2,
-                 apparent_power_penalty=5, single_step=True,
+                 apparent_power_penalty=5, active_power_penalty=5,
+                 single_step=True,
                  sampling=None, bus_wise_obs=False  # TODO
                  ):
         self.net = net
@@ -27,6 +29,7 @@ class OpfEnv(gym.Env):
         self.u_penalty = u_penalty
         self.overload_penalty = overload_penalty
         self.apparent_power_penalty = apparent_power_penalty
+        self.active_power_penalty = active_power_penalty
 
         if not sampling:
             self._sampling = self._set_random_state
@@ -83,6 +86,12 @@ class OpfEnv(gym.Env):
         penalty += voltage_violation(self.net, self.u_penalty)
         penalty += line_overload(self.net, self.overload_penalty)
         penalty += apparent_overpower(self.net, self.apparent_power_penalty)
+
+        # TODO: Currently not useful, because power set-points are relative
+        # anyway -> relative or absolute actions better
+        # (p = action or p = action*p_max)???
+        # penalty += active_overpower(self.net, self.apparent_power_penalty)
+
         return penalty
 
     def _ignore_invalid_actions(self):
@@ -93,12 +102,14 @@ class OpfEnv(gym.Env):
     def _set_random_state(self):
         """ Standard pre-implemented method to set power system to a new random
         state from uniform sampling. Uses the observation space as basis.
+        Requirement: For every observations there must be "min_{obs}" and
+        "min_{obs}" given as range to sample from.
         """
-        for unit_type, actuator, idxs in self.sample_keys:
-            low = self.net[unit_type][f'min_{actuator}'].loc[idxs]
-            high = self.net[unit_type][f'max_{actuator}'].loc[idxs]
+        for unit_type, column, idxs in self.sample_keys:
+            low = self.net[unit_type][f'min_{column}'].loc[idxs]
+            high = self.net[unit_type][f'max_{column}'].loc[idxs]
             r = np.random.uniform(low, high, size=(len(idxs),))
-            self.net[unit_type][actuator].loc[idxs] = r
+            self.net[unit_type][column].loc[idxs] = r
 
     def _get_obs(self):
         obss = [(self.net[unit_type][column].loc[idxs])
