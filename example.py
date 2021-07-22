@@ -1,10 +1,13 @@
+import pdb
+
 import gym
 import numpy as np
 import pandapower.networks as pn
 import pandapower as pp
 
 from . import opf_env
-from .objectives import max_p_feedin
+from .objectives import (
+    max_p_feedin, min_p_loss, add_min_loss_costs, add_max_p_feedin)
 
 """ TODO: Create more examples and use as benchmark later
 - Multi-step problems (storage systems as actuators? Ramps? Controllable loads?)
@@ -65,6 +68,8 @@ def min_example():
     high = np.ones(2 * len(net['sgen'].index))
     act_space = gym.spaces.Box(low, high)
 
+    add_max_p_feedin(net)  # Add cost function for OPF
+
     def objective(net):
         """ Formulate objective function as maximization problem """
         return -max_p_feedin(net)
@@ -78,7 +83,7 @@ def min_example():
     return env
 
 
-def market_example():
+def market_example(loss_min=True):
     """ Example how to include power prices into the learning problem
 
     Actuators: active and reactive power of all gens
@@ -107,26 +112,33 @@ def market_example():
     net.load['max_q_mvar'] = net.load['max_p_mw'] * 0.3
     net.load['min_q_mvar'] = net.load['min_p_mw'] * 0.3
     # ...for actions
+    net.sgen['controllable'] = True
     net.sgen['max_p_mw'] = net.sgen['p_mw'] * 1.0
     net.sgen['min_p_mw'] = np.zeros(len(net.sgen.index))
     net.sgen['max_s_mva'] = net.sgen['max_p_mw'] / 0.95  # = cos phi
     net.sgen['max_q_mvar'] = net.sgen['max_s_mva']
     net.sgen['min_q_mvar'] = -net.sgen['max_s_mva']
+    # TODO: Problem! This does not work with the OPF because S_max not considered
 
-    # Add some params to the network that normally do not exist
-    net.sgen['min_p_price'] = -30
-    net.sgen['max_p_price'] = 0
-    net.sgen['min_q_price'] = 0
-    net.sgen['max_q_price'] = 5
-    net.sgen['p_price'] = 0  # Init values. Overwrite later
-    net.sgen['q_price'] = 0
+    # Add price params to the network (as poly cost so that the OPF works)
+    for idx in net.sgen.index:
+        pp.create_poly_cost(net, idx, 'sgen',
+                            cp1_eur_per_mw=1, cq2_eur_per_mvar2=0)
+    net.poly_cost['min_cp1_eur_per_mw'] = -30
+    net.poly_cost['max_cp1_eur_per_mw'] = 0
+    net.poly_cost['min_cq2_eur_per_mvar2'] = 0
+    net.poly_cost['max_cq2_eur_per_mvar2'] = 5
+
+    if loss_min:
+        # Add loss minimization as another objective
+        add_min_loss_costs(net)
 
     # Define the RL problem
     # See all load power values and sgen prices...
     obs_keys = [('load', 'p_mw', net['load'].index),
                 ('load', 'q_mvar', net['load'].index),
-                ('sgen', 'p_price', net['sgen'].index),
-                ('sgen', 'q_price', net['sgen'].index)]
+                ('poly_cost', 'cp1_eur_per_mw', net['sgen'].index),
+                ('poly_cost', 'cq2_eur_per_mvar2', net['sgen'].index)]
     obs_space = get_obs_space(net, obs_keys)
 
     # ... and control all sgens (everything else assumed to be constant)
@@ -139,9 +151,15 @@ def market_example():
 
     def objective(net):
         """ Consider quadratic reactive power costs and linear active costs """
-        q_costs = (net.sgen['q_price'] * net.sgen['q_mvar']**2).sum()
-        p_costs = (net.sgen['p_price'] * net.sgen['p_mw']).sum()
-        return -(q_costs + p_costs)
+        q_costs = (net.poly_cost['cq2_eur_per_mvar2']
+                   * net.sgen['q_mvar']**2).sum()
+        p_costs = (net.poly_cost['cp1_eur_per_mw'] * net.sgen['p_mw']).sum()
+        if loss_min:
+            # Grid operator also wants to minimize network active power losses
+            loss_costs = min_p_loss(net) * 30  # Assumption: 30€/MWh
+        else:
+            loss_costs = 0
+        return -(q_costs + p_costs + loss_costs)
 
     pp.runpp(net)
 
@@ -149,6 +167,10 @@ def market_example():
     env = opf_env.OpfEnv(net, objective, obs_keys,
                          obs_space, act_keys, act_space)
 
+    for _ in range(5):
+        env._set_random_state()
+        print(env.get_optimal_actions())
+        pdb.set_trace()
     return env
 
 

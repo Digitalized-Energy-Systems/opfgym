@@ -1,4 +1,6 @@
 
+import pdb
+
 import gym
 import numpy as np
 import pandapower as pp
@@ -122,3 +124,20 @@ class OpfEnv(gym.Env):
 
     def render(self, mode='human'):
         pass  # TODO
+
+    def get_optimal_actions(self):
+        # import pdb
+        # pdb.set_trace()
+        try:
+            pp.runopp(self.net)
+        except pp.optimal_powerflow.OPFNotConverged:
+            print('OPF not converged')
+            return None
+        print('OPF converged!!!')
+
+        return self._get_last_actions()
+
+    def _get_last_actions(self):
+        action = [(self.net[f'res_{unit_type}'][column].loc[idxs])
+                  for unit_type, column, idxs in self.act_keys]
+        return np.concatenate(action)

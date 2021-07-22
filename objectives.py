@@ -3,6 +3,8 @@
 A set of objective functions for pandapower networks.
 """
 
+import pandapower as pp
+
 
 def min_p_loss(net):
     """ Minimize active power losses for a given network. """
@@ -73,3 +75,25 @@ def min_pp_costs(net):
                   * net.poly_cost['cq2_eur_per_mvar2'][idx])
 
     return costs
+
+
+def add_min_loss_costs(net, p_price=30):
+    """ Add polynomal costs to a pandapower network so that OPF minimizes active
+    power losses. """
+    for unit_type in ('sgen', 'gen', 'ext_grid', 'load', 'storage'):
+        price = p_price
+        if unit_type == 'load' or unit_type == 'storage':
+            price = -p_price
+
+        for idx in net[unit_type].index:
+            pp.create_poly_cost(net, idx, unit_type, cp1_eur_per_mw=price)
+
+
+def add_max_p_feedin(net, p_price=30):
+    """ Add polynomal costs to a pandapower network so that OPF maximizes active
+    power feed-in of all static generators (max renewable feed-in).
+    The "p_price" is only relevant, if other objective fcts need to be
+    considered. The price needs to be positive! """
+    unit_type = 'sgen'
+    for idx in net[unit_type].index:
+        pp.create_poly_cost(net, idx, unit_type, cp1_eur_per_mw=-p_price)

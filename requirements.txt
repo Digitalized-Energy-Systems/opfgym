@@ -2,5 +2,5 @@ numpy
 scipy
 numba
 matplotlib
-pandapower
+pandapower~=2.2.2
 gym
