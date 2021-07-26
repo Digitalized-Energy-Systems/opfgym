@@ -43,6 +43,8 @@ class OpfEnv(gym.Env):
         # Full state of the system (available in training, but not in testing)
         self.state = None  # TODO
 
+        self.test = False
+
     def step(self, action):
         self._apply_actions(action)
         self._run_pf()
@@ -56,22 +58,25 @@ class OpfEnv(gym.Env):
         obs = self._get_obs()
         info = {'penalty': self._calc_penalty()}
 
-        print(action)
-        print(obs)
-        print(reward)
-        print(info['penalty'])
-        print('')
+        # print('action:', action)
+        # print('obs:', obs)
+        # print(reward)
+        # print(info['penalty'])
+        # print('')
 
         return obs, reward - info['penalty'], done, info
 
     def _apply_actions(self, action):
         """ Apply agent actions to the power system at hand. """
         counter = 0
+        # ignore invalid actions
+        action = np.clip(action, self.action_space.low, self.action_space.high)
         for unit_type, actuator, idxs in self.act_keys:
             a = action[counter:counter + len(idxs)]
             # Actions are relative to the maximum possible value
-            # Attention: If negative actions are possible, min=max!
+            # Attention: If negative actions are possible, min=max! (TODO)
             # TODO: maybe use action wrapper instead?!
+            # TODO: Ensure that no invalid actions are used! (eg negative p)
             new_values = a * self.net[unit_type][f'max_{actuator}'].loc[idxs]
             self.net[unit_type][actuator].loc[idxs] = new_values
             counter += len(idxs)
@@ -125,19 +130,43 @@ class OpfEnv(gym.Env):
     def render(self, mode='human'):
         pass  # TODO
 
-    def get_optimal_actions(self):
-        # import pdb
-        # pdb.set_trace()
+    def _optimal_power_flow(self):
         try:
+            # TODO: Make sure that this does not change the actual grid, but only a copy of it
             pp.runopp(self.net)
         except pp.optimal_powerflow.OPFNotConverged:
-            print('OPF not converged')
-            return None
-        print('OPF converged!!!')
+            print('OPF not converged!!!')
+            return False
+        return True
 
-        return self._get_last_actions()
-
-    def _get_last_actions(self):
-        action = [(self.net[f'res_{unit_type}'][column].loc[idxs])
+    def get_current_actions(self):
+        action = [(self.net[f'res_{unit_type}'][column].loc[idxs]
+                   / self.net[unit_type][f'max_{column}'].loc[idxs])
                   for unit_type, column, idxs in self.act_keys]
         return np.concatenate(action)
+
+    def test_step(self, action):
+        """ TODO Use some custom data from different distribution here. """
+        result = self.step(action)
+
+        # print('action: ', action)
+        # success = self._optimal_power_flow()
+        # if not success:
+        #     print('failure')
+        #     return result
+        # # print('optimal action:', self.get_current_actions())
+        # print('reward: ', result[1])
+        # opt_reward = self._calc_reward(self.net) - self._calc_penalty()
+        # print('opt reward: ', opt_reward)
+        # print('MSE: ', 100 * abs((opt_reward - result[1]) / opt_reward))
+
+        return result
+
+    def baseline_reward(self):
+        """ Compute some baseline to compare training performance with. In this
+        case, use the optimal possible reward, which can be computed with the
+        optimal power flow. """
+        success = self._optimal_power_flow()
+        if not success:
+            return None
+        return self._calc_reward(self.net) - self._calc_penalty()

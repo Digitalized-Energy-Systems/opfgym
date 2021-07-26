@@ -21,7 +21,7 @@ def voltage_violation(net, penalty):
         print('overvoltage: ', upper_violations * penalty)
     if lower_violations > 0:
         print('undervoltage: ', lower_violations * penalty)
-    print(voltages)
+    # print(voltages)
     return penalty
 
 

@@ -167,10 +167,6 @@ def market_example(loss_min=True):
     env = opf_env.OpfEnv(net, objective, obs_keys,
                          obs_space, act_keys, act_space)
 
-    for _ in range(5):
-        env._set_random_state()
-        print(env.get_optimal_actions())
-        pdb.set_trace()
     return env
 
 
