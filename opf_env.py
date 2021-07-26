@@ -12,7 +12,7 @@ from .penalties import (
 class OpfEnv(gym.Env):
     def __init__(self, net, objective,
                  obs_keys, obs_space, act_keys, act_space, sample_keys=None,
-                 u_penalty=20, overload_penalty=2,
+                 u_penalty=500, overload_penalty=2,
                  apparent_power_penalty=5, active_power_penalty=5,
                  single_step=True,
                  sampling=None, bus_wise_obs=False  # TODO
@@ -106,6 +106,7 @@ class OpfEnv(gym.Env):
         example too high power values of the generators. """
         pass
 
+    @staticmethod
     def _set_random_state(self):
         """ Standard pre-implemented method to set power system to a new random
         state from uniform sampling. Uses the observation space as basis.
@@ -124,7 +125,7 @@ class OpfEnv(gym.Env):
         return np.concatenate(obss)
 
     def reset(self):
-        self._sampling()
+        self._sampling(self)
         return self._get_obs()
 
     def render(self, mode='human'):
@@ -168,5 +169,5 @@ class OpfEnv(gym.Env):
         optimal power flow. """
         success = self._optimal_power_flow()
         if not success:
-            return None
+            return np.nan
         return self._calc_reward(self.net) - self._calc_penalty()

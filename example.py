@@ -26,16 +26,7 @@ def min_example():
     Constraints: Voltage band, line/trafo load, apparent power,
         min/max active/reactive power
     """
-    # Create a power system and set some constraints
-    net = pn.create_cigre_network_mv(with_der="pv_wind")
-
-    # Set the system constraints
-    # Define the voltage band of +-5%
-    net.bus['max_vm_pu'] = 1.05
-    net.bus['min_vm_pu'] = 0.95
-    # Set maximum loading of lines and transformers
-    net.line['max_loading_percent'] = 80
-    net.trafo['max_loading_percent'] = 80
+    net = standard_net()
 
     # Set the unit constraints...
     # for sampling and...
@@ -84,26 +75,19 @@ def min_example():
 
 
 def market_example(loss_min=True):
-    """ Example how to include power prices into the learning problem
+    """ Example how to include power prices into the learning problem.
+    Attention: OPF does not work here as reference!!!
 
     Actuators: active and reactive power of all gens
     Sensors: active+reactive power of all loads;
         active (negative)+reactive(positive) prices of all gens
+        TODO: max active power of gens
     Objective: minimize costs (buy reactive power to prevent active power
         reduction)
     Constraints: Voltage band, line/trafo load, apparent power,
         min/max active/reactive power
     """
-    # Create a power system and set some constraints
-    net = pn.create_cigre_network_mv(with_der="pv_wind")
-
-    # Set the system constraints
-    # Define the voltage band of +-5%
-    net.bus['max_vm_pu'] = 1.05
-    net.bus['min_vm_pu'] = 0.95
-    # Set maximum loading of lines and transformers
-    net.line['max_loading_percent'] = 80
-    net.trafo['max_loading_percent'] = 80
+    net = standard_net()
 
     # Set the unit constraints...
     # for sampling and
@@ -168,6 +152,115 @@ def market_example(loss_min=True):
                          obs_space, act_keys, act_space)
 
     return env
+
+
+def mwe_diss(loss_min=True):
+    """ Minimum working example for the OS2. Should be solvable with OPF for
+    comparison. Should be as simple as possible. Should be a market.
+
+    -> reactive power market?!
+    Actuators: Reactive power of all gens
+    Sensors: active+reactive power of all loads; active power of all gens;
+        reactive prices of all gens
+    Objective: minimize costs + minimize losses
+    Constraints: Voltage band, line/trafo load, min/max reactive power
+    TODO: No reactive flow over slack bus as constraint/objective?! (or costs there?)
+
+    (-> re-dispatch market?!
+        Actuators: active power of all gens
+        Sensors: active+reactive power of all loads; active power of all gens;
+            active power prices of all gens
+        Objective: minimize costs
+        Constraints: Voltage band, line/trafo load, min/max reactive power;
+            active power sum = const (-> slack power = const)
+        # TODO: sampling: Scenario makes sense only, if there are solvable violations
+        # TODO: How to deal with reactive power)
+    """
+    net = standard_net()
+
+    # Set the unit constraints...
+    # for sampling and
+    net.load['max_p_mw'] = net.load['p_mw'] * 1.0
+    net.load['min_p_mw'] = net.load['p_mw'] * 0.05
+    net.load['max_q_mvar'] = net.load['max_p_mw'] * 0.3
+    net.load['min_q_mvar'] = net.load['min_p_mw'] * 0.3
+    # ...for actions
+    net.sgen['controllable'] = True
+    net.sgen['max_p_mw'] = net.sgen['p_mw']
+    net.sgen['max_max_p_mw'] = net.sgen['max_p_mw']
+    net.sgen['min_max_p_mw'] = np.zeros(len(net.sgen.index))
+    net.sgen['max_s_mva'] = net.sgen['max_max_p_mw'] / 0.95  # = cos phi
+
+    # Add price params to the network (as poly cost so that the OPF works)
+    for idx in net.sgen.index:
+        pp.create_poly_cost(net, idx, 'sgen',
+                            cp1_eur_per_mw=0, cq2_eur_per_mvar2=0)
+    net.poly_cost['min_cq2_eur_per_mvar2'] = 0
+    net.poly_cost['max_cq2_eur_per_mvar2'] = 5
+
+    if loss_min:
+        # Add loss minimization as another objective
+        add_min_loss_costs(net)
+
+    # Define the RL problem
+    # See all load power values and sgen prices...
+    obs_keys = [('load', 'p_mw', net['load'].index),
+                ('load', 'q_mvar', net['load'].index),
+                ('sgen', 'max_p_mw', net['sgen'].index),
+                ('poly_cost', 'cq2_eur_per_mvar2', net['sgen'].index)]
+    obs_space = get_obs_space(net, obs_keys)
+
+    # ... and control all sgens (everything else assumed to be constant)
+    act_keys = [('sgen', 'q_mvar', net['sgen'].index)]
+    low = -np.ones(len(net['sgen'].index))
+    high = np.ones(len(net['sgen'].index))
+    act_space = gym.spaces.Box(low, high)
+
+    def objective(net):
+        """ Consider quadratic reactive power costs and linear active costs """
+        q_costs = (net.poly_cost['cq2_eur_per_mvar2']
+                   * net.sgen['q_mvar']**2).sum()
+        if loss_min:
+            # Grid operator also wants to minimize network active power losses
+            loss_costs = min_p_loss(net) * 30  # Assumption: 30€/MWh
+        else:
+            loss_costs = 0
+        return -(q_costs + loss_costs)
+
+    def sampling(env):
+        for unit_type, column, idxs in env.sample_keys:
+            low = env.net[unit_type][f'min_{column}'].loc[idxs]
+            high = env.net[unit_type][f'max_{column}'].loc[idxs]
+            r = np.random.uniform(low, high, size=(len(idxs),))
+            env.net[unit_type][column].loc[idxs] = r
+        # active power is not controllable (only relevant for OPF)
+        env.net.sgen['min_p_mw'] = env.net.sgen['max_p_mw']
+        env.net.sgen['p_mw'] = env.net.sgen['max_p_mw']
+        q_max = (env.net.sgen['max_s_mva']**2 - env.net.sgen['p_mw']**2)**0.5
+        env.net.sgen['min_q_mvar'] = -q_max
+        env.net.sgen['max_q_mvar'] = q_max
+
+    pp.runpp(net)
+
+    # Create the environment
+    env = opf_env.OpfEnv(net, objective, obs_keys,
+                         obs_space, act_keys, act_space, sampling=sampling)
+
+    return env
+
+
+def standard_net():
+    # Create a power system and set some constraints
+    net = pn.create_cigre_network_mv(with_der="pv_wind")
+
+    # Set the system constraints
+    # Define the voltage band of +-5%
+    net.bus['max_vm_pu'] = 1.05
+    net.bus['min_vm_pu'] = 0.95
+    # Set maximum loading of lines and transformers
+    net.line['max_loading_percent'] = 80
+    net.trafo['max_loading_percent'] = 80
+    return net
 
 
 def get_obs_space(net, obs_keys: list):
