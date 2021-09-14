@@ -12,7 +12,7 @@ from .penalties import (
 class OpfEnv(gym.Env):
     def __init__(self, net, objective,
                  obs_keys, obs_space, act_keys, act_space, sample_keys=None,
-                 u_penalty=500, overload_penalty=2,
+                 u_penalty=300, overload_penalty=2,
                  apparent_power_penalty=5, active_power_penalty=5,
                  single_step=True,
                  sampling=None, bus_wise_obs=False  # TODO
@@ -35,6 +35,11 @@ class OpfEnv(gym.Env):
 
         if not sampling:
             self._sampling = self._set_random_state
+        elif sampling == 'simbench':
+            assert not sb.profiles_are_missing(net)
+            self.profiles = sb.get_absolute_values(net,
+                                                   profiles_instead_of_study_cases=True)
+            self._sampling = self._set_simbench_state
         else:
             self._sampling = sampling
 
@@ -106,7 +111,6 @@ class OpfEnv(gym.Env):
         example too high power values of the generators. """
         pass
 
-    @staticmethod
     def _set_random_state(self):
         """ Standard pre-implemented method to set power system to a new random
         state from uniform sampling. Uses the observation space as basis.
@@ -118,6 +122,29 @@ class OpfEnv(gym.Env):
             high = self.net[unit_type][f'max_{column}'].loc[idxs]
             r = np.random.uniform(low, high, size=(len(idxs),))
             self.net[unit_type][column].loc[idxs] = r
+
+    def _set_simbench_state(self):
+        """ Standard pre-implemented method to sample a random state from the
+        simbench time-series data and set that state.
+        Works only for simbench systems!
+        """
+        noise_factor = 0.1
+        step = random.randint(0, len(self.profiles) - 1)
+        for type_act in self.profiles.keys():
+            if not self.profiles[type_act].shape[1]:
+                continue
+            unit_type, actuator = type_act
+
+            # Add some noise to create unique data samples
+            noise = np.random.random(
+                len(self.net[unit_type].index)) * noise_factor * 2 + (1 - noise_factor)
+            new_values = self.profiles[type_act].loc[step] * noise
+            self.net[unit_type].loc[:, actuator] = new_values
+
+            # Make sure no boundaries are violated for generators
+            if unit_type == 'sgen':
+                self.net.sgen.loc[:, actuator] = self.net.sgen[
+                    [actuator, f'max_{actuator}']].min(axis=1)
 
     def _get_obs(self):
         obss = [(self.net[unit_type][column].loc[idxs])

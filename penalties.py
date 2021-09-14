@@ -19,10 +19,10 @@ def voltage_violation(net, penalty_factor):
     penalty = (upper_violations + lower_violations) * penalty_factor
     if upper_violations > 0:
         print('overvoltage: ', upper_violations * penalty_factor)
-        print(voltages)
+        # print(voltages)
     if lower_violations > 0:
         print('undervoltage: ', lower_violations * penalty_factor)
-        print(voltages)
+        # print(voltages)
 
     return penalty
 
@@ -45,7 +45,7 @@ def apparent_overpower(net, penalty_factor, autocorrect=True):
 
     mask = power > max_power
     violations = (power - max_power)[mask].sum()
-    if violations > 0:
+    if violations > 0.00000:
         print('apparent power over max: ', violations * penalty_factor)
 
     if autocorrect:

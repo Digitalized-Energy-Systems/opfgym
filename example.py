@@ -4,6 +4,7 @@ import gym
 import numpy as np
 import pandapower.networks as pn
 import pandapower as pp
+import simbench as sb
 
 from . import opf_env
 from .objectives import (
@@ -154,7 +155,7 @@ def market_example(loss_min=True):
     return env
 
 
-def mwe_diss(loss_min=True):
+def diss_qmarket(loss_min=True, simbench=True):
     """ Minimum working example for the OS2. Should be solvable with OPF for
     comparison. Should be as simple as possible. Should be a market.
 
@@ -165,6 +166,7 @@ def mwe_diss(loss_min=True):
     Objective: minimize costs + minimize losses
     Constraints: Voltage band, line/trafo load, min/max reactive power
     TODO: No reactive flow over slack bus as constraint/objective?! (or costs there?)
+    -> Yes, this would enforce reactive power demand from grid operator
 
     (-> re-dispatch market?!
         Actuators: active power of all gens
@@ -176,7 +178,7 @@ def mwe_diss(loss_min=True):
         # TODO: sampling: Scenario makes sense only, if there are solvable violations
         # TODO: How to deal with reactive power)
     """
-    net = standard_net()
+    net = standard_net(simbench)
 
     # Set the unit constraints...
     # for sampling and
@@ -196,7 +198,7 @@ def mwe_diss(loss_min=True):
         pp.create_poly_cost(net, idx, 'sgen',
                             cp1_eur_per_mw=0, cq2_eur_per_mvar2=0)
     net.poly_cost['min_cq2_eur_per_mvar2'] = 0
-    net.poly_cost['max_cq2_eur_per_mvar2'] = 5
+    net.poly_cost['max_cq2_eur_per_mvar2'] = 500
 
     if loss_min:
         # Add loss minimization as another objective
@@ -204,10 +206,10 @@ def mwe_diss(loss_min=True):
 
     # Define the RL problem
     # See all load power values and sgen prices...
-    obs_keys = [('load', 'p_mw', net['load'].index),
-                ('load', 'q_mvar', net['load'].index),
-                ('sgen', 'max_p_mw', net['sgen'].index),
-                ('poly_cost', 'cq2_eur_per_mvar2', net['sgen'].index)]
+    obs_keys = [('sgen', 'max_p_mw', net['sgen'].index),
+                ('load', 'p_mw', net['load'].index),
+                ('load', 'q_mvar', net['load'].index),]
+                # ('poly_cost', 'cq2_eur_per_mvar2', net['sgen'].index)]
     obs_space = get_obs_space(net, obs_keys)
 
     # ... and control all sgens (everything else assumed to be constant)
@@ -249,9 +251,18 @@ def mwe_diss(loss_min=True):
     return env
 
 
-def standard_net():
+def standard_net(simbench=False):
     # Create a power system and set some constraints
-    net = pn.create_cigre_network_mv(with_der="pv_wind")
+    if simbench:
+        net = sb.get_simbench_net('1-LV-urban6--0-sw')
+        # '1-LV-rural1--0-sw')  # 4 sgen
+        # 1-LV-urban6--0-sw # 5 sgen
+        # 1-LV-rural2--0-sw # 8 sgen
+        # Scale up loads and gens
+        net.sgen['scaling'] = 1.5
+        net.load['scaling'] = 1.5
+    else:
+        net = pn.create_cigre_network_mv(with_der="pv_wind")
 
     # Set the system constraints
     # Define the voltage band of +-5%
