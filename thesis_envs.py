@@ -12,7 +12,8 @@ from . import opf_env
 from .objectives import (min_p_loss, add_min_loss_costs)
 
 
-def qmarket_env(loss_min=True, simbench_network_name='small'):
+def qmarket_env(loss_min=True, simbench_network_name='small',
+                multi_agent_case=False):
     """
     Reactive power market environment: The grid operator procures reactive power
     from generators to minimize losses within its system.
@@ -43,17 +44,20 @@ def qmarket_env(loss_min=True, simbench_network_name='small'):
     net.sgen['max_p_mw'] = net.sgen['p_mw']
     net.sgen['max_max_p_mw'] = net.sgen['max_p_mw']
     net.sgen['min_max_p_mw'] = np.zeros(len(net.sgen.index))
-    net.sgen['max_s_mva'] = net.sgen['max_max_p_mw'] / 0.95  # = cos phi
+    net.sgen['max_s_mva'] = net.sgen['max_max_p_mw'] / 0.90  # = cos phi
+    net.sgen['max_max_q_mvar'] = net.sgen['max_s_mva']
+    net.sgen['min_max_q_mvar'] = -net.sgen['max_s_mva']
 
-    net.ext_grid['max_q_mvar'] = 0.001
-    net.ext_grid['min_q_mvar'] = -0.001
+    net.ext_grid['max_q_mvar'] = 0.05  # TODO: Stand jetzt abgestimmt für
+    net.ext_grid['min_q_mvar'] = -0.05  # Netz '1-LV-urban6--0-sw'
+    # TODO: is scaling correctly considered here? (test by looking at OPF results -> should be these values here!)
 
     # Add price params to the network (as poly cost so that the OPF works)
     for idx in net.sgen.index:
         pp.create_poly_cost(net, idx, 'sgen',
                             cp1_eur_per_mw=0, cq2_eur_per_mvar2=0)
     net.poly_cost['min_cq2_eur_per_mvar2'] = 0
-    net.poly_cost['max_cq2_eur_per_mvar2'] = 1000
+    net.poly_cost['max_cq2_eur_per_mvar2'] = 10000
 
     if loss_min:
         # Add loss minimization as another objective
@@ -63,8 +67,10 @@ def qmarket_env(loss_min=True, simbench_network_name='small'):
     # See all load power values, sgen active power, and sgen prices...
     obs_keys = [('sgen', 'max_p_mw', net['sgen'].index),
                 ('load', 'p_mw', net['load'].index),
-                ('load', 'q_mvar', net['load'].index),
-                ('poly_cost', 'cq2_eur_per_mvar2', net['sgen'].index)]
+                ('load', 'q_mvar', net['load'].index)]
+    if not multi_agent_case:
+        # In the multi-agent case other, learning agents would provide the bids
+        obs_keys.append(('poly_cost', 'cq2_eur_per_mvar2', net['sgen'].index))
     obs_space = get_obs_space(net, obs_keys)
 
     # ... and control all sgens (everything else assumed to be constant)
@@ -75,8 +81,11 @@ def qmarket_env(loss_min=True, simbench_network_name='small'):
 
     def objective(net):
         """ Consider quadratic reactive power costs and linear active costs """
-        q_costs = (net.poly_cost['cq2_eur_per_mvar2']
-                   * net.sgen['q_mvar']**2).sum()
+        if multi_agent_case:
+            q_costs = 0
+        else:
+            q_costs = (net.poly_cost['cq2_eur_per_mvar2']
+                       * net.sgen['q_mvar']**2).sum()
         if loss_min:
             # Grid operator also wants to minimize network active power losses
             loss_costs = min_p_loss(net) * 30  # Assumption: 30€/MWh
@@ -84,23 +93,36 @@ def qmarket_env(loss_min=True, simbench_network_name='small'):
             loss_costs = 0
 
         # Constraint: Zero reactive power flow over slack bus
-        # TODO: Maybe move this into environment class
-        penalty = net.res_ext_grid.q_mvar.abs().sum() * 50
+        # TODO: Maybe move this into environment class -> to penalties
+        q_slack = net.res_ext_grid.q_mvar.to_numpy()
+        max_q_slack = net.ext_grid.max_q_mvar.to_numpy()
+        min_q_slack = net.ext_grid.min_q_mvar.to_numpy()
 
-        print(q_costs, loss_costs, penalty)
+        upper_mask = q_slack > max_q_slack
+        lower_mask = q_slack < min_q_slack
+
+        upper_violations = (q_slack - max_q_slack)[upper_mask].sum()
+        lower_violations = (min_q_slack - q_slack)[lower_mask].sum()
+
+        penalty = (upper_violations + lower_violations) * 100
+
+        # print('Reward distr: ', q_costs, loss_costs, penalty)  # for testing
 
         return -q_costs - loss_costs - penalty
 
     def sampling(env):
         # TODO ThW: Sample from simbench time-series data
+        # + Sample bids if in single agent case!
         for unit_type, column, idxs in env.sample_keys:
             low = env.net[unit_type][f'min_{column}'].loc[idxs]
             high = env.net[unit_type][f'max_{column}'].loc[idxs]
             r = np.random.uniform(low, high, size=(len(idxs),))
             env.net[unit_type][column].loc[idxs] = r
         # active power is not controllable (only relevant for OPF)
-        env.net.sgen['min_p_mw'] = env.net.sgen['max_p_mw']
         env.net.sgen['p_mw'] = env.net.sgen['max_p_mw']
+        env.net.sgen['min_p_mw'] = 0.9999 * env.net.sgen['p_mw']
+        env.net.sgen['max_p_mw'] = 1.0001 * env.net.sgen['p_mw']
+
         q_max = (env.net.sgen['max_s_mva']**2 - env.net.sgen['p_mw']**2)**0.5
         env.net.sgen['min_q_mvar'] = -q_max
         env.net.sgen['max_q_mvar'] = q_max
@@ -120,7 +142,7 @@ def build_net(simbench_network_name='small'):
     # Choose one of the standard cases
     if simbench_network_name == 'small':
         # TODO: Decide which ones to actually use (small should mean small obs and act space!!!)
-        net = sb.get_simbench_net('1-LV-rural1--0-sw')
+        net = sb.get_simbench_net('1-LV-urban6--0-sw')
     elif simbench_network_name == 'medium':
         net = sb.get_simbench_net('1-HV-mixed--0-sw')
     elif simbench_network_name == 'large':
@@ -131,7 +153,7 @@ def build_net(simbench_network_name='small'):
 
     # Scale up loads and gens to make task a bit more difficult
     # (Maybe requires fine-tuning)
-    net.sgen['scaling'] = 1.5
+    net.sgen['scaling'] = 2.0
     net.load['scaling'] = 1.5
 
     # Set the system constraints
