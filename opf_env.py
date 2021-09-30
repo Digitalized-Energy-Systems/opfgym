@@ -13,7 +13,7 @@ class OpfEnv(gym.Env):
     def __init__(self, net, objective,
                  obs_keys, obs_space, act_keys, act_space, sample_keys=None,
                  u_penalty=300, overload_penalty=2,
-                 apparent_power_penalty=5, active_power_penalty=5,
+                 apparent_power_penalty=500, active_power_penalty=5,
                  single_step=True,
                  sampling=None, bus_wise_obs=False  # TODO
                  ):
@@ -82,7 +82,8 @@ class OpfEnv(gym.Env):
             # Attention: If negative actions are possible, min=max! (TODO)
             # TODO: maybe use action wrapper instead?!
             # TODO: Ensure that no invalid actions are used! (eg negative p)
-            new_values = a * self.net[unit_type][f'max_{actuator}'].loc[idxs]
+            new_values = a * \
+                self.net[unit_type][f'max_max_{actuator}'].loc[idxs]
             self.net[unit_type][actuator].loc[idxs] = new_values
             counter += len(idxs)
 
@@ -99,9 +100,6 @@ class OpfEnv(gym.Env):
         penalty += line_overload(self.net, self.overload_penalty)
         penalty += apparent_overpower(self.net, self.apparent_power_penalty)
 
-        # TODO: Currently not useful, because power set-points are relative
-        # anyway -> relative or absolute actions better
-        # (p = action or p = action*p_max)???
         # penalty += active_overpower(self.net, self.apparent_power_penalty)
 
         return penalty
@@ -115,7 +113,7 @@ class OpfEnv(gym.Env):
         """ Standard pre-implemented method to set power system to a new random
         state from uniform sampling. Uses the observation space as basis.
         Requirement: For every observations there must be "min_{obs}" and
-        "min_{obs}" given as range to sample from.
+        "max_{obs}" given as range to sample from.
         """
         for unit_type, column, idxs in self.sample_keys:
             low = self.net[unit_type][f'min_{column}'].loc[idxs]
