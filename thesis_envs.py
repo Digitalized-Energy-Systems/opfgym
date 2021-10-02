@@ -69,7 +69,7 @@ def qmarket_env(loss_min=True, simbench_network_name='small',
                 ('load', 'p_mw', net['load'].index),
                 ('load', 'q_mvar', net['load'].index)]
     if not multi_agent_case:
-        # In the multi-agent case other, learning agents would provide the bids
+        # In the multi-agent case, other learning agents would provide the bids
         obs_keys.append(('poly_cost', 'cq2_eur_per_mvar2', net['sgen'].index))
     obs_space = get_obs_space(net, obs_keys)
 
@@ -82,6 +82,7 @@ def qmarket_env(loss_min=True, simbench_network_name='small',
     def objective(net):
         """ Consider quadratic reactive power costs and linear active costs """
         if multi_agent_case:
+            # The agents handle their trading internally here
             q_costs = 0
         else:
             q_costs = (net.poly_cost['cq2_eur_per_mvar2']
@@ -92,23 +93,9 @@ def qmarket_env(loss_min=True, simbench_network_name='small',
         else:
             loss_costs = 0
 
-        # Constraint: Zero reactive power flow over slack bus
-        # TODO: Maybe move this into environment class -> to penalties
-        q_slack = net.res_ext_grid.q_mvar.to_numpy()
-        max_q_slack = net.ext_grid.max_q_mvar.to_numpy()
-        min_q_slack = net.ext_grid.min_q_mvar.to_numpy()
+        # print('Reward distr: ', q_costs, loss_costs)  # for testing
 
-        upper_mask = q_slack > max_q_slack
-        lower_mask = q_slack < min_q_slack
-
-        upper_violations = (q_slack - max_q_slack)[upper_mask].sum()
-        lower_violations = (min_q_slack - q_slack)[lower_mask].sum()
-
-        penalty = (upper_violations + lower_violations) * 100
-
-        # print('Reward distr: ', q_costs, loss_costs, penalty)  # for testing
-
-        return -q_costs - loss_costs - penalty
+        return -q_costs - loss_costs
 
     def sampling(env):
         # TODO ThW: Sample from simbench time-series data
@@ -121,7 +108,7 @@ def qmarket_env(loss_min=True, simbench_network_name='small',
         # active power is not controllable (only relevant for OPF)
         env.net.sgen['p_mw'] = env.net.sgen['max_p_mw']
         env.net.sgen['min_p_mw'] = 0.9999 * env.net.sgen['p_mw']
-        env.net.sgen['max_p_mw'] = 1.0001 * env.net.sgen['p_mw']
+        env.net.sgen['max_p_mw'] = env.net.sgen['p_mw']
 
         q_max = (env.net.sgen['max_s_mva']**2 - env.net.sgen['p_mw']**2)**0.5
         env.net.sgen['min_q_mvar'] = -q_max

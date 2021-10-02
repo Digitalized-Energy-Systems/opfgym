@@ -6,14 +6,15 @@ import numpy as np
 import pandapower as pp
 
 from .penalties import (
-    voltage_violation, line_overload, apparent_overpower, active_overpower)
+    voltage_violation, line_overload, apparent_overpower, active_overpower,
+    ext_grid_overpower)
 
 
 class OpfEnv(gym.Env):
     def __init__(self, net, objective,
                  obs_keys, obs_space, act_keys, act_space, sample_keys=None,
-                 u_penalty=300, overload_penalty=2,
-                 apparent_power_penalty=500, active_power_penalty=5,
+                 u_penalty=300, overload_penalty=2, ext_overpower_penalty=100,
+                 apparent_power_penalty=500, active_power_penalty=100,
                  single_step=True,
                  sampling=None, bus_wise_obs=False  # TODO
                  ):
@@ -32,6 +33,7 @@ class OpfEnv(gym.Env):
         self.overload_penalty = overload_penalty
         self.apparent_power_penalty = apparent_power_penalty
         self.active_power_penalty = active_power_penalty
+        self.ext_overpower_penalty = ext_overpower_penalty
 
         if not sampling:
             self._sampling = self._set_random_state
@@ -99,6 +101,8 @@ class OpfEnv(gym.Env):
         penalty += voltage_violation(self.net, self.u_penalty)
         penalty += line_overload(self.net, self.overload_penalty)
         penalty += apparent_overpower(self.net, self.apparent_power_penalty)
+        penalty += ext_grid_overpower(self.net,
+                                      self.ext_overpower_penalty, 'q_mvar')
 
         # penalty += active_overpower(self.net, self.apparent_power_penalty)
 

@@ -6,6 +6,7 @@ import numpy as np
 def voltage_violation(net, penalty_factor):
     """ Linear penalty for voltage violations of the upper or lower voltage
     boundary (both treated equally). """
+    # TODO: implement this whole stuff only once: violation(unit_type=bus, column=vm_pu, constrain_column=etc)
     voltages = net.res_bus.vm_pu.to_numpy()
     max_voltages = net.bus["max_vm_pu"].to_numpy()
     min_voltages = net.bus["min_vm_pu"].to_numpy()
@@ -38,6 +39,23 @@ def line_overload(net, penalty_factor):
     return violations * penalty_factor
 
 
+def ext_grid_overpower(net, penalty_factor, column='q_mvar'):
+    """ Linear penalty for violations of max/min active/reactive power from
+    external grids. """
+    power = net.res_ext_grid[column].to_numpy()
+    max_power = net.ext_grid[f'max_{column}'].to_numpy()
+    min_power = net.ext_grid[f'min_{column}'].to_numpy()
+
+    upper_mask = power > max_power
+    lower_mask = power < min_power
+
+    upper_violations = (power - max_power)[upper_mask].sum()
+    lower_violations = (min_power - power)[lower_mask].sum()
+
+    penalty = (upper_violations + lower_violations) * penalty_factor
+    return penalty
+
+
 def apparent_overpower(net, penalty_factor, autocorrect=True):
     power = (net.sgen.p_mw.to_numpy() ** 2 +
              net.sgen.q_mvar.to_numpy() ** 2)**0.5
@@ -45,8 +63,8 @@ def apparent_overpower(net, penalty_factor, autocorrect=True):
 
     mask = power > max_power
     violations = (power - max_power)[mask].sum()
-    if violations > 0.00000:
-        print('apparent power over max: ', violations * penalty_factor)
+    # if violations > 0.00000:
+    #     print('apparent power over max: ', violations * penalty_factor)
 
     if autocorrect:
         correct_apparent_overpower(net)
