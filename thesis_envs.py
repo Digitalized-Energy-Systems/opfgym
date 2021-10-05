@@ -86,7 +86,7 @@ def qmarket_env(loss_min=True, simbench_network_name='small',
             q_costs = 0
         else:
             q_costs = (net.poly_cost['cq2_eur_per_mvar2']
-                       * net.sgen['q_mvar']**2).sum()
+                       * net.res_sgen['q_mvar']**2).sum()
         if loss_min:
             # Grid operator also wants to minimize network active power losses
             loss_costs = min_p_loss(net) * 30  # Assumption: 30€/MWh

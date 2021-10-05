@@ -28,14 +28,14 @@ def voltage_violation(net, penalty_factor):
     return penalty
 
 
-def line_overload(net, penalty_factor):
-    line_loads = net.res_line.loading_percent.to_numpy()
-    max_line_loads = net.line.max_loading_percent.to_numpy()
+def line_trafo_overload(net, penalty_factor, unit_type: str):
+    loads = net[f'res_{unit_type}'].loading_percent.to_numpy()
+    max_loads = net[unit_type].max_loading_percent.to_numpy()
 
-    mask = line_loads > max_line_loads
-    violations = (line_loads - max_line_loads)[mask].sum()
+    mask = loads > max_loads
+    violations = (loads - max_loads)[mask].sum()
     if violations > 0:
-        print('line overload: ', violations * penalty_factor)
+        print(f'{unit_type} overload: ', violations * penalty_factor)
     return violations * penalty_factor
 
 
@@ -60,6 +60,8 @@ def apparent_overpower(net, penalty_factor, autocorrect=True):
     power = (net.sgen.p_mw.to_numpy() ** 2 +
              net.sgen.q_mvar.to_numpy() ** 2)**0.5
     max_power = net.sgen.max_s_mva.to_numpy()
+
+    # TODO: 'res_sgen`instead?!
 
     mask = power > max_power
     violations = (power - max_power)[mask].sum()

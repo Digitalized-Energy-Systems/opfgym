@@ -6,8 +6,8 @@ import numpy as np
 import pandapower as pp
 
 from .penalties import (
-    voltage_violation, line_overload, apparent_overpower, active_overpower,
-    ext_grid_overpower)
+    voltage_violation, line_trafo_overload, apparent_overpower,
+    active_overpower, ext_grid_overpower)
 
 
 class OpfEnv(gym.Env):
@@ -99,7 +99,9 @@ class OpfEnv(gym.Env):
         from the reward. """
         penalty = 0
         penalty += voltage_violation(self.net, self.u_penalty)
-        penalty += line_overload(self.net, self.overload_penalty)
+        penalty += line_trafo_overload(self.net, self.overload_penalty, 'line')
+        penalty += line_trafo_overload(self.net,
+                                       self.overload_penalty, 'trafo')
         penalty += apparent_overpower(self.net, self.apparent_power_penalty)
         penalty += ext_grid_overpower(self.net,
                                       self.ext_overpower_penalty, 'q_mvar')
@@ -199,4 +201,6 @@ class OpfEnv(gym.Env):
         success = self._optimal_power_flow()
         if not success:
             return np.nan
-        return self._calc_reward(self.net) - self._calc_penalty()
+        reward = self._calc_reward(self.net) - self._calc_penalty()
+        print('penalty: ', self._calc_penalty())
+        return reward

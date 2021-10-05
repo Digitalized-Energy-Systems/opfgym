@@ -11,7 +11,7 @@ def min_p_loss(net):
     gen = (sum(net.res_ext_grid.p_mw)
            + sum(net.res_sgen.p_mw)
            + sum(net.res_gen.p_mw))
-    load = sum(net.storage.p_mw) + sum(net.load.p_mw)
+    load = sum(net.res_storage.p_mw) + sum(net.res_load.p_mw)
     p_loss = gen - load
 
     return p_loss
