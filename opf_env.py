@@ -7,7 +7,7 @@ import pandapower as pp
 
 from .penalties import (
     voltage_violation, line_trafo_overload, apparent_overpower,
-    active_overpower, ext_grid_overpower)
+    active_reactive_overpower, ext_grid_overpower)
 
 
 class OpfEnv(gym.Env):
@@ -102,11 +102,14 @@ class OpfEnv(gym.Env):
         penalty += line_trafo_overload(self.net, self.overload_penalty, 'line')
         penalty += line_trafo_overload(self.net,
                                        self.overload_penalty, 'trafo')
-        penalty += apparent_overpower(self.net, self.apparent_power_penalty)
+        # TODO: Make this more general!
+        # penalty += apparent_overpower(self.net, self.apparent_power_penalty)
         penalty += ext_grid_overpower(self.net,
                                       self.ext_overpower_penalty, 'q_mvar')
 
-        # penalty += active_overpower(self.net, self.apparent_power_penalty)
+        penalty += active_reactive_overpower(self.net,
+                                             self.apparent_power_penalty,
+                                             column='q_mvar')
 
         return penalty
 
