@@ -13,7 +13,9 @@ from .objectives import (min_p_loss, add_min_loss_costs)
 
 
 def qmarket_env(loss_min=True, simbench_network_name='small',
-                multi_agent_case=False):
+                multi_agent_case=False,
+                additional_gen=False,
+                loose_constraints=False):
     """
     Reactive power market environment: The grid operator procures reactive power
     from generators to minimize losses within its system.
@@ -31,6 +33,9 @@ def qmarket_env(loss_min=True, simbench_network_name='small',
     """
 
     net = build_net(simbench_network_name=simbench_network_name)
+    if additional_gen:
+        # TODO: ONly for OS2 presentation: Addtional generator at bus 7 with x kw
+        pp.create_sgen(net, 23, 0.075, scaling=2.0)
 
     # TODO ThW: Some of this can be deleted with new sampling method
     # Set the unit constraints...
@@ -48,16 +53,20 @@ def qmarket_env(loss_min=True, simbench_network_name='small',
     net.sgen['max_max_q_mvar'] = net.sgen['max_s_mva']
     net.sgen['min_max_q_mvar'] = -net.sgen['max_s_mva']
 
-    net.ext_grid['max_q_mvar'] = 0.05  # TODO: Stand jetzt abgestimmt für
-    net.ext_grid['min_q_mvar'] = -0.05  # Netz '1-LV-urban6--0-sw'
+    if loose_constraints:
+        net.ext_grid['max_q_mvar'] = 0.10
+        net.ext_grid['min_q_mvar'] = -0.10
+    else:
+        net.ext_grid['max_q_mvar'] = 0.05  # TODO: Stand jetzt abgestimmt für
+        net.ext_grid['min_q_mvar'] = -0.05  # Netz '1-LV-urban6--0-sw'
     # TODO: is scaling correctly considered here? (test by looking at OPF results -> should be these values here!)
 
     # Add price params to the network (as poly cost so that the OPF works)
     for idx in net.sgen.index:
         pp.create_poly_cost(net, idx, 'sgen',
                             cp1_eur_per_mw=0, cq2_eur_per_mvar2=0)
-    net.poly_cost['min_cq2_eur_per_mvar2'] = 0
-    net.poly_cost['max_cq2_eur_per_mvar2'] = 10000
+    # net.poly_cost['min_cq2_eur_per_mvar2'] = 0
+    # net.poly_cost['max_cq2_eur_per_mvar2'] = 10000
 
     if loss_min:
         # Add loss minimization as another objective
@@ -107,10 +116,12 @@ def qmarket_env(loss_min=True, simbench_network_name='small',
             env.net[unit_type][column].loc[idxs] = r
         # active power is not controllable (only relevant for OPF)
         env.net.sgen['p_mw'] = env.net.sgen['max_p_mw']
+        # TODO: scaling
         env.net.sgen['min_p_mw'] = 0.9999 * env.net.sgen['p_mw']
         env.net.sgen['max_p_mw'] = env.net.sgen['p_mw']
 
         q_max = (env.net.sgen['max_s_mva']**2 - env.net.sgen['p_mw']**2)**0.5
+        # TODO: Multiply with scaling!
         env.net.sgen['min_q_mvar'] = -q_max
         env.net.sgen['max_q_mvar'] = q_max
 
