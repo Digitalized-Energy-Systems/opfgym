@@ -1,4 +1,6 @@
 
+import abc
+import random
 import pdb
 
 import gym
@@ -10,47 +12,30 @@ from .penalties import (
     active_reactive_overpower, ext_grid_overpower)
 
 
-class OpfEnv(gym.Env):
-    def __init__(self, net, objective,
-                 obs_keys, obs_space, act_keys, act_space, sample_keys=None,
+class OpfEnv(gym.Env, abc.ABC):
+    def __init__(self,  # net,
+                 # obs_keys, obs_space, act_keys, act_space, sample_keys=None,
                  u_penalty=300, overload_penalty=2, ext_overpower_penalty=100,
                  apparent_power_penalty=500, active_power_penalty=100,
-                 single_step=True,
-                 sampling=None, bus_wise_obs=False  # TODO
+                 single_step=True,  # sampling=None, bus_wise_obs=False  # TODO
                  ):
-        self.net = net
-        self.observation_space = obs_space
-        self.obs_keys = obs_keys
-        self.action_space = act_space
-        self.act_keys = act_keys
-        if sample_keys:
-            self.sample_keys = sample_keys
-        else:
-            self.sample_keys = obs_keys
 
-        self._calc_reward = objective
         self.u_penalty = u_penalty
         self.overload_penalty = overload_penalty
         self.apparent_power_penalty = apparent_power_penalty
         self.active_power_penalty = active_power_penalty
         self.ext_overpower_penalty = ext_overpower_penalty
 
-        if not sampling:
-            self._sampling = self._set_random_state
-        elif sampling == 'simbench':
-            assert not sb.profiles_are_missing(net)
-            self.profiles = sb.get_absolute_values(net,
-                                                   profiles_instead_of_study_cases=True)
-            self._sampling = self._set_simbench_state
-        else:
-            self._sampling = sampling
-
-        self.single_step = single_step
+        self.single_step = single_step  # TODO: Multi-step episodes not implemented yet
 
         # Full state of the system (available in training, but not in testing)
-        self.state = None  # TODO
+        self.state = None  # TODO: Not implemented yet
 
         self.test = False
+
+    @abc.abstractmethod
+    def _calc_reward(self, net):
+        pass
 
     def step(self, action):
         self._apply_actions(action)
@@ -113,22 +98,22 @@ class OpfEnv(gym.Env):
 
         return penalty
 
-    def _ignore_invalid_actions(self):
-        """ Prevent the agent from "cheating" by ignoring invalid actions, for
-        example too high power values of the generators. """
-        pass
-
-    def _set_random_state(self):
+    def _sampling(self, sample_keys=None):
         """ Standard pre-implemented method to set power system to a new random
         state from uniform sampling. Uses the observation space as basis.
         Requirement: For every observations there must be "min_{obs}" and
         "max_{obs}" given as range to sample from.
         """
-        for unit_type, column, idxs in self.sample_keys:
-            low = self.net[unit_type][f'min_{column}'].loc[idxs]
-            high = self.net[unit_type][f'max_{column}'].loc[idxs]
-            r = np.random.uniform(low, high, size=(len(idxs),))
-            self.net[unit_type][column].loc[idxs] = r
+        if not sample_keys:
+            sample_keys = self.obs_keys
+        for unit_type, column, idxs in sample_keys:
+            self._sample_from_range(unit_type, column, idxs)
+
+    def _sample_from_range(self, unit_type, column, idxs):
+        low = self.net[unit_type][f'min_{column}'].loc[idxs]
+        high = self.net[unit_type][f'max_{column}'].loc[idxs]
+        r = np.random.uniform(low, high, size=(len(idxs),))
+        self.net[unit_type][column].loc[idxs] = r
 
     def _set_simbench_state(self):
         """ Standard pre-implemented method to sample a random state from the
@@ -137,6 +122,7 @@ class OpfEnv(gym.Env):
         """
         noise_factor = 0.1
         step = random.randint(0, len(self.profiles) - 1)
+        # TODO: Consider some test steps that do not get sampled!
         for type_act in self.profiles.keys():
             if not self.profiles[type_act].shape[1]:
                 continue
@@ -159,20 +145,11 @@ class OpfEnv(gym.Env):
         return np.concatenate(obss)
 
     def reset(self):
-        self._sampling(self)
+        self._sampling()
         return self._get_obs()
 
     def render(self, mode='human'):
         pass  # TODO
-
-    def _optimal_power_flow(self):
-        try:
-            # TODO: Make sure that this does not change the actual grid, but only a copy of it
-            pp.runopp(self.net)
-        except pp.optimal_powerflow.OPFNotConverged:
-            print('OPF not converged!!!')
-            return False
-        return True
 
     def get_current_actions(self):
         action = [(self.net[f'res_{unit_type}'][column].loc[idxs]
@@ -181,20 +158,9 @@ class OpfEnv(gym.Env):
         return np.concatenate(action)
 
     def test_step(self, action):
-        """ TODO Use some custom data from different distribution here. """
+        """ TODO Use some custom data from different distribution here. For
+        example some subset of the simbench data that is not used in training """
         result = self.step(action)
-
-        # print('action: ', action)
-        # success = self._optimal_power_flow()
-        # if not success:
-        #     print('failure')
-        #     return result
-        # # print('optimal action:', self.get_current_actions())
-        # print('reward: ', result[1])
-        # opt_reward = self._calc_reward(self.net) - self._calc_penalty()
-        # print('opt reward: ', opt_reward)
-        # print('MSE: ', 100 * abs((opt_reward - result[1]) / opt_reward))
-
         return result
 
     def baseline_reward(self):
@@ -207,3 +173,12 @@ class OpfEnv(gym.Env):
         reward = self._calc_reward(self.net) - self._calc_penalty()
         print('penalty: ', self._calc_penalty())
         return reward
+
+    def _optimal_power_flow(self):
+        try:
+            # TODO: Make sure that this does not change the actual grid, but only a copy of it
+            pp.runopp(self.net)
+        except pp.optimal_powerflow.OPFNotConverged:
+            print('OPF not converged!!!')
+            return False
+        return True
