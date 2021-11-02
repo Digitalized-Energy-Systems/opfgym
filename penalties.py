@@ -85,23 +85,24 @@ def correct_apparent_overpower(net):
     net.sgen['q_mvar'] = np.sign(net.sgen['q_mvar']) * new_values
 
 
-def active_overpower(net, penalty_factor, autocorrect=True):
-    power = net.sgen.p_mw.to_numpy()
-    max_power = net.sgen.max_s_mva.to_numpy()
+def active_reactive_overpower(net, penalty_factor, column='p_mw',
+                              autocorrect=True):
+    power = net.res_sgen[column].to_numpy()
+    max_power = net.sgen[f'max_{column}'].to_numpy()
     mask = power > max_power
     violations = (power - max_power)[mask].sum()
-    if violations > 0:
-        print('active power over max: ', violations * penalty_factor)
+    # if violations > 0:
+    #     print(f'{column} power over max: ', violations * penalty_factor)
 
     if autocorrect:
-        correct_active_overpower(net)
+        correct_active_reactive_overpower(net, column)
 
     return violations * penalty_factor
 
 
-def correct_active_overpower(net):
+def correct_active_reactive_overpower(net, column):
     """ Active power is not automatically bounded by the agent. Invalid
     actions need to be ignored, if necessary. """
     new_values = np.minimum(
-        net.sgen['p_mw'].to_numpy(), net.sgen['max_p_mw'].to_numpy())
-    net.sgen['p_mw'] = new_values
+        net.sgen[column].to_numpy(), net.sgen[f'max_{column}'].to_numpy())
+    net.sgen[column] = new_values
