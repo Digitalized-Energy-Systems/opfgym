@@ -74,10 +74,10 @@ class QMarketEnv(opf_env.OpfEnv):
         net.sgen['controllable'] = True
         cos_phi = 0.9
         net.sgen['max_s_mva'] = net.sgen['max_max_p_mw'] / cos_phi
-        # TODO: THis strange /scaling should not be here, but maybe in apply_actions instead?!
-        net.sgen['max_max_q_mvar'] = net.sgen['max_s_mva'] / net.sgen.scaling
+        net.sgen['max_max_q_mvar'] = net.sgen['max_s_mva']
 
         # TODO: Stand jetzt abgestimmt für Netz '1-LV-urban6--0-sw'
+        # TODO: Maybe see ext grid as just another reactive power provider?!
         net.ext_grid['max_q_mvar'] = 0.05
         net.ext_grid['min_q_mvar'] = -0.05
         # TODO: is scaling correctly considered here? (test by looking at OPF results -> should be these values here!)
@@ -88,7 +88,7 @@ class QMarketEnv(opf_env.OpfEnv):
             pp.create_poly_cost(net, idx, 'sgen',
                                 cp1_eur_per_mw=self.loss_costs,
                                 cq2_eur_per_mvar2=0)
-        assert len(net.gen) == 0  # Maybe add gens if necessary here
+        assert len(net.gen) == 0  # Maybe add gens here, if necessary
         for idx in net['ext_grid'].index:
             pp.create_poly_cost(net, idx, 'ext_grid',
                                 cp1_eur_per_mw=self.loss_costs)
@@ -132,7 +132,7 @@ class QMarketEnv(opf_env.OpfEnv):
         # Grid operator also wants to minimize network active power losses
         loss_costs = min_p_loss(net) * self.loss_costs
 
-        # print('Reward distr: ', q_costs, loss_costs)  # for testing
+        print('Reward distr: ', q_costs, loss_costs)  # for testing
 
         return -q_costs - loss_costs
 
@@ -310,8 +310,21 @@ def build_net(simbench_network_name='small'):
 def get_obs_space(net, obs_keys: list):
     lows, highs = [], []
     for unit_type, column, idxs in obs_keys:
-        lows.append(net[unit_type][f'min_{column}'].loc[idxs])
-        highs.append(net[unit_type][f'max_{column}'].loc[idxs])
+        obs = net[unit_type][f'min_{column}'].loc[idxs]
+        try:
+            obs *= net[unit_type]['scaling'].loc[idxs]
+        except KeyError:
+            # Don't scale, if there is no scaling
+            pass
+        lows.append(obs)
+
+        obs = net[unit_type][f'max_{column}'].loc[idxs]
+        try:
+            obs *= net[unit_type]['scaling'].loc[idxs]
+        except KeyError:
+            # Don't scale, if there is no scaling
+            pass
+        highs.append(obs)
 
     return gym.spaces.Box(
         np.concatenate(lows, axis=0), np.concatenate(highs, axis=0))

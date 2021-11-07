@@ -65,12 +65,13 @@ class OpfEnv(gym.Env, abc.ABC):
         action = np.clip(action, self.action_space.low, self.action_space.high)
         for unit_type, actuator, idxs in self.act_keys:
             a = action[counter:counter + len(idxs)]
-            # Actions are relative to the maximum possible value
+            # Actions are relative to the maximum possible (scaled) value
             # Attention: If negative actions are possible, min=max! (TODO)
             # TODO: maybe use action wrapper instead?!
             # TODO: Ensure that no invalid actions are used! (eg negative p)
             new_values = a * \
-                self.net[unit_type][f'max_max_{actuator}'].loc[idxs]
+                self.net[unit_type][f'max_max_{actuator}'].loc[idxs] / \
+                self.net[unit_type].scaling.loc[idxs]
             self.net[unit_type][actuator].loc[idxs] = new_values
             counter += len(idxs)
 
@@ -149,18 +150,19 @@ class OpfEnv(gym.Env, abc.ABC):
         return self._get_obs()
 
     def render(self, mode='human'):
-        pass  # TODO
+        pass  # TODO?
 
-    def get_current_actions(self):
-        action = [(self.net[f'res_{unit_type}'][column].loc[idxs]
-                   / self.net[unit_type][f'max_{column}'].loc[idxs])
-                  for unit_type, column, idxs in self.act_keys]
-        return np.concatenate(action)
+    # def get_current_actions(self):
+    #     action = [(self.net[f'res_{unit_type}'][column].loc[idxs]
+    #                / self.net[unit_type][f'max_{column}'].loc[idxs])
+    #               for unit_type, column, idxs in self.act_keys]
+    #     return np.concatenate(action)
 
     def test_step(self, action):
         """ TODO Use some custom data from different distribution here. For
         example some subset of the simbench data that is not used in training """
         result = self.step(action)
+        # Automatically compare with OPF here?
         return result
 
     def baseline_reward(self):
@@ -170,9 +172,10 @@ class OpfEnv(gym.Env, abc.ABC):
         success = self._optimal_power_flow()
         if not success:
             return np.nan
-        reward = self._calc_reward(self.net) - self._calc_penalty()
-        print('penalty: ', self._calc_penalty())
-        return reward
+        reward = self._calc_reward(self.net)
+        penalty = self._calc_penalty()
+        print('penalty: ', penalty)
+        return reward - penalty
 
     def _optimal_power_flow(self):
         try:
