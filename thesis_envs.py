@@ -254,6 +254,7 @@ class EcoDispatchEnv(opf_env.OpfEnv):
 
         self.sgen_idxs = net.sgen.index[net.sgen.p_mw >= self.min_power]
         self.gen_idxs = net.gen.index[net.gen.p_mw >= self.min_power]
+        assert (len(self.sgen_idxs) + len(self.gen_idxs)) > 0, 'No generators!'
         # Add price params to the network (as poly cost so that the OPF works)
         # Note that the external grids are seen as normal power plants
         for idx in self.sgen_idxs:
@@ -331,21 +332,8 @@ def get_obs_space(net, obs_keys: list):
         if 'res_' in unit_type:
             # The constraints cannot be found in the results table
             unit_type = unit_type[4:]
-        obs = net[unit_type][f'min_{column}'].loc[idxs]
-        # try:
-        #     obs *= net[unit_type]['scaling'].loc[idxs]
-        # except KeyError:
-        #     # Don't scale, if there is no scaling
-        #     pass
-        lows.append(obs)
-
-        obs = net[unit_type][f'max_{column}'].loc[idxs]
-        # try:
-        #     obs *= net[unit_type]['scaling'].loc[idxs]
-        # except KeyError:
-        #     # Don't scale, if there is no scaling
-        #     pass
-        highs.append(obs)
+        lows.append(net[unit_type][f'min_{column}'].loc[idxs])
+        highs.append(net[unit_type][f'max_{column}'].loc[idxs])
 
     return gym.spaces.Box(
         np.concatenate(lows, axis=0), np.concatenate(highs, axis=0))
