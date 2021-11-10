@@ -30,7 +30,8 @@ class QMarketEnv(opf_env.OpfEnv):
 
     """
 
-    def __init__(self, simbench_network_name='small', multi_agent_case=False):
+    def __init__(self, simbench_network_name='1-LV-urban6--0-sw',
+                 multi_agent_case=False):
         self.multi_agent_case = multi_agent_case
         self.net = self._build_net(simbench_network_name)
 
@@ -67,20 +68,18 @@ class QMarketEnv(opf_env.OpfEnv):
         net.load['max_q_mvar'] = self.profiles[('load', 'q_mvar')].max(
             axis=0) * net['load']['scaling']
 
-        # TODO: Make sure everything is correctly scaled
         net.sgen['max_max_p_mw'] = self.profiles[('sgen', 'p_mw')].max(
             axis=0) * net['sgen']['scaling']
         net.sgen['min_max_p_mw'] = 0
         net.sgen['controllable'] = True
-        cos_phi = 0.9
+        cos_phi = 0.95
         net.sgen['max_s_mva'] = net.sgen['max_max_p_mw'] / cos_phi
         net.sgen['max_max_q_mvar'] = net.sgen['max_s_mva']
 
-        # TODO: Stand jetzt abgestimmt für Netz '1-LV-urban6--0-sw'
-        # TODO: Maybe see ext grid as just another reactive power provider?!
-        net.ext_grid['max_q_mvar'] = 0.05
-        net.ext_grid['min_q_mvar'] = -0.05
-        # TODO: is scaling correctly considered here? (test by looking at OPF results -> should be these values here!)
+        # TODO: Currently finetuned for simbench grid '1-LV-urban6--0-sw'
+        # TODO: Maybe see ext grid as just another reactive power provider?! (costs instead of constraints)
+        net.ext_grid['max_q_mvar'] = 0.01
+        net.ext_grid['min_q_mvar'] = -0.01
 
         # Add price params to the network (as poly cost so that the OPF works)
         self.loss_costs = 30
@@ -88,13 +87,16 @@ class QMarketEnv(opf_env.OpfEnv):
             pp.create_poly_cost(net, idx, 'sgen',
                                 cp1_eur_per_mw=self.loss_costs,
                                 cq2_eur_per_mvar2=0)
-        assert len(net.gen) == 0  # Maybe add gens here, if necessary
+        assert len(net.gen) == 0  # TODO: Maybe add gens here, if necessary
         for idx in net['ext_grid'].index:
             pp.create_poly_cost(net, idx, 'ext_grid',
                                 cp1_eur_per_mw=self.loss_costs)
         # Define range from which to sample reactive power prices on market
         net.poly_cost['min_cq2_eur_per_mvar2'] = 0
-        net.poly_cost['max_cq2_eur_per_mvar2'] = 10000
+        # Comment: Too high values here make training extremely difficult...
+        # The optimal result are then very small values for q, which seem to
+        # be difficult to learn
+        net.poly_cost['max_cq2_eur_per_mvar2'] = 1000
 
         pp.runpp(net)
 
@@ -108,14 +110,12 @@ class QMarketEnv(opf_env.OpfEnv):
         if not self.multi_agent_case:
             self._sample_from_range(  # TODO: Are the indexes here correct??
                 'poly_cost', 'cq2_eur_per_mvar2', self.net['sgen'].index)
-
         # active power is not controllable (only relevant for actual OPF)
-        self.net.sgen['max_p_mw'] = self.net.sgen['p_mw'] * \
-            self.net.sgen['scaling']
-        self.net.sgen['min_p_mw'] = 0.9999 * self.net.sgen['max_p_mw']
+        self.net.sgen['max_p_mw'] = self.net.sgen.p_mw * self.net.sgen.scaling
+        self.net.sgen['min_p_mw'] = 0.999999 * self.net.sgen['max_p_mw']
 
         q_max = (self.net.sgen['max_s_mva']**2 -
-                 (self.net.sgen['p_mw'] * self.net.sgen['scaling'])**2)**0.5
+                 (self.net.sgen.p_mw * self.net.sgen.scaling)**2)**0.5
         self.net.sgen['min_q_mvar'] = -q_max
         self.net.sgen['max_q_mvar'] = q_max
 
@@ -132,7 +132,7 @@ class QMarketEnv(opf_env.OpfEnv):
         # Grid operator also wants to minimize network active power losses
         loss_costs = min_p_loss(net) * self.loss_costs
 
-        print('Reward distr: ', q_costs, loss_costs)  # for testing
+        # print('Reward distr: ', q_costs, loss_costs)  # for testing
 
         return -q_costs - loss_costs
 
@@ -289,8 +289,8 @@ def build_net(simbench_network_name='small'):
 
     # Scale up loads and gens to make task a bit more difficult
     # (TODO: Maybe requires fine-tuning)
-    net.sgen['scaling'] = 2.0
-    net.load['scaling'] = 1.5
+    net.sgen['scaling'] = 1.0
+    net.load['scaling'] = 2.0
 
     # Set the system constraints
     # Define the voltage band of +-5%
