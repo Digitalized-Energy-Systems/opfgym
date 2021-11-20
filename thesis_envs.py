@@ -14,10 +14,122 @@ from .penalties import (ext_grid_overpower, active_reactive_overpower)
 # TODO: Create functions for recurring code (or method in upper class?!)
 
 
+class SimpleOpfEnv(opf_env.OpfEnv):
+    """
+    Standard Optimal Power Flow environment: The grid operator learns to set
+    active and reactive power of all generators in the system to maximize
+    active power feed-in to the external grid. (loss min inherently included)
+    Since this environment has lots of actuators and a
+    simple objective function, it is well suited to investigate constraint
+    satisfaction.
+
+    Actuators: Active/reactive power of all generators
+
+    Sensors: active+reactive power of all loads; max active power of all gens
+
+    Objective: minimize losses (TODO Add Multiple choosable objectives?)
+
+    Constraints: Voltage band, line/trafo load, min/max reactive power, zero
+        reactive power flow over slack bus
+    """
+
+    def __init__(self, simbench_network_name='1-LV-rural3--0-sw'):
+        self.net = self._build_net(simbench_network_name)
+
+        # Define the RL problem
+        # See all load power values, sgen max active power...
+        # TODO: Add current time as observation! (see attack paper)
+        self.obs_keys = [('sgen', 'max_p_mw', self.net['sgen'].index),
+                         ('res_load', 'p_mw', self.net['load'].index),
+                         ('res_load', 'q_mvar', self.net['load'].index)]
+
+        self.observation_space = get_obs_space(self.net, self.obs_keys)
+        # TODO: Move this to superclass?
+
+        # ... and control all sgens' active and reactive power values
+        self.act_keys = [('sgen', 'p_mw', self.net['sgen'].index),
+                         ('sgen', 'q_mvar', self.net['sgen'].index)]
+        n_gens = len(self.net['sgen'].index)
+        low = np.concatenate([np.zeros(n_gens), -np.ones(n_gens)])
+        high = np.ones(2 * n_gens)
+        self.action_space = gym.spaces.Box(low, high)
+
+        super().__init__(apparent_power_penalty=5000)
+
+    def _build_net(self, simbench_network_name):
+        net, self.profiles = build_net(simbench_network_name, gen_scaling=2.0)
+
+        net.load['controllable'] = False
+        # Constraints required for observation space only
+        net.load['min_p_mw'] = self.profiles[('load', 'p_mw')].min(
+            axis=0) * net['load']['scaling']
+        net.load['max_p_mw'] = self.profiles[('load', 'p_mw')].max(
+            axis=0) * net['load']['scaling']
+        net.load['min_q_mvar'] = self.profiles[('load', 'q_mvar')].min(
+            axis=0) * net['load']['scaling']
+        net.load['max_q_mvar'] = self.profiles[('load', 'q_mvar')].max(
+            axis=0) * net['load']['scaling']  # TODO: THis code repeats often
+
+        net.sgen['max_max_p_mw'] = self.profiles[('sgen', 'p_mw')].max(
+            axis=0) * net['sgen']['scaling']
+        net.sgen['min_max_p_mw'] = self.profiles[('sgen', 'p_mw')].min(
+            axis=0) * net['sgen']['scaling']
+        net.sgen['controllable'] = True
+
+        cos_phi = 0.9
+        net.sgen['max_s_mva'] = net.sgen['max_max_p_mw'] / cos_phi
+        # Assumption: Mandatory reactive power provision of cos_phi
+        net.sgen['max_max_q_mvar'] = (
+            net.sgen['max_s_mva']**2 - net.sgen['max_max_p_mw']**2)**0.5
+        net.sgen['max_q_mvar'] = net.sgen['max_max_q_mvar']
+        net.sgen['min_q_mvar'] = -net.sgen['max_max_q_mvar']
+
+        # TODO: Currently finetuned for simbench grids '1-LV-urban6--0-sw' and '1-LV-rural3--0-sw'
+        net.ext_grid['max_q_mvar'] = 0.01
+        net.ext_grid['min_q_mvar'] = -0.01
+
+        # Objective: Maximize active power feed-in to external grid
+        assert len(net.gen) == 0  # TODO: Maybe add gens here, if necessary
+        self.active_power_costs = 30
+        for idx in net['ext_grid'].index:
+            pp.create_poly_cost(net, idx, 'ext_grid',
+                                cp1_eur_per_mw=self.active_power_costs)
+
+        return net
+
+    def _sampling(self):
+        """ Assumption: Only simbench systems with timeseries data are used. """
+        self._set_simbench_state()
+
+        # Set constraints of current time steps (also for OPF)
+        self.net.sgen['max_p_mw'] = self.net.sgen.p_mw * self.net.sgen.scaling
+
+    def _calc_reward(self, net):
+        """ Objective: Maximize active power feed-in to external grid. """
+        return -(self.net.res_ext_grid.p_mw * self.active_power_costs).sum()
+
+    def _calc_penalty(self):
+        penalty = super()._calc_penalty()
+        # Do not allow for high power exchange with external grid
+        penalty += ext_grid_overpower(self.net,
+                                      self.ext_overpower_penalty, 'q_mvar')
+
+        # Do not allow higher active power feed-in than possible
+        # (not relevant for reactive power because max_q_mvar=const)
+        penalty += active_reactive_overpower(self.net,
+                                             self.apparent_power_penalty,
+                                             column='p_mw')
+
+        return penalty
+
+
 class QMarketEnv(opf_env.OpfEnv):
     """
-    Reactive power market environment: The grid operator procures reactive power
-    from generators to minimize losses within its system.
+    Reactive power market environment (base case): The grid operator procures
+    reactive power from generators to minimize losses within its system. There
+    are also variants of this env where the market participants learn to bid on
+    the market or where grid operator and market participants learn at the same
+    time.
 
     Actuators: Reactive power of all gens
 
@@ -32,18 +144,24 @@ class QMarketEnv(opf_env.OpfEnv):
     """
 
     def __init__(self, simbench_network_name='1-LV-urban6--0-sw',
-                 multi_agent_case=False):
-        self.multi_agent_case = multi_agent_case
+                 learning_bidders=False, learning_grid_operator=True):
+        self.learning_bidders = learning_bidders
         self.net = self._build_net(simbench_network_name)
 
         # Define the RL problem
         # See all load power values, sgen active power, and sgen prices...
+        # TODO: Add current time as observation! (see attack paper)
         self.obs_keys = [('sgen', 'max_p_mw', self.net['sgen'].index),
                          ('res_load', 'p_mw', self.net['load'].index),
                          ('res_load', 'q_mvar', self.net['load'].index)]
 
-        if not multi_agent_case:
-            # In the multi-agent case, other learning agents would provide the bids
+        if learning_bidders:
+            # (Market participant) agents see only local observation of p_mw
+            # TODO: Maybe add local voltages (but currently not part of obs)
+            self.agent_observation_mapping = [
+                np.array([idx]) for idx in net.sgen.index]
+        else:
+            # In the multi-agent case, other learning agents provide the bids
             self.obs_keys.append(
                 ('poly_cost', 'cq2_eur_per_mvar2', self.net['sgen'].index))
         self.observation_space = get_obs_space(self.net, self.obs_keys)
@@ -100,7 +218,7 @@ class QMarketEnv(opf_env.OpfEnv):
         # Comment: Too high values here make training extremely difficult...
         # The optimal result are then very small values for q, which seem to
         # be difficult to learn
-        net.poly_cost['max_cq2_eur_per_mvar2'] = 10000
+        net.poly_cost['max_cq2_eur_per_mvar2'] = 100000
 
         return net
 
@@ -109,7 +227,7 @@ class QMarketEnv(opf_env.OpfEnv):
         self._set_simbench_state()
 
         # Sample prices uniformly from min/max range
-        if not self.multi_agent_case:
+        if not self.learning_bidders:
             self._sample_from_range(  # TODO: Are the indexes here correct??
                 'poly_cost', 'cq2_eur_per_mvar2', self.net['sgen'].index)
         # active power is not controllable (only relevant for actual OPF)
@@ -124,7 +242,7 @@ class QMarketEnv(opf_env.OpfEnv):
     def _calc_reward(self, net):
         """ Consider quadratic reactive power costs on the market and linear
         active costs for losses in the system. """
-        if self.multi_agent_case:
+        if self.learning_bidders:
             # The agents handle their trading internally here
             q_costs = 0
         else:
@@ -167,12 +285,12 @@ class EcoDispatchEnv(opf_env.OpfEnv):
     """
 
     def __init__(self, simbench_network_name='1-HV-urban--0-sw', min_power=0,
-                 multi_agent_case=False):
+                 learning_bidders=False):
         # Economic dispatch normally done in EHV (too big! use HV instead!)
         # EHV option: '1-EHV-mixed--0-sw' (340 generators!!!)
         # HV options: '1-HV-urban--0-sw' and '1-HV-mixed--0-sw'
 
-        self.multi_agent_case = multi_agent_case
+        self.learning_bidders = learning_bidders
 
         # Not every power plant is big enough to participate in the market
         # Assumption: Use power from time-series for all other plants (see sampling())
@@ -190,12 +308,13 @@ class EcoDispatchEnv(opf_env.OpfEnv):
                          ('res_gen', 'p_mw', non_gen_idxs)]
 
         # ...and generator prices...
-        if not multi_agent_case:
+        if not learning_bidders:
             # In the multi-agent case, other learning agents would provide the bids
             self.obs_keys.append(
                 ('poly_cost', 'cp1_eur_per_mw',
                  np.array(range(len(self.sgen_idxs) + len(self.gen_idxs) + len(self.net.ext_grid.index)))))
         self.observation_space = get_obs_space(self.net, self.obs_keys)
+        # TODO: Move this to superclass?
 
         # ... and control all generators' active power values
         self.act_keys = [('sgen', 'p_mw', self.sgen_idxs),
@@ -208,7 +327,7 @@ class EcoDispatchEnv(opf_env.OpfEnv):
 
         # TODO: Define constraints explicitly?! (active power min/max not default!)
 
-        super().__init__()
+        super().__init__(u_penalty=300000, overload_penalty=2000)
 
     def _build_net(self, simbench_network_name):
         assert simbench_network_name in (
@@ -277,18 +396,19 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         self._set_simbench_state()
 
         # Sample prices uniformly from min/max range for gens/sgens/ext_grids
-        if not self.multi_agent_case:
+        if not self.learning_bidders:
             self._sample_from_range(
                 'poly_cost', 'cp1_eur_per_mw', self.net.poly_cost.index)
 
     def _calc_reward(self, net):
         """ Minimize costs for active power in the system. """
-        if self.multi_agent_case:
+        if self.learning_bidders:
             # The agents handle their trading internally here
             return 0
 
         p_mw = net.res_sgen.p_mw.loc[self.sgen_idxs]
         p_mw = p_mw.append(net.res_gen.p_mw.loc[self.gen_idxs])
+        # TOOD: Maybe make sure that p_mw of ext_grid is not negative (selling!)
         p_mw = p_mw.append(net.res_ext_grid.p_mw)
 
         prices = net.poly_cost['cp1_eur_per_mw']
@@ -299,7 +419,7 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         pp.runpp(self.net, enforce_q_lims=True)
 
 
-def build_net(simbench_network_name):
+def build_net(simbench_network_name, gen_scaling=1.0, load_scaling=2.0):
     """ Init and return a simbench power network with standard configuration.
     """
 
@@ -308,8 +428,8 @@ def build_net(simbench_network_name):
 
     # Scale up loads to make task a bit more difficult
     # (TODO: Maybe requires fine-tuning and should be done env-wise)
-    net.sgen['scaling'] = 1.0
-    net.load['scaling'] = 2.0
+    net.sgen['scaling'] = gen_scaling
+    net.load['scaling'] = load_scaling
 
     # Set the system constraints
     # Define the voltage band of +-5%
@@ -327,10 +447,11 @@ def build_net(simbench_network_name):
 
 
 def get_obs_space(net, obs_keys: list):
+    """ Get observation space from the constraints of the power network. """
     lows, highs = [], []
     for unit_type, column, idxs in obs_keys:
         if 'res_' in unit_type:
-            # The constraints cannot be found in the results table
+            # The constraints are never defined in the results table
             unit_type = unit_type[4:]
         lows.append(net[unit_type][f'min_{column}'].loc[idxs])
         highs.append(net[unit_type][f'max_{column}'].loc[idxs])

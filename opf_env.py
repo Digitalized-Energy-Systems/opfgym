@@ -78,7 +78,17 @@ class OpfEnv(gym.Env, abc.ABC):
             # Attention: The negative range is always equal to the pos range!
             # TODO: maybe use action wrapper instead?!
             max_action = self.net[unit_type][f'max_max_{actuator}'].loc[idxs]
-            new_values = a * max_action / self.net[unit_type].scaling.loc[idxs]
+            try:
+                new_values = (a * max_action /
+                              self.net[unit_type].scaling.loc[idxs])
+            except AttributeError:
+                # Scaling sometimes not existing -> TODO: maybe catch this once in init
+                new_values = a * max_action
+
+            # import random
+            # if random.random() < 0.01:
+            #     print(f'update {unit_type}.{actuator} with: ',
+            #           list(new_values))
             self.net[unit_type][actuator].loc[idxs] = new_values
             counter += len(idxs)
 

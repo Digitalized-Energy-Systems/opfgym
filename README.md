@@ -26,3 +26,16 @@ relevant information for each simbench system for quick access:
 
 #### Environments
 TODO
+
+### Standard OPF (SimpleOpfEnv)
+
+### Reactive power market (QMarketEnv)
+
+### Economic dispatch (EcoDispatchEnv)
+
+### Multi-agent bidding in reactive power market (BiddingQMarketEnv)
+
+
+
+#### How to create a new env
+What needs to be done? (action_space, observation_space, sampling, etc)
