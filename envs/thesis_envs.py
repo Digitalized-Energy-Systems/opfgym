@@ -43,9 +43,6 @@ class SimpleOpfEnv(opf_env.OpfEnv):
                          ('res_load', 'p_mw', self.net['load'].index),
                          ('res_load', 'q_mvar', self.net['load'].index)]
 
-        self.observation_space = get_obs_space(self.net, self.obs_keys)
-        # TODO: Move this to superclass?
-
         # ... and control all sgens' active and reactive power values
         self.act_keys = [('sgen', 'p_mw', self.net['sgen'].index),
                          ('sgen', 'q_mvar', self.net['sgen'].index)]
@@ -143,28 +140,18 @@ class QMarketEnv(opf_env.OpfEnv):
 
     """
 
-    def __init__(self, simbench_network_name='1-LV-urban6--0-sw',
-                 learning_bidders=False, learning_grid_operator=True):
+    def __init__(self, simbench_network_name='1-LV-urban6--0-sw'):
         self.learning_bidders = learning_bidders
         self.net = self._build_net(simbench_network_name)
 
         # Define the RL problem
         # See all load power values, sgen active power, and sgen prices...
         # TODO: Add current time as observation! (see attack paper)
-        self.obs_keys = [('sgen', 'max_p_mw', self.net['sgen'].index),
-                         ('res_load', 'p_mw', self.net['load'].index),
-                         ('res_load', 'q_mvar', self.net['load'].index)]
-
-        if learning_bidders:
-            # (Market participant) agents see only local observation of p_mw
-            # TODO: Maybe add local voltages (but currently not part of obs)
-            self.agent_observation_mapping = [
-                np.array([idx]) for idx in net.sgen.index]
-        else:
-            # In the multi-agent case, other learning agents provide the bids
-            self.obs_keys.append(
-                ('poly_cost', 'cq2_eur_per_mvar2', self.net['sgen'].index))
-        self.observation_space = get_obs_space(self.net, self.obs_keys)
+        self.obs_keys = [
+            ('sgen', 'max_p_mw', self.net['sgen'].index),
+            ('res_load', 'p_mw', self.net['load'].index),
+            ('res_load', 'q_mvar', self.net['load'].index),
+            ('poly_cost', 'cq2_eur_per_mvar2', self.net.sgen.index)]
 
         # ... and control all sgens' reactive power values
         self.act_keys = [('sgen', 'q_mvar', self.net['sgen'].index)]
@@ -175,7 +162,8 @@ class QMarketEnv(opf_env.OpfEnv):
         super().__init__()
 
     def _build_net(self, simbench_network_name):
-        net, self.profiles = build_net(simbench_network_name)
+        net, self.profiles = build_net(
+            simbench_network_name, load_scaling=1.5, gen_scaling=2.0)
 
         net.load['controllable'] = False
         # Constraints required for observation space only
@@ -227,9 +215,8 @@ class QMarketEnv(opf_env.OpfEnv):
         self._set_simbench_state()
 
         # Sample prices uniformly from min/max range
-        if not self.learning_bidders:
-            self._sample_from_range(  # TODO: Are the indexes here correct??
-                'poly_cost', 'cq2_eur_per_mvar2', self.net['sgen'].index)
+        self._sample_from_range(  # TODO: Are the indexes here correct??
+            'poly_cost', 'cq2_eur_per_mvar2', self.net['sgen'].index)
         # active power is not controllable (only relevant for actual OPF)
         self.net.sgen['max_p_mw'] = self.net.sgen.p_mw * self.net.sgen.scaling
         self.net.sgen['min_p_mw'] = 0.999999 * self.net.sgen.max_p_mw
@@ -242,17 +229,11 @@ class QMarketEnv(opf_env.OpfEnv):
     def _calc_reward(self, net):
         """ Consider quadratic reactive power costs on the market and linear
         active costs for losses in the system. """
-        if self.learning_bidders:
-            # The agents handle their trading internally here
-            q_costs = 0
-        else:
-            q_costs = (net.poly_cost['cq2_eur_per_mvar2'].loc[net.sgen.index]
-                       * net.res_sgen['q_mvar']**2).sum()
+        q_costs = (net.poly_cost['cq2_eur_per_mvar2'].loc[net.sgen.index]
+                   * net.res_sgen['q_mvar']**2).sum()
 
         # Grid operator also wants to minimize network active power losses
         loss_costs = min_p_loss(net) * self.loss_costs
-
-        # print('Reward distr: ', q_costs, loss_costs)  # for testing
 
         return -q_costs - loss_costs
 
@@ -313,8 +294,6 @@ class EcoDispatchEnv(opf_env.OpfEnv):
             self.obs_keys.append(
                 ('poly_cost', 'cp1_eur_per_mw',
                  np.array(range(len(self.sgen_idxs) + len(self.gen_idxs) + len(self.net.ext_grid.index)))))
-        self.observation_space = get_obs_space(self.net, self.obs_keys)
-        # TODO: Move this to superclass?
 
         # ... and control all generators' active power values
         self.act_keys = [('sgen', 'p_mw', self.sgen_idxs),
@@ -444,20 +423,6 @@ def build_net(simbench_network_name, gen_scaling=1.0, load_scaling=2.0):
                                       profiles_instead_of_study_cases=True)
 
     return net, profiles
-
-
-def get_obs_space(net, obs_keys: list):
-    """ Get observation space from the constraints of the power network. """
-    lows, highs = [], []
-    for unit_type, column, idxs in obs_keys:
-        if 'res_' in unit_type:
-            # The constraints are never defined in the results table
-            unit_type = unit_type[4:]
-        lows.append(net[unit_type][f'min_{column}'].loc[idxs])
-        highs.append(net[unit_type][f'max_{column}'].loc[idxs])
-
-    return gym.spaces.Box(
-        np.concatenate(lows, axis=0), np.concatenate(highs, axis=0))
 
 
 if __name__ == '__main__':

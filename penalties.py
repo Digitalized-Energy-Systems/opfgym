@@ -53,6 +53,8 @@ def ext_grid_overpower(net, penalty_factor, column='q_mvar'):
     lower_violations = (min_power - power)[lower_mask].sum()
 
     penalty = (upper_violations + lower_violations) * penalty_factor
+    if penalty > 0:
+        print(f'External grid {column} violated: ', penalty)
     return penalty
 
 

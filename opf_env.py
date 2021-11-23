@@ -19,6 +19,8 @@ class OpfEnv(gym.Env, abc.ABC):
                  single_step=True,  # sampling=None, bus_wise_obs=False  # TODO
                  ):
 
+        self.observation_space = get_obs_space(self.net, self.obs_keys)
+
         self.u_penalty = u_penalty
         self.overload_penalty = overload_penalty
         self.apparent_power_penalty = apparent_power_penalty
@@ -59,12 +61,6 @@ class OpfEnv(gym.Env, abc.ABC):
         obs = self._get_obs()
         info = {'penalty': self._calc_penalty()}
 
-        # print('action:', action)
-        # print('obs:', obs)
-        # print(reward)
-        # print(info['penalty'])
-        # print('')
-
         return obs, reward - info['penalty'], done, info
 
     def _apply_actions(self, action):
@@ -85,10 +81,6 @@ class OpfEnv(gym.Env, abc.ABC):
                 # Scaling sometimes not existing -> TODO: maybe catch this once in init
                 new_values = a * max_action
 
-            # import random
-            # if random.random() < 0.01:
-            #     print(f'update {unit_type}.{actuator} with: ',
-            #           list(new_values))
             self.net[unit_type][actuator].loc[idxs] = new_values
             counter += len(idxs)
 
@@ -164,12 +156,12 @@ class OpfEnv(gym.Env, abc.ABC):
     def render(self, mode='human'):
         pass  # TODO?
 
-    # def get_current_actions(self):
-    #     # Scaling not considered here yet
-    #     action = [(self.net[f'res_{unit_type}'][column].loc[idxs]
-    #                / self.net[unit_type][f'max_{column}'].loc[idxs])
-    #               for unit_type, column, idxs in self.act_keys]
-    #     return np.concatenate(action)
+    def get_current_actions(self):
+        # Scaling not considered here yet
+        action = [(self.net[f'res_{unit_type}'][column].loc[idxs]
+                   / self.net[unit_type][f'max_{column}'].loc[idxs])
+                  for unit_type, column, idxs in self.act_keys]
+        return np.concatenate(action)
 
     def test_step(self, action):
         """ TODO Use some custom data from different distribution here. For
@@ -203,3 +195,17 @@ class OpfEnv(gym.Env, abc.ABC):
             print('OPF not converged!!!')
             return False
         return True
+
+
+def get_obs_space(net, obs_keys: list):
+    """ Get observation space from the constraints of the power network. """
+    lows, highs = [], []
+    for unit_type, column, idxs in obs_keys:
+        if 'res_' in unit_type:
+            # The constraints are never defined in the results table
+            unit_type = unit_type[4:]
+        lows.append(net[unit_type][f'min_{column}'].loc[idxs])
+        highs.append(net[unit_type][f'max_{column}'].loc[idxs])
+
+    return gym.spaces.Box(
+        np.concatenate(lows, axis=0), np.concatenate(highs, axis=0))
