@@ -124,7 +124,8 @@ class OpfEnv(gym.Env, abc.ABC):
         """
         noise_factor = 0.1
         if step is None:
-            step = random.randint(0, len(self.profiles) - 1)
+            total_n_steps = len(self.profiles[('load', 'q_mvar')])
+            step = random.randint(0, total_n_steps - 1)
         # TODO: Consider some test steps that do not get sampled!
         for type_act in self.profiles.keys():
             if not self.profiles[type_act].shape[1]:
@@ -137,10 +138,10 @@ class OpfEnv(gym.Env, abc.ABC):
             new_values = self.profiles[type_act].loc[step] * noise
             self.net[unit_type].loc[:, actuator] = new_values
 
-            # Make sure no boundaries are violated for generators
-            if unit_type == 'sgen':
-                self.net.sgen.loc[:, actuator] = self.net.sgen[
-                    [actuator, f'max_{actuator}']].min(axis=1)
+            # Make sure no boundaries are violated for generators (TODO: For all!)
+            # if unit_type == 'sgen':
+            #     self.net.sgen.loc[:, actuator] = self.net.sgen[
+            #         [actuator, f'max_max_{actuator}']].min(axis=1)
 
     def _get_obs(self):
         obss = [(self.net[unit_type][column].loc[idxs])
