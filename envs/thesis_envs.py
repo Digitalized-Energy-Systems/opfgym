@@ -7,9 +7,9 @@ import numpy as np
 import pandapower as pp
 import simbench as sb
 
-from . import opf_env
-from .objectives import (min_p_loss, add_min_loss_costs)
-from .penalties import (ext_grid_overpower, active_reactive_overpower)
+from .. import opf_env
+from ..objectives import (min_p_loss, add_min_loss_costs)
+from ..penalties import (ext_grid_overpower, active_reactive_overpower)
 
 # TODO: Create functions for recurring code (or method in upper class?!)
 
@@ -141,7 +141,6 @@ class QMarketEnv(opf_env.OpfEnv):
     """
 
     def __init__(self, simbench_network_name='1-LV-urban6--0-sw'):
-        self.learning_bidders = learning_bidders
         self.net = self._build_net(simbench_network_name)
 
         # Define the RL problem
@@ -203,10 +202,7 @@ class QMarketEnv(opf_env.OpfEnv):
                                 cp1_eur_per_mw=self.loss_costs)
         # Define range from which to sample reactive power prices on market
         net.poly_cost['min_cq2_eur_per_mvar2'] = 0
-        # Comment: Too high values here make training extremely difficult...
-        # The optimal result are then very small values for q, which seem to
-        # be difficult to learn
-        net.poly_cost['max_cq2_eur_per_mvar2'] = 100000
+        net.poly_cost['max_cq2_eur_per_mvar2'] = 20000
 
         return net
 
