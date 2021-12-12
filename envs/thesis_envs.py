@@ -202,7 +202,7 @@ class QMarketEnv(opf_env.OpfEnv):
                                 cp1_eur_per_mw=self.loss_costs)
         # Define range from which to sample reactive power prices on market
         net.poly_cost['min_cq2_eur_per_mvar2'] = 0
-        net.poly_cost['max_cq2_eur_per_mvar2'] = 20000
+        net.poly_cost['max_cq2_eur_per_mvar2'] = 100000
 
         return net
 

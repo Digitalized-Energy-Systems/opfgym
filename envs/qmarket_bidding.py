@@ -157,10 +157,10 @@ class BiddingQMarketEnvBase(QMarketEnv):
     def _run_pf(self):
         """ Run not only a powerflow but an optimal power flow as proxy for
         the grid operator's behavior. """
-        self._optimal_power_flow()
+        success = self._optimal_power_flow()
+        # TODO: What to do if this fails?
 
 
-# TODO: This is still work in progress
 class OpfAndBiddingQMarketEnv(QMarketEnv):
     """ Special case: The grid operator learns optimal procurement of
     reactive power, while (multiple) market participants learn to bid on the
