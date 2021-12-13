@@ -187,8 +187,8 @@ class QMarketEnv(opf_env.OpfEnv):
         # TODO: Currently finetuned for simbench grid '1-LV-urban6--0-sw'
         # TODO: Maybe see ext grid as just another reactive power provider?! (costs instead of constraints)
         # Advantage: That would remove one hyperparametery
-        net.ext_grid['max_q_mvar'] = 0.01
-        net.ext_grid['min_q_mvar'] = -0.01
+        # net.ext_grid['max_q_mvar'] = 0.03
+        # net.ext_grid['min_q_mvar'] = -0.03  # TODO: verify this
 
         # Add price params to the network (as poly cost so that the OPF works)
         self.loss_costs = 30
@@ -199,10 +199,11 @@ class QMarketEnv(opf_env.OpfEnv):
         assert len(net.gen) == 0  # TODO: Maybe add gens here, if necessary
         for idx in net['ext_grid'].index:
             pp.create_poly_cost(net, idx, 'ext_grid',
-                                cp1_eur_per_mw=self.loss_costs)
+                                cp1_eur_per_mw=self.loss_costs,
+                                cq2_eur_per_mvar2=0)  # TODO: Verify this
         # Define range from which to sample reactive power prices on market
         net.poly_cost['min_cq2_eur_per_mvar2'] = 0
-        net.poly_cost['max_cq2_eur_per_mvar2'] = 100000
+        net.poly_cost['max_cq2_eur_per_mvar2'] = 30000
 
         return net
 
@@ -212,7 +213,9 @@ class QMarketEnv(opf_env.OpfEnv):
 
         # Sample prices uniformly from min/max range
         self._sample_from_range(  # TODO: Are the indexes here correct??
-            'poly_cost', 'cq2_eur_per_mvar2', self.net['sgen'].index)
+            'poly_cost', 'cq2_eur_per_mvar2', self.net.poly_cost.index)
+        # TODO: Verify this (test for slack as q provider)
+
         # active power is not controllable (only relevant for actual OPF)
         self.net.sgen['max_p_mw'] = self.net.sgen.p_mw * self.net.sgen.scaling
         self.net.sgen['min_p_mw'] = 0.999999 * self.net.sgen.max_p_mw

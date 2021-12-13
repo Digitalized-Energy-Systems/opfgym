@@ -49,7 +49,7 @@ class BiddingQMarketEnv(pettingzoo.ParallelEnv):
 
         # Each agent has one actuator: its bidding price on the market
         self.action_spaces = {
-            a_id: gym.spaces.Box(low=np.zeros(1), high=np.ones(1))
+            a_id: gym.spaces.Box(low=-np.zeros(1), high=np.ones(1))
             for idx, a_id in enumerate(self.agents)}
 
         self.state_space = self.internal_env.observation_space
