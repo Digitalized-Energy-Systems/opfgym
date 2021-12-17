@@ -148,8 +148,8 @@ class QMarketEnv(opf_env.OpfEnv):
         # TODO: Add current time as observation! (see attack paper)
         self.obs_keys = [
             ('sgen', 'max_p_mw', self.net['sgen'].index),
-            ('res_load', 'p_mw', self.net['load'].index),
-            ('res_load', 'q_mvar', self.net['load'].index),
+            ('load', 'p_mw', self.net['load'].index),
+            ('load', 'q_mvar', self.net['load'].index),  # TODO: res_load?!
             ('poly_cost', 'cq2_eur_per_mvar2', self.net.sgen.index)]
 
         # ... and control all sgens' reactive power values
@@ -158,7 +158,7 @@ class QMarketEnv(opf_env.OpfEnv):
         high = np.ones(len(self.net['sgen'].index))
         self.action_space = gym.spaces.Box(low, high)
 
-        super().__init__()
+        super().__init__(ext_overpower_penalty=500, apparent_power_penalty=1500)
 
     def _build_net(self, simbench_network_name):
         net, self.profiles = build_net(
@@ -180,15 +180,15 @@ class QMarketEnv(opf_env.OpfEnv):
         net.sgen['min_max_p_mw'] = self.profiles[('sgen', 'p_mw')].min(
             axis=0) * net['sgen']['scaling']
         net.sgen['controllable'] = True
-        cos_phi = 0.95
+        cos_phi = 0.90
         net.sgen['max_s_mva'] = net.sgen['max_max_p_mw'] / cos_phi
         net.sgen['max_max_q_mvar'] = net.sgen['max_s_mva']
 
         # TODO: Currently finetuned for simbench grid '1-LV-urban6--0-sw'
         # TODO: Maybe see ext grid as just another reactive power provider?! (costs instead of constraints)
         # Advantage: That would remove one hyperparametery
-        # net.ext_grid['max_q_mvar'] = 0.03
-        # net.ext_grid['min_q_mvar'] = -0.03  # TODO: verify this
+        net.ext_grid['max_q_mvar'] = 0.01
+        net.ext_grid['min_q_mvar'] = -0.01  # TODO: verify this
 
         # Add price params to the network (as poly cost so that the OPF works)
         self.loss_costs = 30
@@ -202,8 +202,9 @@ class QMarketEnv(opf_env.OpfEnv):
                                 cp1_eur_per_mw=self.loss_costs,
                                 cq2_eur_per_mvar2=0)  # TODO: Verify this
         # Define range from which to sample reactive power prices on market
+        self.max_q_price = 30000
         net.poly_cost['min_cq2_eur_per_mvar2'] = 0
-        net.poly_cost['max_cq2_eur_per_mvar2'] = 30000
+        net.poly_cost['max_cq2_eur_per_mvar2'] = self.max_q_price
 
         return net
 
@@ -230,6 +231,11 @@ class QMarketEnv(opf_env.OpfEnv):
         active costs for losses in the system. """
         q_costs = (net.poly_cost['cq2_eur_per_mvar2'].loc[net.sgen.index]
                    * net.res_sgen['q_mvar']**2).sum()
+        if (self.net.poly_cost.et == 'ext_grid').any():
+            mask = self.net.poly_cost.et == 'ext_grid'
+            prices = self.net.poly_cost.cq2_eur_per_mvar2[mask].to_numpy()
+            q_mvar = self.net.res_ext_grid.q_mvar.to_numpy()
+            q_costs += sum(prices * q_mvar**2)
 
         # Grid operator also wants to minimize network active power losses
         loss_costs = min_p_loss(net) * self.loss_costs
@@ -240,10 +246,6 @@ class QMarketEnv(opf_env.OpfEnv):
         penalty = super()._calc_penalty()
         penalty += ext_grid_overpower(self.net,
                                       self.ext_overpower_penalty, 'q_mvar')
-
-        penalty += active_reactive_overpower(self.net,
-                                             self.apparent_power_penalty,
-                                             column='q_mvar')
 
         return penalty
 

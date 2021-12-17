@@ -26,6 +26,8 @@ class BiddingQMarketEnv(pettingzoo.ParallelEnv):
     Objective: maximize profit of each generator respectively
 
     """
+
+    # TODO: Maybe consider slack as actual learning agent??????!!!!!!!!!!
     metadata = {"name": "BiddingQMarketEnv"}
 
     def __init__(self, simbench_network_name='1-LV-urban6--0-sw'):
@@ -157,8 +159,7 @@ class BiddingQMarketEnvBase(QMarketEnv):
     def _run_pf(self):
         """ Run not only a powerflow but an optimal power flow as proxy for
         the grid operator's behavior. """
-        success = self._optimal_power_flow()
-        # TODO: What to do if this fails?
+        return self._optimal_power_flow()
 
 
 class OpfAndBiddingQMarketEnv(QMarketEnv):
@@ -178,16 +179,26 @@ class OpfAndBiddingQMarketEnv(QMarketEnv):
 
     def __init__(self, simbench_network_name='1-LV-urban6--0-sw'):
         super().__init__(simbench_network_name)
-        # Handle last set of observations internally (the agents' bids)
+
         # TODO: Use observation mapping instead
+        # Overwrite observation space
+        # Handle last set of observations internally (the agents' bids)
         self.obs_keys = self.obs_keys[0:-1]
         self.observation_space = get_obs_space(self.net, self.obs_keys)
+
+        self.internal_costs = 250
 
     def _calc_reward(self, net):
         """ Consider quadratic reactive power costs on the market and linear
         active costs for losses in the system. """
+
         # The agents handle their trading internally here
         q_costs = 0
+        if (self.net.poly_cost.et == 'ext_grid').any():
+            mask = self.net.poly_cost.et == 'ext_grid'
+            prices = self.net.poly_cost.cq2_eur_per_mvar2[mask].to_numpy()
+            q_mvar = self.net.res_ext_grid.q_mvar.to_numpy()
+            q_costs += sum(prices * q_mvar**2)
 
         # Grid operator also wants to minimize network active power losses
         loss_costs = min_p_loss(net) * self.loss_costs

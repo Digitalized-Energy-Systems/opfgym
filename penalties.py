@@ -1,6 +1,7 @@
 import numpy as np
 
 # TODO: Lots of code repetition here -> one function that gets called by all!
+# TODO: Does `autocorrect` require an additonal pf afterwards?
 
 
 def voltage_violation(net, penalty_factor):
@@ -93,8 +94,8 @@ def active_reactive_overpower(net, penalty_factor, column='p_mw',
     max_power = net.sgen[f'max_{column}'].to_numpy()
     mask = power > max_power
     violations = (power - max_power)[mask].sum()
-    # if violations > 0:
-    #     print(f'{column} power over max: ', violations * penalty_factor)
+    if violations > 0:
+        print(f'{column} power over max: ', violations * penalty_factor)
 
     if autocorrect:
         correct_active_reactive_overpower(net, column)

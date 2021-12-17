@@ -48,9 +48,22 @@ class OpfEnv(gym.Env, abc.ABC):
     def _calc_reward(self, net):
         pass
 
+    def reset(self):
+        self._sampling()
+        if self.res_for_obs is True:
+            success = self._run_pf()
+            if not success:
+                print('obs in reset: ', self._get_obs())
+                import pdb
+                pdb.set_trace()
+                # Failed powerflow calculation - Try again
+                return self.reset()
+        return self._get_obs()
+
     def step(self, action):
+        assert not np.isnan(action).any()
         self._apply_actions(action)
-        self._run_pf()
+        success = self._run_pf()
         reward = self._calc_reward(self.net)
 
         if self.single_step:
@@ -59,6 +72,8 @@ class OpfEnv(gym.Env, abc.ABC):
             raise NotImplementedError
 
         obs = self._get_obs()
+        assert not np.isnan(obs).any()
+
         info = {'penalty': self._calc_penalty()}
 
         return obs, reward - info['penalty'], done, info
@@ -69,17 +84,24 @@ class OpfEnv(gym.Env, abc.ABC):
         # ignore invalid actions
         action = np.clip(action, self.action_space.low, self.action_space.high)
         for unit_type, actuator, idxs in self.act_keys:
+            df = self.net[unit_type]
             a = action[counter:counter + len(idxs)]
             # Actions are relative to the maximum possible (scaled) value
             # Attention: The negative range is always equal to the pos range!
             # TODO: maybe use action wrapper instead?!
-            max_action = self.net[unit_type][f'max_max_{actuator}'].loc[idxs]
-            try:
-                new_values = (a * max_action /
-                              self.net[unit_type].scaling.loc[idxs])
-            except AttributeError:
-                # Scaling sometimes not existing -> TODO: maybe catch this once in init
-                new_values = a * max_action
+            max_action = df[f'max_max_{actuator}'].loc[idxs]
+            new_values = a * max_action
+            # Autocorrect impossible setpoints (however: no penalties this way)
+            if f'max_{actuator}' in df.columns:
+                mask = new_values > df[f'max_{actuator}'].loc[idxs]
+                new_values[mask] = df[f'max_{actuator}'].loc[idxs][mask]
+            if f'min_{actuator}' in df.columns:
+                mask = new_values < df[f'min_{actuator}'].loc[idxs]
+                new_values[mask] = df[f'min_{actuator}'].loc[idxs][mask]
+
+            if 'scaling' in df.columns:
+                new_values /= df.scaling.loc[idxs]
+            # Scaling sometimes not existing -> TODO: maybe catch this once in init
 
             self.net[unit_type][actuator].loc[idxs] = new_values
             counter += len(idxs)
@@ -87,7 +109,12 @@ class OpfEnv(gym.Env, abc.ABC):
         assert counter == len(action)
 
     def _run_pf(self):
-        pp.runpp(self.net, voltage_depend_loads=False)
+        try:
+            pp.runpp(self.net, voltage_depend_loads=False)
+        except pp.powerflow.LoadflowNotConverged:
+            print('Powerflow not converged!!!')
+            return False
+        return True
 
     def _calc_penalty(self):
         """ Constraint violations result in a penalty that can be subtracted
@@ -142,17 +169,13 @@ class OpfEnv(gym.Env, abc.ABC):
             # if unit_type == 'sgen':
             #     self.net.sgen.loc[:, actuator] = self.net.sgen[
             #         [actuator, f'max_max_{actuator}']].min(axis=1)
+        if np.nan in self.net.sgen.q_mvar:
+            pdb.set_trace()
 
     def _get_obs(self):
         obss = [(self.net[unit_type][column].loc[idxs])
                 for unit_type, column, idxs in self.obs_keys]
         return np.concatenate(obss)
-
-    def reset(self):
-        self._sampling()
-        if self.res_for_obs:
-            self._run_pf()
-        return self._get_obs()
 
     def render(self, mode='human'):
         pass  # TODO?
@@ -172,7 +195,7 @@ class OpfEnv(gym.Env, abc.ABC):
         # TODO: Automatically compare with OPF here?
 
         # Don't consider the penalty, to compare how good objective was learned
-        print('Penalty: ', info['penalty'])
+        print('Test Penalty: ', info['penalty'])
         return obs, reward + info['penalty'], done, info
 
     def baseline_reward(self):
@@ -184,7 +207,7 @@ class OpfEnv(gym.Env, abc.ABC):
             return np.nan
         reward = self._calc_reward(self.net)
         penalty = self._calc_penalty()
-        print('Penalty: ', penalty)
+        print('Base Penalty: ', penalty)
 
         return reward - penalty
 
