@@ -12,11 +12,9 @@ from .penalties import (
 
 
 class OpfEnv(gym.Env, abc.ABC):
-    def __init__(self,  # net,
-                 # obs_keys, obs_space, act_keys, act_space, sample_keys=None,
-                 u_penalty=300, overload_penalty=2, ext_overpower_penalty=100,
+    def __init__(self, u_penalty=300, overload_penalty=2, ext_overpower_penalty=100,
                  apparent_power_penalty=500, active_power_penalty=100,
-                 single_step=True,  # sampling=None, bus_wise_obs=False  # TODO
+                 single_step=True, bus_wise_obs=False  # TODO
                  ):
 
         self.observation_space = get_obs_space(self.net, self.obs_keys)
@@ -41,9 +39,6 @@ class OpfEnv(gym.Env, abc.ABC):
                 self.res_for_obs = True
                 break
 
-        self._sampling()
-        self._run_pf()
-
     @abc.abstractmethod
     def _calc_reward(self, net):
         pass
@@ -53,10 +48,7 @@ class OpfEnv(gym.Env, abc.ABC):
         if self.res_for_obs is True:
             success = self._run_pf()
             if not success:
-                print('obs in reset: ', self._get_obs())
-                import pdb
-                pdb.set_trace()
-                # Failed powerflow calculation - Try again
+                print('Failed powerflow calculcation in reset. Try again!')
                 return self.reset()
         return self._get_obs()
 
@@ -110,7 +102,9 @@ class OpfEnv(gym.Env, abc.ABC):
 
     def _run_pf(self):
         try:
-            pp.runpp(self.net, voltage_depend_loads=False)
+            pp.runpp(self.net,
+                     voltage_depend_loads=False,
+                     enforce_q_lims=True)
         except pp.powerflow.LoadflowNotConverged:
             print('Powerflow not converged!!!')
             return False
@@ -144,12 +138,12 @@ class OpfEnv(gym.Env, abc.ABC):
         r = np.random.uniform(low, high, size=(len(idxs),))
         self.net[unit_type][column].loc[idxs] = r
 
-    def _set_simbench_state(self, step: int=None):
+    def _set_simbench_state(self, step: int=None, noise_factor=0.1,
+                            noise_distribution='uniform'):
         """ Standard pre-implemented method to sample a random state from the
         simbench time-series data and set that state.
         Works only for simbench systems!
         """
-        noise_factor = 0.1
         if step is None:
             total_n_steps = len(self.profiles[('load', 'q_mvar')])
             step = random.randint(0, total_n_steps - 1)
@@ -160,17 +154,24 @@ class OpfEnv(gym.Env, abc.ABC):
             unit_type, actuator = type_act
 
             # Add some noise to create unique data samples
-            noise = np.random.random(
-                len(self.net[unit_type].index)) * noise_factor * 2 + (1 - noise_factor)
-            new_values = self.profiles[type_act].loc[step] * noise
-            self.net[unit_type].loc[:, actuator] = new_values
+            if noise_distribution == 'uniform':
+                # Uniform distribution: noise_factor as relative sample range
+                noise = np.random.random(
+                    len(self.net[unit_type].index)) * noise_factor * 2 + (1 - noise_factor)
+                new_values = self.profiles[type_act].loc[step] * noise
+            elif noise_distribution == 'normal':
+                # Normal distribution: noise_factor as relative std deviation
+                new_values = np.random.normal(
+                    loc=self.profiles[type_act].loc[step],
+                    scale=self.profiles[type_act].loc[step] * noise_factor)
 
-            # Make sure no boundaries are violated for generators (TODO: For all!)
-            # if unit_type == 'sgen':
-            #     self.net.sgen.loc[:, actuator] = self.net.sgen[
-            #         [actuator, f'max_max_{actuator}']].min(axis=1)
-        if np.nan in self.net.sgen.q_mvar:
-            pdb.set_trace()
+            # Make sure that the range of original data remains unchanged
+            # (Technical limits of the units remain the same)
+            new_values = np.clip(new_values,
+                                 self.profiles[type_act].min(),
+                                 self.profiles[type_act].max())
+
+            self.net[unit_type].loc[:, actuator] = new_values
 
     def _get_obs(self):
         obss = [(self.net[unit_type][column].loc[idxs])
@@ -228,8 +229,18 @@ def get_obs_space(net, obs_keys: list):
         if 'res_' in unit_type:
             # The constraints are never defined in the results table
             unit_type = unit_type[4:]
-        lows.append(net[unit_type][f'min_{column}'].loc[idxs])
-        highs.append(net[unit_type][f'max_{column}'].loc[idxs])
+        try:
+            if 'min' in column or 'max' in column:
+                # Constraints need to remain scaled
+                raise AttributeError
+            lows.append((net[unit_type][f'min_{column}'].loc[idxs]
+                         / net[unit_type].scaling.loc[idxs]).to_numpy())
+            highs.append((net[unit_type][f'max_{column}'].loc[idxs]
+                          / net[unit_type].scaling.loc[idxs]).to_numpy())
+        except AttributeError:
+            print(f'Scaling for {unit_type} not defined: assume scaling=1')
+            lows.append(net[unit_type][f'min_{column}'].loc[idxs].to_numpy())
+            highs.append(net[unit_type][f'max_{column}'].loc[idxs].to_numpy())
 
     return gym.spaces.Box(
         np.concatenate(lows, axis=0), np.concatenate(highs, axis=0))
