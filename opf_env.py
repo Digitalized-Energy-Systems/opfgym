@@ -153,17 +153,17 @@ class OpfEnv(gym.Env, abc.ABC):
                 continue
             unit_type, actuator = type_act
 
+            data = self.profiles[type_act].loc[step, self.net[unit_type].index]
             # Add some noise to create unique data samples
             if noise_distribution == 'uniform':
                 # Uniform distribution: noise_factor as relative sample range
                 noise = np.random.random(
                     len(self.net[unit_type].index)) * noise_factor * 2 + (1 - noise_factor)
-                new_values = self.profiles[type_act].loc[step] * noise
+                new_values = data * noise
             elif noise_distribution == 'normal':
                 # Normal distribution: noise_factor as relative std deviation
                 new_values = np.random.normal(
-                    loc=self.profiles[type_act].loc[step],
-                    scale=self.profiles[type_act].loc[step] * noise_factor)
+                    loc=data, scale=data * noise_factor)
 
             # Make sure that the range of original data remains unchanged
             # (Technical limits of the units remain the same)

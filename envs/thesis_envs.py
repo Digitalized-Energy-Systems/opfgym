@@ -71,6 +71,10 @@ class SimpleOpfEnv(opf_env.OpfEnv):
             axis=0) * net['sgen']['scaling']
         net.sgen['min_max_p_mw'] = self.profiles[('sgen', 'p_mw')].min(
             axis=0) * net['sgen']['scaling']
+
+        # Some power values are always zero (for whatever reason?!)
+        net.sgen.drop(
+            net.sgen[net.sgen.max_max_p_mw == 0.0].index, inplace=True)
         net.sgen['controllable'] = True
 
         cos_phi = 0.9
@@ -181,6 +185,11 @@ class QMarketEnv(opf_env.OpfEnv):
             axis=0) * net['sgen']['scaling']
         net.sgen['max_p_mw'] = net.sgen['max_max_p_mw']
         net.sgen['min_p_mw'] = net.sgen['min_max_p_mw']
+
+        # Some power values are always zero (for whatever reason?!)
+        net.sgen.drop(
+            net.sgen[net.sgen.max_max_p_mw == 0.0].index, inplace=True)
+
         net.sgen['controllable'] = True
         cos_phi = 0.90
         net.sgen['max_s_mva'] = net.sgen['max_max_p_mw'] / cos_phi
@@ -268,7 +277,8 @@ class EcoDispatchEnv(opf_env.OpfEnv):
 
     """
 
-    def __init__(self, simbench_network_name='1-HV-urban--0-sw', min_power=0, n_agents=None):
+    def __init__(self, simbench_network_name='1-HV-urban--0-sw', min_power=0,
+                 n_agents=None, load_scaling=1.5, gen_scaling=1.0):
         # Economic dispatch normally done in EHV (too big! use HV instead!)
         # EHV option: '1-EHV-mixed--0-sw' (340 generators!!!)
         # HV options: '1-HV-urban--0-sw' and '1-HV-mixed--0-sw'
@@ -278,7 +288,8 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         # Set min_power=0 to consider all power plants as market participants
         # Alternatively use n_agents to use the n_agents biggest power plants
 
-        self.net = self._build_net(simbench_network_name, min_power, n_agents)
+        self.net = self._build_net(
+            simbench_network_name, min_power, n_agents, load_scaling, gen_scaling)
 
         # Define the RL problem
         # See all load power values, non-controlled generators, and generator prices...
@@ -306,11 +317,9 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         super().__init__(u_penalty=300, overload_penalty=10)
 
     def _build_net(self, simbench_network_name, min_power, n_agents, load_scaling=1.5, gen_scaling=1.0):
-        assert simbench_network_name in (
-            '1-EHV-mixed--0-sw', '1-HV-urban--0-sw', '1-HV-mixed--0-sw')
         net, self.profiles = build_net(
             simbench_network_name, gen_scaling, load_scaling)
-        # Set voltage setpoints a bit higher than 1.0 to consider voltage drop
+        # Set voltage setpoints a bit higher than 1.0 to consider voltage drop?
         net.ext_grid['vm_pu'] = 1.0
         net.gen['vm_pu'] = 1.0
 
@@ -336,6 +345,12 @@ class EcoDispatchEnv(opf_env.OpfEnv):
             axis=0) * net['gen']['scaling']
         net.sgen['max_max_p_mw'] = net.sgen['max_p_mw']
         net.gen['max_max_p_mw'] = net.gen['max_p_mw']
+        # Some power values are always zero (for whatever reason?!)
+        net.sgen.drop(
+            net.sgen[net.sgen.max_max_p_mw == 0.0].index, inplace=True)
+
+
+        # TODO: Also for gen
         #     axis=0) * net['sgen']['scaling']
         # net.sgen['min_max_p_mw'] = 0
         net.sgen['controllable'] = True
