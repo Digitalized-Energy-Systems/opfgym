@@ -2,6 +2,7 @@
 import abc
 import random
 import pdb
+import warnings
 
 import gym
 import numpy as np
@@ -9,6 +10,8 @@ import pandapower as pp
 
 from .penalties import (
     voltage_violation, line_trafo_overload, apparent_overpower)
+
+warnings.simplefilter('once')
 
 
 class OpfEnv(gym.Env, abc.ABC):
@@ -98,7 +101,8 @@ class OpfEnv(gym.Env, abc.ABC):
             self.net[unit_type][actuator].loc[idxs] = new_values
             counter += len(idxs)
 
-        assert counter == len(action)
+        if counter != len(action):
+            warnings.warn('More actions than action keys!')
 
     def _run_pf(self):
         try:

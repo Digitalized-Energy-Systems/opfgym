@@ -278,7 +278,7 @@ class EcoDispatchEnv(opf_env.OpfEnv):
     """
 
     def __init__(self, simbench_network_name='1-HV-urban--0-sw', min_power=0,
-                 n_agents=None, load_scaling=1.5, gen_scaling=1.0):
+                 n_agents=None, load_scaling=1.5, gen_scaling=1.0, u_penalty=300, overload_penalty=10):
         # Economic dispatch normally done in EHV (too big! use HV instead!)
         # EHV option: '1-EHV-mixed--0-sw' (340 generators!!!)
         # HV options: '1-HV-urban--0-sw' and '1-HV-mixed--0-sw'
@@ -306,15 +306,17 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         # ... and control all generators' active power values
         self.act_keys = [('sgen', 'p_mw', self.net.sgen.index),  # self.sgen_idxs),
                          ('gen', 'p_mw', self.net.gen.index)]  # self.gen_idxs)]
-        # Each power plant can be set in range from 0-100% power
-        # (minimal power higher than zero not considered here)
+        self._set_action_space()
+        # TODO: Define constraints explicitly?! (active power min/max not default!)
+
+        super().__init__(u_penalty=u_penalty, overload_penalty=overload_penalty)
+
+    def _set_action_space():
+        """ Each power plant can be set in range from 0-100% power
+        (minimal power higher than zero not considered here) """
         low = np.zeros(len(self.act_keys[0][2]) + len(self.act_keys[1][2]))
         high = np.ones(len(self.act_keys[0][2]) + len(self.act_keys[1][2]))
         self.action_space = gym.spaces.Box(low, high)
-
-        # TODO: Define constraints explicitly?! (active power min/max not default!)
-
-        super().__init__(u_penalty=300, overload_penalty=10)
 
     def _build_net(self, simbench_network_name, min_power, n_agents, load_scaling=1.5, gen_scaling=1.0):
         net, self.profiles = build_net(
@@ -348,7 +350,6 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         # Some power values are always zero (for whatever reason?!)
         net.sgen.drop(
             net.sgen[net.sgen.max_max_p_mw == 0.0].index, inplace=True)
-
 
         # TODO: Also for gen
         #     axis=0) * net['sgen']['scaling']
