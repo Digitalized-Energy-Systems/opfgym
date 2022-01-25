@@ -56,7 +56,7 @@ class BiddingQMarketEnv(pettingzoo.ParallelEnv):
 
         self.state_space = self.internal_env.observation_space
 
-    def reset(self):
+    def reset(self, step=None):
         self.agents = self.possible_agents[:]
         self.rewards = {agent: 0 for agent in self.agents}
         self._cumulative_rewards = {agent: 0 for agent in self.agents}
@@ -101,6 +101,9 @@ class BiddingQMarketEnv(pettingzoo.ParallelEnv):
 
     def close(self):
         pass
+
+    def action_space(self, agent):
+        return self.action_spaces[agent]
 
 
 # TODO: This is outdated -> use pettingzoo env instead for MARL
