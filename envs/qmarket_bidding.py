@@ -157,7 +157,7 @@ class BiddingQMarketEnvBase(QMarketEnv):
 
     def _calc_penalty(self):
         # The agents do not care about grid constraints -> no penalty!
-        return 0
+        return []
 
     def _run_pf(self):
         """ Run not only a powerflow but an optimal power flow as proxy for

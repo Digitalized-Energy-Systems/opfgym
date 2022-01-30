@@ -33,8 +33,9 @@ class SimpleOpfEnv(opf_env.OpfEnv):
         reactive power flow over slack bus
     """
 
-    def __init__(self, simbench_network_name='1-LV-rural3--0-sw'):
-        self.net = self._build_net(simbench_network_name)
+    def __init__(self, simbench_network_name='1-LV-rural3--0-sw', gen_scaling=2.0, load_scaling=2.0, *args, **kwargs):
+        self.net = self._build_net(
+            simbench_network_name, gen_scaling, load_scaling)
 
         # Define the RL problem
         # See all load power values, sgen max active power...
@@ -51,10 +52,16 @@ class SimpleOpfEnv(opf_env.OpfEnv):
         high = np.ones(2 * n_gens)
         self.action_space = gym.spaces.Box(low, high)
 
-        super().__init__(apparent_power_penalty=5000)
+        super().__init__(apparent_power_penalty=5000, *args, **kwargs)
 
-    def _build_net(self, simbench_network_name):
-        net, self.profiles = build_net(simbench_network_name, gen_scaling=2.0)
+        if self.vector_reward is True:
+            # 5 penalties and one objective function
+            self.reward_space = gym.spaces.Box(
+                low=-np.ones(6) * np.inf, high=np.ones(6) * np.inf)
+
+    def _build_net(self, simbench_network_name, gen_scaling, load_scaling):
+        net, self.profiles = build_net(
+            simbench_network_name, gen_scaling, load_scaling)
 
         net.load['controllable'] = False
         # Constraints required for observation space only
@@ -112,14 +119,13 @@ class SimpleOpfEnv(opf_env.OpfEnv):
     def _calc_penalty(self):
         penalty = super()._calc_penalty()
         # Do not allow for high power exchange with external grid
-        penalty += ext_grid_overpower(self.net,
-                                      self.ext_overpower_penalty, 'q_mvar')
+        penalty.append(-ext_grid_overpower(
+            self.net, self.ext_overpower_penalty, 'q_mvar'))
 
         # Do not allow higher active power feed-in than possible
         # (not relevant for reactive power because max_q_mvar=const)
-        penalty += active_reactive_overpower(self.net,
-                                             self.apparent_power_penalty,
-                                             column='p_mw')
+        penalty.append(-active_reactive_overpower(
+            self.net, self.apparent_power_penalty, column='p_mw'))
 
         return penalty
 
@@ -144,8 +150,9 @@ class QMarketEnv(opf_env.OpfEnv):
 
     """
 
-    def __init__(self, simbench_network_name='1-LV-urban6--0-sw'):
-        self.net = self._build_net(simbench_network_name)
+    def __init__(self, simbench_network_name='1-LV-urban6--0-sw', gen_scaling=2.0, load_scaling=1.5, *args, **kwargs):
+        self.net = self._build_net(
+            simbench_network_name, gen_scaling, load_scaling)
 
         # Define the RL problem
         # See all load power values, sgen active power, and sgen prices...
@@ -162,11 +169,17 @@ class QMarketEnv(opf_env.OpfEnv):
         high = np.ones(len(self.net['sgen'].index))
         self.action_space = gym.spaces.Box(low, high)
 
-        super().__init__(ext_overpower_penalty=500, apparent_power_penalty=1500)
+        super().__init__(ext_overpower_penalty=500,
+                         apparent_power_penalty=1500, *args, **kwargs)
 
-    def _build_net(self, simbench_network_name):
+        if self.vector_reward is True:
+            # 4 penalties and one objective function
+            self.reward_space = gym.spaces.Box(
+                low=-np.ones(5) * np.inf, high=np.ones(5) * np.inf)
+
+    def _build_net(self, simbench_network_name, gen_scaling, load_scaling):
         net, self.profiles = build_net(
-            simbench_network_name, load_scaling=1.5, gen_scaling=2.0)
+            simbench_network_name, gen_scaling, load_scaling)
 
         net.load['controllable'] = False
         # Constraints required for observation space only
@@ -255,8 +268,8 @@ class QMarketEnv(opf_env.OpfEnv):
 
     def _calc_penalty(self):
         penalty = super()._calc_penalty()
-        penalty += ext_grid_overpower(self.net,
-                                      self.ext_overpower_penalty, 'q_mvar')
+        penalty.append(-ext_grid_overpower(
+            self.net, self.ext_overpower_penalty, 'q_mvar'))
 
         return penalty
 
@@ -278,7 +291,7 @@ class EcoDispatchEnv(opf_env.OpfEnv):
     """
 
     def __init__(self, simbench_network_name='1-HV-urban--0-sw', min_power=0,
-                 n_agents=None, load_scaling=1.5, gen_scaling=1.0, u_penalty=300, overload_penalty=10):
+                 n_agents=None, gen_scaling=1.0, load_scaling=1.5, u_penalty=300, overload_penalty=10, *args, **kwargs):
         # Economic dispatch normally done in EHV (too big! use HV instead!)
         # EHV option: '1-EHV-mixed--0-sw' (340 generators!!!)
         # HV options: '1-HV-urban--0-sw' and '1-HV-mixed--0-sw'
@@ -289,7 +302,7 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         # Alternatively use n_agents to use the n_agents biggest power plants
 
         self.net = self._build_net(
-            simbench_network_name, min_power, n_agents, load_scaling, gen_scaling)
+            simbench_network_name, min_power, n_agents, gen_scaling, load_scaling)
 
         # Define the RL problem
         # See all load power values, non-controlled generators, and generator prices...
@@ -309,16 +322,16 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         self._set_action_space()
         # TODO: Define constraints explicitly?! (active power min/max not default!)
 
-        super().__init__(u_penalty=u_penalty, overload_penalty=overload_penalty)
+        super().__init__(u_penalty=u_penalty, overload_penalty=overload_penalty, *args, **kwargs)
 
-    def _set_action_space():
+    def _set_action_space(self):
         """ Each power plant can be set in range from 0-100% power
         (minimal power higher than zero not considered here) """
         low = np.zeros(len(self.act_keys[0][2]) + len(self.act_keys[1][2]))
         high = np.ones(len(self.act_keys[0][2]) + len(self.act_keys[1][2]))
         self.action_space = gym.spaces.Box(low, high)
 
-    def _build_net(self, simbench_network_name, min_power, n_agents, load_scaling=1.5, gen_scaling=1.0):
+    def _build_net(self, simbench_network_name, min_power, n_agents, gen_scaling=1.0, load_scaling=1.5):
         net, self.profiles = build_net(
             simbench_network_name, gen_scaling, load_scaling)
         # Set voltage setpoints a bit higher than 1.0 to consider voltage drop?

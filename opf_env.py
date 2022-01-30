@@ -17,10 +17,16 @@ warnings.simplefilter('once')
 class OpfEnv(gym.Env, abc.ABC):
     def __init__(self, u_penalty=300, overload_penalty=2, ext_overpower_penalty=100,
                  apparent_power_penalty=500, active_power_penalty=100,
-                 single_step=True, bus_wise_obs=False  # TODO
+                 vector_reward=False, single_step=True, bus_wise_obs=False,  # TODO
                  ):
 
         self.observation_space = get_obs_space(self.net, self.obs_keys)
+
+        self.vector_reward = vector_reward
+        if vector_reward is True:
+            # 3 penalties and one objective function
+            self.reward_space = gym.spaces.Box(
+                low=-np.ones(4) * np.inf, high=np.ones(4) * np.inf)
 
         self.u_penalty = u_penalty
         self.overload_penalty = overload_penalty
@@ -71,7 +77,13 @@ class OpfEnv(gym.Env, abc.ABC):
 
         info = {'penalty': self._calc_penalty()}
 
-        return obs, reward - info['penalty'], done, info
+        if not self.vector_reward:
+            reward += sum(info['penalty'])
+        else:
+            # Reward as a vector
+            reward = np.array([reward] + info['penalty'])
+
+        return obs, reward, done, info
 
     def _apply_actions(self, action):
         """ Apply agent actions to the power system at hand. """
@@ -118,11 +130,12 @@ class OpfEnv(gym.Env, abc.ABC):
         """ Constraint violations result in a penalty that can be subtracted
         from the reward.
         Standard penalties: voltage band, overload of lines & transformers. """
-        penalty = 0
-        penalty += voltage_violation(self.net, self.u_penalty)
-        penalty += line_trafo_overload(self.net, self.overload_penalty, 'line')
-        penalty += line_trafo_overload(self.net,
-                                       self.overload_penalty, 'trafo')
+        penalty = []
+        penalty.append(-voltage_violation(self.net, self.u_penalty))
+        penalty.append(-line_trafo_overload(
+            self.net, self.overload_penalty, 'line'))
+        penalty.append(-line_trafo_overload(
+            self.net, self.overload_penalty, 'trafo'))
         return penalty
 
     def _sampling(self, sample_keys=None):
@@ -201,7 +214,10 @@ class OpfEnv(gym.Env, abc.ABC):
 
         # Don't consider the penalty, to compare how good objective was learned
         print('Test Penalty: ', info['penalty'])
-        return obs, reward + info['penalty'], done, info
+        if self.vector_reward:
+            return obs, reward[0], done, info
+        else:
+            return obs, reward - sum(info['penalty']), done, info
 
     def baseline_reward(self):
         """ Compute some baseline to compare training performance with. In this

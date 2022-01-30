@@ -45,6 +45,10 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
         self.internal_costs = 20  # Arbitrary values currently: 2 ct/kwh
         # TODO: Add marginal costs for the power plants (different for each!)
 
+        n_rewards = len(self.sgen_idxs) + 1
+        self.reward_space = gym.spaces.Box(
+            low=-np.ones(n_rewards) * np.inf, high=np.ones(n_rewards) * np.inf)
+
     def _set_action_space(self):
         """ Each power plant can be set in range from 0-100% power
         (minimal power higher than zero not considered here) """
@@ -99,6 +103,10 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
         ext_grid_penalty = sum(self.net.res_ext_grid.p_mw) * 10
         if ext_grid_penalty > 1:
             print('ext grid penalty: ', ext_grid_penalty)
+
         if ext_grid_penalty < 0:
+            # No negative penalties allowed
             return penalty
-        return penalty + ext_grid_penalty
+
+        penalty.append(-ext_grid_penalty)
+        return penalty
