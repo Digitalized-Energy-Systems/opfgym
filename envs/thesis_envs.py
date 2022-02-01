@@ -308,13 +308,13 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         # See all load power values, non-controlled generators, and generator prices...
         non_sgen_idxs = self.net.sgen.index.drop(self.sgen_idxs)
         non_gen_idxs = self.net.gen.index.drop(self.gen_idxs)
-        bid_idxs = np.array(
-            range(len(self.sgen_idxs) + len(self.gen_idxs) + len(self.net.ext_grid.index)))
+        # bid_idxs = np.array(
+        #     range(len(self.sgen_idxs) + len(self.gen_idxs) + len(self.net.ext_grid.index)))
         self.obs_keys = [('load', 'p_mw', self.net.load.index),
                          ('load', 'q_mvar', self.net.load.index),
                          # ('res_sgen', 'p_mw', non_sgen_idxs),
                          # ('res_gen', 'p_mw', non_gen_idxs),
-                         ('poly_cost', 'cp1_eur_per_mw', bid_idxs)]
+                         ('poly_cost', 'cp1_eur_per_mw', self.net.poly_cost.index)]
 
         # ... and control all generators' active power values
         self.act_keys = [('sgen', 'p_mw', self.net.sgen.index),  # self.sgen_idxs),
@@ -350,12 +350,10 @@ class EcoDispatchEnv(opf_env.OpfEnv):
             axis=0) * net['load']['scaling']
 
         # Generator constraints required for observation and OPF!
-        net.sgen['min_p_mw'] = self.profiles[('sgen', 'p_mw')].min(
-            axis=0) * net['sgen']['scaling']
+        net.sgen['min_p_mw'] = 0
         net.sgen['max_p_mw'] = self.profiles[('sgen', 'p_mw')].max(
             axis=0) * net['sgen']['scaling']
-        net.gen['min_p_mw'] = self.profiles[('gen', 'p_mw')].min(
-            axis=0) * net['gen']['scaling']
+        net.gen['min_p_mw'] = 0
         net.gen['max_p_mw'] = self.profiles[('gen', 'p_mw')].max(
             axis=0) * net['gen']['scaling']
         net.sgen['max_max_p_mw'] = net.sgen['max_p_mw']
@@ -370,7 +368,7 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         net.sgen['controllable'] = True
         net.gen['controllable'] = True
 
-        cos_phi = 0.95
+        cos_phi = 1.0
         for unit_type in ('gen', 'sgen'):
             net[unit_type]['max_s_mva'] = net[unit_type]['max_max_p_mw'] / cos_phi
             net[unit_type]['max_max_q_mvar'] = (
@@ -380,20 +378,23 @@ class EcoDispatchEnv(opf_env.OpfEnv):
             net[unit_type]['min_q_mvar'] = -net[unit_type]['max_max_q_mvar']
             # TODO: Here, probably a better solution is required
 
-        if not n_agents:
-            self.sgen_idxs = net.sgen.index[net.sgen.p_mw >= min_power]
-            self.gen_idxs = net.gen.index[net.gen.p_mw >= min_power]
-        else:
-            if len(net.gen.index) != 0:
-                self.gen_idxs = np.array(
-                    np.argsort(net.gen.max_p_mw)[::-1][:n_agents])
-                self.sgen_idxs = np.array([])
-            else:
-                self.gen_idxs = np.array([])
-                self.sgen_idxs = np.array(
-                    np.argsort(net.sgen.max_p_mw)[::-1][:n_agents])
+        # TODO: Omit this feature short-term
+        self.sgen_idxs = net.sgen.index
+        self.gen_idxs = net.gen.index
+        # if not n_agents:
+        #     self.sgen_idxs = net.sgen.index[net.sgen.p_mw >= min_power]
+        #     self.gen_idxs = net.gen.index[net.gen.p_mw >= min_power]
+        # else:
+        #     if len(net.gen.index) != 0:
+        #         self.gen_idxs = np.array(
+        #             np.argsort(net.gen.max_p_mw)[::-1][:n_agents])
+        #         self.sgen_idxs = np.array([])
+        #     else:
+        #         self.gen_idxs = np.array([])
+        #         self.sgen_idxs = np.array(
+        #             np.argsort(net.sgen.max_p_mw)[::-1][:n_agents])
 
-        assert (len(self.sgen_idxs) + len(self.gen_idxs)) > 0, 'No generators!'
+        # assert (len(self.sgen_idxs) + len(self.gen_idxs)) > 0, 'No generators!'
         # Add price params to the network (as poly cost so that the OPF works)
         # Note that the external grids are seen as normal power plants
         for idx in self.sgen_idxs:
@@ -421,15 +422,17 @@ class EcoDispatchEnv(opf_env.OpfEnv):
 
     def _calc_reward(self, net):
         """ Minimize costs for active power in the system. """
-
         p_mw = net.res_sgen.p_mw.loc[self.sgen_idxs]
         p_mw = p_mw.append(net.res_gen.p_mw.loc[self.gen_idxs])
         # TODO: Maybe make sure that p_mw of ext_grid is not negative (selling!)
         p_mw = p_mw.append(net.res_ext_grid.p_mw)
 
-        prices = net.poly_cost['cp1_eur_per_mw']
+        prices = np.array(net.poly_cost['cp1_eur_per_mw'])
+
+        assert len(prices) == len(p_mw)
+
         # /10000, because too high otherwise
-        return -(p_mw * prices).sum() / 10000
+        return -(np.array(p_mw) * prices).sum() / 10000
 
 
 def build_net(simbench_network_name, gen_scaling=1.0, load_scaling=2.0):

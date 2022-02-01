@@ -215,8 +215,10 @@ class OpfEnv(gym.Env, abc.ABC):
         # Don't consider the penalty, to compare how good objective was learned
         print('Test Penalty: ', info['penalty'])
         if self.vector_reward:
+            # Only return objective reward, not penalty reward
             return obs, reward[0], done, info
         else:
+            # Remove previously added penalty
             return obs, reward - sum(info['penalty']), done, info
 
     def baseline_reward(self):
@@ -230,7 +232,7 @@ class OpfEnv(gym.Env, abc.ABC):
         penalty = self._calc_penalty()
         print('Base Penalty: ', penalty)
 
-        return reward - penalty
+        return reward
 
     def _optimal_power_flow(self):
         try:
