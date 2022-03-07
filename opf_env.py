@@ -14,13 +14,17 @@ from .penalties import (
 warnings.simplefilter('once')
 
 
+# TODO: Calc reward from pandapower cost function (for OPF comparison)
+
 class OpfEnv(gym.Env, abc.ABC):
     def __init__(self, u_penalty=300, overload_penalty=2, ext_overpower_penalty=100,
                  apparent_power_penalty=500, active_power_penalty=100,
                  vector_reward=False, single_step=True, bus_wise_obs=False,  # TODO
-                 ):
+                 use_time_obs=True):
 
-        self.observation_space = get_obs_space(self.net, self.obs_keys)
+        self.use_time_obs = use_time_obs
+        self.observation_space = get_obs_space(
+            self.net, self.obs_keys, use_time_obs)
 
         self.vector_reward = vector_reward
         if vector_reward is True:
@@ -52,8 +56,8 @@ class OpfEnv(gym.Env, abc.ABC):
     def _calc_reward(self, net):
         pass
 
-    def reset(self):
-        self._sampling()
+    def reset(self, step=None):
+        self._sampling(step)
         if self.res_for_obs is True:
             success = self._run_pf()
             if not success:
@@ -82,7 +86,6 @@ class OpfEnv(gym.Env, abc.ABC):
         else:
             # Reward as a vector
             reward = np.array([reward] + info['penalty'])
-
         return obs, reward, done, info
 
     def _apply_actions(self, action):
@@ -164,6 +167,8 @@ class OpfEnv(gym.Env, abc.ABC):
         if step is None:
             total_n_steps = len(self.profiles[('load', 'q_mvar')])
             step = random.randint(0, total_n_steps - 1)
+
+        self.current_step = step
         # TODO: Consider some test steps that do not get sampled!
         for type_act in self.profiles.keys():
             if not self.profiles[type_act].shape[1]:
@@ -191,9 +196,29 @@ class OpfEnv(gym.Env, abc.ABC):
             self.net[unit_type].loc[:, actuator] = new_values
 
     def _get_obs(self):
-        obss = [(self.net[unit_type][column].loc[idxs])
+        obss = [(self.net[unit_type][column].loc[idxs].to_numpy())
                 for unit_type, column, idxs in self.obs_keys]
+
+        if self.use_time_obs:
+            obss = [self._get_time_observation()] + obss
         return np.concatenate(obss)
+
+    def _get_time_observation(self):
+        """ Return current time in sinus/cosinus form.
+        Example daytime: (0.0, 1.0) = 00:00 and (1.0, 0.0) = 06:00. Idea from
+        https://ianlondon.github.io/blog/encoding-cyclical-features-24hour-time/
+        """
+        total_n_steps = len(self.profiles[('load', 'q_mvar')])
+        # number of steps per timeframe
+        dayly, weekly, yearly = (24 * 4, 7 * 24 * 4, total_n_steps)
+        time_obs = []
+        for timeframe in (dayly, weekly, yearly):
+            timestep = self.current_step % timeframe
+            cyclical_time = 2 * np.pi * timestep / timeframe
+            time_obs.append(np.sin(cyclical_time))
+            time_obs.append(np.cos(cyclical_time))
+
+        return np.array(time_obs)
 
     def render(self, mode='human'):
         pass  # TODO?
@@ -244,9 +269,15 @@ class OpfEnv(gym.Env, abc.ABC):
         return True
 
 
-def get_obs_space(net, obs_keys: list):
+def get_obs_space(net, obs_keys: list, use_time_obs: bool):
     """ Get observation space from the constraints of the power network. """
     lows, highs = [], []
+
+    if use_time_obs:
+        # Time is always given as observation of lenght 6 in range [-1, 1]
+        lows.append(np.array([-1] * 6))
+        highs.append(np.array([1] * 6))
+
     for unit_type, column, idxs in obs_keys:
         if 'res_' in unit_type:
             # The constraints are never defined in the results table
