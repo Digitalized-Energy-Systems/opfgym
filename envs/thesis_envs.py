@@ -105,9 +105,9 @@ class SimpleOpfEnv(opf_env.OpfEnv):
 
         return net
 
-    def _sampling(self):
+    def _sampling(self, step=None):
         """ Assumption: Only simbench systems with timeseries data are used. """
-        self._set_simbench_state()
+        self._set_simbench_state(step)
 
         # Set constraints of current time steps (also for OPF)
         self.net.sgen['max_p_mw'] = self.net.sgen.p_mw * self.net.sgen.scaling
@@ -232,9 +232,9 @@ class QMarketEnv(opf_env.OpfEnv):
 
         return net
 
-    def _sampling(self):
+    def _sampling(self, step=None):
         """ Assumption: Only simbench systems with timeseries data are used. """
-        self._set_simbench_state()
+        self._set_simbench_state(step)
 
         # Sample prices uniformly from min/max range
         self._sample_from_range(  # TODO: Are the indexes here correct??
@@ -397,24 +397,24 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         # assert (len(self.sgen_idxs) + len(self.gen_idxs)) > 0, 'No generators!'
         # Add price params to the network (as poly cost so that the OPF works)
         # Note that the external grids are seen as normal power plants
+        # for idx in net.ext_grid.index:
+        #     pp.create_poly_cost(net, idx, 'ext_grid', cp1_eur_per_mw=0)
         for idx in self.sgen_idxs:
             pp.create_poly_cost(net, idx, 'sgen', cp1_eur_per_mw=0)
         for idx in self.gen_idxs:
             pp.create_poly_cost(net, idx, 'gen', cp1_eur_per_mw=0)
-        for idx in net.ext_grid.index:
-            pp.create_poly_cost(net, idx, 'ext_grid', cp1_eur_per_mw=0)
 
         # Define range from which to sample active power prices on market
-        self.max_price = 500  # 50 ct/kwh
+        self.max_price = 600  # 60 ct/kwh
         # compare: https://en.wikipedia.org/wiki/Cost_of_electricity_by_source
         net.poly_cost['min_cp1_eur_per_mw'] = 0
         net.poly_cost['max_cp1_eur_per_mw'] = self.max_price
 
         return net
 
-    def _sampling(self):
+    def _sampling(self, step=None):
         """ Assumption: Only simbench systems with timeseries data are used. """
-        self._set_simbench_state()
+        self._set_simbench_state(step)
 
         # Sample prices uniformly from min/max range for gens/sgens/ext_grids
         self._sample_from_range(
@@ -425,7 +425,7 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         p_mw = net.res_sgen.p_mw.loc[self.sgen_idxs]
         p_mw = p_mw.append(net.res_gen.p_mw.loc[self.gen_idxs])
         # TODO: Maybe make sure that p_mw of ext_grid is not negative (selling!)
-        p_mw = p_mw.append(net.res_ext_grid.p_mw)
+        # p_mw = p_mw.append(net.res_ext_grid.p_mw)
 
         prices = np.array(net.poly_cost['cp1_eur_per_mw'])
 
