@@ -306,8 +306,8 @@ class EcoDispatchEnv(opf_env.OpfEnv):
 
         # Define the RL problem
         # See all load power values, non-controlled generators, and generator prices...
-        non_sgen_idxs = self.net.sgen.index.drop(self.sgen_idxs)
-        non_gen_idxs = self.net.gen.index.drop(self.gen_idxs)
+        # non_sgen_idxs = self.net.sgen.index.drop(self.sgen_idxs)
+        # non_gen_idxs = self.net.gen.index.drop(self.gen_idxs)
         # bid_idxs = np.array(
         #     range(len(self.sgen_idxs) + len(self.gen_idxs) + len(self.net.ext_grid.index)))
         self.obs_keys = [('load', 'p_mw', self.net.load.index),
