@@ -28,11 +28,12 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
     """
 
     def __init__(self, simbench_network_name='1-HV-urban--0-sw',
-                 market_rules='uniform', n_agents=None,
-                 load_scaling=1.5, gen_scaling=1.5, u_penalty=300,
-                 overload_penalty=1, penalty_factor=10, learn_bids=True,
-                 reward_scaling=0.1, in_agent=False, uniform_gen_size=True,
+                 market_rules='pab', n_agents=None,
+                 load_scaling=3.0, gen_scaling=1.5, u_penalty=50,
+                 overload_penalty=0.2, penalty_factor=300, learn_bids=True,
+                 reward_scaling=0.0001, in_agent=False, uniform_gen_size=True,
                  other_bids='fixed', one_gen_per_agent=True,
+                 consider_marginal_costs=True,
                  *args, **kwargs):
 
         assert market_rules in ('pab', 'uniform')
@@ -44,6 +45,8 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
         self.other_bids = other_bids
         self.uniform_gen_size = uniform_gen_size
         self.one_gen_per_agent = one_gen_per_agent
+        self.rel_marginal_costs = 0.1
+        self.consider_marginal_costs = consider_marginal_costs
 
         if n_agents is not None:
             self.n_agents = n_agents
@@ -94,6 +97,16 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
             # Remove random generators so that there is one generator per agent
             remove_idxs = np.random.choice(
                 net.sgen.index, len(net.sgen.index) - self.n_agents, replace=False)
+            # TODO: This is only to make this deterministic short term (for 8 gens)
+            if self.n_agents == 12:
+                remove_idxs = np.array([78, 66, 77, 86, 58, 61, 93, 57, 92, 63,
+                                        95, 80, 89, 56, 70, 97, 62, 91, 73, 74,
+                                        65, 75, 60, 83, 68, 84, 76, 82, 85, 88,
+                                        71, 69, 79, 90])
+            else:
+                import pdb
+                pdb.set_trace()
+            print('remove gens: ', remove_idxs)
             net.sgen = net.sgen.drop(remove_idxs)
             net.poly_cost = net.poly_cost.drop(
                 net.poly_cost.index[net.poly_cost.element.isin(remove_idxs)])
@@ -182,6 +195,7 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
             reward = np.append(reward, np.array(info['penalty']))
         else:
             reward = np.append(reward, sum(info['penalty']))
+
         return obs, reward, done, info
 
     def _calc_reward(self, net):
@@ -196,6 +210,11 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
             # Ignore "market price" completely here
             # Why setpoints? the actual power values make more sense
             rewards = -self.bids * np.array(self.net.res_sgen.p_mw)
+
+            if self.consider_marginal_costs:
+                rewards += self.rel_marginal_costs * self.reward_scaling * \
+                    self.max_price * np.array(self.net.res_sgen.p_mw)
+
             # The OPF often fails to set the setpoints to exactly zero
             rewards[np.array(self.net.res_sgen.p_mw /
                              self.net.sgen.max_p_mw) < 0.001] = 0
@@ -206,12 +225,13 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
         # Do not allow to procure active power from superordinate system
         ext_grid_penalty = (sum(self.net.res_ext_grid.p_mw)
                             ) * self.penalty_factor * self.reward_scaling
-        # if ext_grid_penalty < -0.5:
-        #     print('ext grid penalty: ', ext_grid_penalty)
 
         if sum(self.net.res_ext_grid.p_mw) < 0:
             # No negative penalties allowed
             ext_grid_penalty = 0
+
+        if ext_grid_penalty > 1.0:
+            print('ext grid penalty: ', ext_grid_penalty)
 
         penalty.append(-ext_grid_penalty)
         return penalty
