@@ -98,11 +98,22 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
             remove_idxs = np.random.choice(
                 net.sgen.index, len(net.sgen.index) - self.n_agents, replace=False)
             # TODO: This is only to make this deterministic short term (for 8 gens)
-            if self.n_agents == 12:
+            if self.n_agents == 8:
                 remove_idxs = np.array([78, 66, 77, 86, 58, 61, 93, 57, 92, 63,
                                         95, 80, 89, 56, 70, 97, 62, 91, 73, 74,
                                         65, 75, 60, 83, 68, 84, 76, 82, 85, 88,
                                         71, 69, 79, 90])
+            elif self.n_agents == 12:
+                remove_idxs = np.array([74, 85, 56, 86, 76, 78, 66, 82, 90, 88,
+                                        57, 63, 81, 79, 71, 69, 92, 59, 95, 84,
+                                        62, 68, 87, 94, 67, 70, 93, 72, 97, 73])
+            elif self.n_agents == 16:
+                remove_idxs = np.array([88, 80, 95, 90, 92, 62, 96, 94, 73, 56,
+                                        91, 75, 65, 72, 76, 81, 59, 89, 85, 60,
+                                        71, 74, 70, 83, 66, 63])
+            elif self.n_agents == 24:
+                remove_idxs = np.array([85, 74, 56, 82, 65, 58, 76, 93, 95, 96,
+                                        66, 91, 63, 83, 97, 90, 71, 86])
             else:
                 import pdb
                 pdb.set_trace()

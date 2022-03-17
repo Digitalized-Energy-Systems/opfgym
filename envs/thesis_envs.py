@@ -291,7 +291,8 @@ class EcoDispatchEnv(opf_env.OpfEnv):
     """
 
     def __init__(self, simbench_network_name='1-HV-urban--0-sw', min_power=0,
-                 n_agents=None, gen_scaling=1.0, load_scaling=1.5, u_penalty=300, overload_penalty=10, *args, **kwargs):
+                 n_agents=None, gen_scaling=1.0, load_scaling=1.5, u_penalty=300,
+                 overload_penalty=10, *args, **kwargs):
         # Economic dispatch normally done in EHV (too big! use HV instead!)
         # EHV option: '1-EHV-mixed--0-sw' (340 generators!!!)
         # HV options: '1-HV-urban--0-sw' and '1-HV-mixed--0-sw'
