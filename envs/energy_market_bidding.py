@@ -65,7 +65,10 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
         self.max_power = np.array(self.net.sgen.max_p_mw)
         self.n_gens = len(self.net.sgen.index)
 
-        n_rewards = self.n_gens + 1
+        if self.vector_reward:
+            n_rewards = self.n_gens + 4
+        else:
+            n_rewards = self.n_gens + 1
         if self.in_agent:
             # TODO: Maybe move this adjustment to RL algo instead
             self.reward_space = gym.spaces.Box(
@@ -114,6 +117,11 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
             elif self.n_agents == 24:
                 remove_idxs = np.array([85, 74, 56, 82, 65, 58, 76, 93, 95, 96,
                                         66, 91, 63, 83, 97, 90, 71, 86])
+            elif self.n_agents == 32:
+                remove_idxs = np.array(
+                    [56, 74, 72, 65, 68, 59, 81, 91, 88, 61])
+            elif self.n_agents == 42:
+                pass
             else:
                 import pdb
                 pdb.set_trace()
@@ -201,10 +209,8 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
         # print('env bids: ', list(self.bids))
         obs, reward, done, info = super().step(action=action)
 
-        reward -= sum(info['penalty'])
-        if self.vector_reward is True:
-            reward = np.append(reward, np.array(info['penalty']))
-        else:
+        if self.vector_reward is not True:
+            reward -= sum(info['penalty'])
             reward = np.append(reward, sum(info['penalty']))
 
         return obs, reward, done, info

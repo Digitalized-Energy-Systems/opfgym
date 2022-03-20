@@ -85,7 +85,7 @@ class OpfEnv(gym.Env, abc.ABC):
             reward += sum(info['penalty'])
         else:
             # Reward as a vector
-            reward = np.array([reward] + info['penalty'])
+            reward = np.append(reward, info['penalty'])
         return obs, reward, done, info
 
     def _apply_actions(self, action):
