@@ -81,11 +81,11 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
         net = super()._build_net(*args, **kwargs)
 
         # Cost function to set penalty in OPF
-        net.ext_grid['min_p_mw'] = -100
-        net.ext_grid['max_p_mw'] = 100
+        net.ext_grid['min_p_mw'] = -10000
+        net.ext_grid['max_p_mw'] = 10000
         pp.create_pwl_cost(net, element=0, et='ext_grid',
-                           points=[[-100, 0, 0],
-                                   [0, 100, self.penalty_factor]],
+                           points=[[-10000, 0, 0],
+                                   [0, 10000, self.penalty_factor]],
                            power_type='p')
         # net.poly_cost = net.poly_cost.drop(0)
         # TODO: Maybe remove in base env? or update obs space (this is a potential error)
@@ -170,7 +170,6 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
         self.action_space = gym.spaces.Box(low, high)
 
     def step(self, action, test=False):
-
         # TODO: Overwrite bids when learned within the algo! (otherwise random)
         if self.other_bids == 'fixed':
             self.net.poly_cost.cp1_eur_per_mw[self.net.poly_cost.et ==
@@ -202,7 +201,7 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
                     self.max_price * self.reward_scaling
                 self.setpoints = action[:len(self.net.sgen.index)]
                 self.net.poly_cost.cp1_eur_per_mw[
-                    self.net.poly_cost.et == 'sgen'] = self.bids
+                    self.net.poly_cost.et == 'sgen'] = self.bids / self.reward_scaling
             else:
                 self.setpoints = action
 
