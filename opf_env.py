@@ -239,6 +239,7 @@ class OpfEnv(gym.Env, abc.ABC):
 
         # Don't consider the penalty, to compare how good objective was learned
         print('Test Penalty: ', info['penalty'])
+        print('Current actions: ', self.get_current_actions())
         if self.vector_reward:
             # Only return objective reward, not penalty reward
             return obs, reward[0], done, info
@@ -256,8 +257,13 @@ class OpfEnv(gym.Env, abc.ABC):
         reward = self._calc_reward(self.net)
         penalty = self._calc_penalty()
         print('Base Penalty: ', penalty)
+        print('Baseline actions: ', self.get_current_actions())
 
-        return reward
+        if not self.vector_reward:
+            return reward + sum(penalty)
+        else:
+            # Reward as a vector
+            return np.append(reward, penalty)
 
     def _optimal_power_flow(self):
         try:

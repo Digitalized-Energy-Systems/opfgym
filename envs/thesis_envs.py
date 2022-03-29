@@ -169,8 +169,9 @@ class QMarketEnv(opf_env.OpfEnv):
         high = np.ones(len(self.net['sgen'].index))
         self.action_space = gym.spaces.Box(low, high)
 
-        super().__init__(ext_overpower_penalty=500,
-                         apparent_power_penalty=1500, *args, **kwargs)
+        super().__init__(ext_overpower_penalty=250,
+                         apparent_power_penalty=1500,
+                         *args, **kwargs)
 
         if self.vector_reward is True:
             # 4 penalties and one objective function
