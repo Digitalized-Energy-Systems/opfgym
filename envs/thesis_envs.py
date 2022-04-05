@@ -293,7 +293,7 @@ class EcoDispatchEnv(opf_env.OpfEnv):
 
     def __init__(self, simbench_network_name='1-HV-urban--0-sw', min_power=0,
                  n_agents=None, gen_scaling=1.0, load_scaling=1.5, u_penalty=300,
-                 overload_penalty=10, *args, **kwargs):
+                 overload_penalty=10, max_price=600, *args, **kwargs):
         # Economic dispatch normally done in EHV (too big! use HV instead!)
         # EHV option: '1-EHV-mixed--0-sw' (340 generators!!!)
         # HV options: '1-HV-urban--0-sw' and '1-HV-mixed--0-sw'
@@ -302,6 +302,10 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         # Assumption: Use power from time-series for all other plants (see sampling())
         # Set min_power=0 to consider all power plants as market participants
         # Alternatively use n_agents to use the n_agents biggest power plants
+
+        # Define range from which to sample active power prices on market
+        self.max_price = max_price
+        # compare: https://en.wikipedia.org/wiki/Cost_of_electricity_by_source
 
         self.net = self._build_net(
             simbench_network_name, min_power, n_agents, gen_scaling, load_scaling)
@@ -406,9 +410,6 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         for idx in self.gen_idxs:
             pp.create_poly_cost(net, idx, 'gen', cp1_eur_per_mw=0)
 
-        # Define range from which to sample active power prices on market
-        self.max_price = 600  # 60 ct/kwh
-        # compare: https://en.wikipedia.org/wiki/Cost_of_electricity_by_source
         net.poly_cost['min_cp1_eur_per_mw'] = 0
         net.poly_cost['max_cp1_eur_per_mw'] = self.max_price
 
