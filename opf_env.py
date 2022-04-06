@@ -260,7 +260,7 @@ class OpfEnv(gym.Env, abc.ABC):
         print('Baseline actions: ', self.get_current_actions())
 
         if not self.vector_reward:
-            return reward + sum(penalty)
+            return sum(np.append(reward, penalty))
         else:
             # Reward as a vector
             return np.append(reward, penalty)
