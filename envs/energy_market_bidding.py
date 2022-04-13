@@ -33,7 +33,7 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
                  overload_penalty=0.2, penalty_factor=300, learn_bids=True,
                  reward_scaling=0.0001, in_agent=False, uniform_gen_size=True,
                  other_bids='fixed', one_gen_per_agent=True,
-                 consider_marginal_costs=True,
+                 consider_marginal_costs=True, bid_as_reward=False,
                  *args, **kwargs):
 
         assert market_rules in ('pab', 'uniform')
@@ -47,6 +47,7 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
         self.one_gen_per_agent = one_gen_per_agent
         self.rel_marginal_costs = 0.1
         self.consider_marginal_costs = consider_marginal_costs
+        self.bid_as_reward = bid_as_reward
 
         if n_agents is not None:
             self.n_agents = n_agents
@@ -221,16 +222,23 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
             raise NotImplementedError
         elif self.market_rules == 'pab':
             # Ignore "market price" completely here
-            # Why setpoints? the actual power values make more sense
             rewards = -self.bids * np.array(self.net.res_sgen.p_mw)
 
             if self.consider_marginal_costs:
                 rewards += self.rel_marginal_costs * self.reward_scaling * \
                     self.max_price * np.array(self.net.res_sgen.p_mw)
 
+            # To prevent zero gradient -> bid as negative reward if bid too high
             # The OPF often fails to set the setpoints to exactly zero
-            rewards[np.array(self.net.res_sgen.p_mw /
-                             self.net.sgen.max_p_mw) < 0.001] = 0
+            # TODO: Maybe make this optional
+            rel_setpoints = np.array(
+                self.net.res_sgen.p_mw / self.net.sgen.max_p_mw)
+            if self.bid_as_reward is True:
+                rewards[rel_setpoints < 0.001] = - \
+                    self.bids[rel_setpoints < 0.001]
+            else:
+                rewards[rel_setpoints < 0.001] = 0.0
+
             return rewards
 
     def _calc_penalty(self):

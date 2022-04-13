@@ -467,7 +467,7 @@ def build_net(simbench_network_name, gen_scaling=1.0, load_scaling=2.0):
 
 
 if __name__ == '__main__':
-    env = qmarket_env()
+    env = SimpleOpfEnv()
     obs = env.reset()
     for _ in range(10):
         obs, reward, done, info = env.step(env.action_space.sample())
