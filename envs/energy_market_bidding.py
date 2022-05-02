@@ -30,7 +30,7 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
     def __init__(self, simbench_network_name='1-HV-urban--0-sw',
                  market_rules='pab', n_agents=None,
                  load_scaling=3.0, gen_scaling=1.5, u_penalty=50,
-                 overload_penalty=0.2, penalty_factor=300, learn_bids=True,
+                 overload_penalty=0.2, penalty_factor=600, learn_bids=True,
                  reward_scaling=0.0001, in_agent=False, uniform_gen_size=True,
                  other_bids='fixed', one_gen_per_agent=True,
                  consider_marginal_costs=True, bid_as_reward=False,
@@ -234,8 +234,7 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
             rel_setpoints = np.array(
                 self.net.res_sgen.p_mw / self.net.sgen.max_p_mw)
             if self.bid_as_reward is True:
-                rewards[rel_setpoints < 0.001] = - \
-                    self.bids[rel_setpoints < 0.001]
+                rewards[rel_setpoints < 0.001] = self.bids[rel_setpoints < 0.001]
             else:
                 rewards[rel_setpoints < 0.001] = 0.0
 
