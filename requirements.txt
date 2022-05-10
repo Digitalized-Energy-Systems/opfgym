@@ -1,7 +1,0 @@
-numpy==1.18.3
-scipy
-numba
-matplotlib
-pandapower~=2.2.2
-gym
-simbench

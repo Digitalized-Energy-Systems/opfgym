@@ -1,3 +1,6 @@
+#### Installation
+Clone the repository and run `pip install -e .[dev]`
+
 #### Grid Notes
 For every environment, different simbench/pandapower energy systems can be
 choosen. The difficulty of the learning problem depends mainly on the number of

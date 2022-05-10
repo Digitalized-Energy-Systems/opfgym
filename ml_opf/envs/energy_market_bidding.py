@@ -234,7 +234,7 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
             rel_setpoints = np.array(
                 self.net.res_sgen.p_mw / self.net.sgen.max_p_mw)
             if self.bid_as_reward is True:
-                rewards[rel_setpoints < 0.001] = self.bids[rel_setpoints < 0.001]
+                rewards[rel_setpoints < 0.05] += self.bids[rel_setpoints < 0.05]
             else:
                 rewards[rel_setpoints < 0.001] = 0.0
 
