@@ -1,11 +1,11 @@
 """ Done with https://towardsdatascience.com/create-your-custom-python-package-that-you-can-pip-install-from-your-git-repository-f90465867893"""
 
-import setuptools
+from setuptools import setup, find_packages
 
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
-setuptools.setup(
+setup(
     name='ml_opf',
     version='0.0.1',
     author='Thomas Wolgast',
@@ -13,12 +13,9 @@ setuptools.setup(
     description='Some environments to learn the Optimal Power Flow with Reinforcement Learning',
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url='hhttps://gitlab.uni-oldenburg.de/lazi4122/ml-opf',
-    project_urls={
-        "Bug Tracker": "https://gitlab.uni-oldenburg.de/lazi4122/ml-opf/-/issues"
-    },
+    packages=find_packages(include=['ml_opf', 'ml_opf.*']),
+    url='https://gitlab.uni-oldenburg.de/lazi4122/ml-opf',
     license='MIT',
-    packages=['ml_opf'],
     install_requires=[
         'numpy==1.18.3',
         'scipy',
