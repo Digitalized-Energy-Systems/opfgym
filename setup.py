@@ -17,11 +17,11 @@ setup(
     url='https://gitlab.uni-oldenburg.de/lazi4122/ml-opf',
     license='MIT',
     install_requires=[
-        'numpy==1.18.3',
+        'numpy==1.20.3',
         'scipy',
         'numba',
         'matplotlib',
-        'pandapower~=2.2.2',  # TODO: probably not necessary anymore?!
+        'pandapower',
         'gym',
         'simbench',
     ],
