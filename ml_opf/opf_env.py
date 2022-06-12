@@ -133,13 +133,13 @@ class OpfEnv(gym.Env, abc.ABC):
         """ Constraint violations result in a penalty that can be subtracted
         from the reward.
         Standard penalties: voltage band, overload of lines & transformers. """
-        penalty = []
-        penalty.append(-voltage_violation(self.net, self.u_penalty))
-        penalty.append(-line_trafo_overload(
-            self.net, self.overload_penalty, 'line'))
-        penalty.append(-line_trafo_overload(
-            self.net, self.overload_penalty, 'trafo'))
-        return penalty
+        voltage = -voltage_violation(
+            self.net, self.u_penalty, vectorize=self.vector_reward)
+        line_load = -line_trafo_overload(
+            self.net, self.overload_penalty, 'line', vectorize=self.vector_reward)
+        trafo_load = -line_trafo_overload(
+            self.net, self.overload_penalty, 'trafo', vectorize=self.vector_reward)
+        return np.concatenate([voltage, line_load, trafo_load])
 
     def _sampling(self, sample_keys=None):
         """ Standard pre-implemented method to set power system to a new random

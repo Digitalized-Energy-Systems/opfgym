@@ -119,15 +119,15 @@ class SimpleOpfEnv(opf_env.OpfEnv):
     def _calc_penalty(self):
         penalty = super()._calc_penalty()
         # Do not allow for high power exchange with external grid
-        penalty.append(-ext_grid_overpower(
-            self.net, self.ext_overpower_penalty, 'q_mvar'))
+        overpower1 = -ext_grid_overpower(
+            self.net, self.ext_overpower_penalty, 'q_mvar', vectorize=self.vector_reward)
 
         # Do not allow higher active power feed-in than possible
         # (not relevant for reactive power because max_q_mvar=const)
-        penalty.append(-active_reactive_overpower(
-            self.net, self.apparent_power_penalty, column='p_mw'))
+        overpower2 = -active_reactive_overpower(
+            self.net, self.apparent_power_penalty, column='p_mw', vectorize=self.vector_reward)
 
-        return penalty
+        return np.concatenate([penalty, overpower1, overpower2])
 
 
 class QMarketEnv(opf_env.OpfEnv):
@@ -150,14 +150,14 @@ class QMarketEnv(opf_env.OpfEnv):
 
     """
 
-    def __init__(self, simbench_network_name='1-LV-urban6--0-sw', gen_scaling=2.0, load_scaling=1.5, *args, **kwargs):
-        self.net = self._build_net(
+    def __init__(self, simbench_network_name = '1-LV-urban6--0-sw', gen_scaling = 2.0, load_scaling = 1.5, *args, **kwargs):
+        self.net=self._build_net(
             simbench_network_name, gen_scaling, load_scaling)
 
         # Define the RL problem
         # See all load power values, sgen active power, and sgen prices...
         # TODO: Add current time as observation! (see attack paper)
-        self.obs_keys = [
+        self.obs_keys=[
             ('sgen', 'p_mw', self.net['sgen'].index),
             ('load', 'p_mw', self.net['load'].index),
             ('load', 'q_mvar', self.net['load'].index),  # TODO: res_load?!
@@ -170,12 +170,12 @@ class QMarketEnv(opf_env.OpfEnv):
         self.action_space = gym.spaces.Box(low, high)
 
         super().__init__(ext_overpower_penalty=250,
-                         apparent_power_penalty=1500,
+                         apparent_power_penalty = 1500,
                          *args, **kwargs)
 
         if self.vector_reward is True:
             # 4 penalties and one objective function
-            self.reward_space = gym.spaces.Box(
+            self.reward_space=gym.spaces.Box(
                 low=-np.ones(5) * np.inf, high=np.ones(5) * np.inf)
 
     def _build_net(self, simbench_network_name, gen_scaling, load_scaling):
@@ -269,10 +269,9 @@ class QMarketEnv(opf_env.OpfEnv):
 
     def _calc_penalty(self):
         penalty = super()._calc_penalty()
-        penalty.append(-ext_grid_overpower(
-            self.net, self.ext_overpower_penalty, 'q_mvar'))
+        overpower = -ext_grid_overpower(self.net, self.ext_overpower_penalty, 'q_mvar', vectorize=self.vector_reward)
 
-        return penalty
+        return np.concatenate([penalty, overpower])
 
 
 class EcoDispatchEnv(opf_env.OpfEnv):
