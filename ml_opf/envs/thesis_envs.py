@@ -83,6 +83,7 @@ class SimpleOpfEnv(opf_env.OpfEnv):
         net.sgen.drop(
             net.sgen[net.sgen.max_max_p_mw == 0.0].index, inplace=True)
         net.sgen['controllable'] = True
+        net.load.drop(net.load[net.load.max_p_mw == 0.0].index, inplace=True)
 
         cos_phi = 0.9
         net.sgen['max_s_mva'] = net.sgen['max_max_p_mw'] / cos_phi
@@ -203,6 +204,7 @@ class QMarketEnv(opf_env.OpfEnv):
         # Some power values are always zero (for whatever reason?!)
         net.sgen.drop(
             net.sgen[net.sgen.max_max_p_mw == 0.0].index, inplace=True)
+        net.load.drop(net.load[net.load.max_p_mw == 0.0].index, inplace=True)
 
         net.sgen['controllable'] = True
         cos_phi = 0.90
@@ -367,6 +369,7 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         # Some power values are always zero (for whatever reason?!)
         net.sgen.drop(
             net.sgen[net.sgen.max_max_p_mw == 0.0].index, inplace=True)
+        net.load.drop(net.load[net.load.max_p_mw == 0.0].index, inplace=True)
 
         # TODO: Also for gen
         #     axis=0) * net['sgen']['scaling']

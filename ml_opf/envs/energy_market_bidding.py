@@ -2,6 +2,8 @@
 energy market environment (i.e. an economic dispatch). """
 
 
+import random
+
 import gym
 import numpy as np
 import pandapower as pp
@@ -93,46 +95,35 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
 
         if self.uniform_gen_size:
             # Set all generators to the same size
-            net.sgen.max_p_mw = net.sgen.max_p_mw.mean()
-            net.sgen.max_max_p_mw = net.sgen.max_max_p_mw.mean()
+            max_max_mean = net.sgen.max_max_p_mw.mean()
+            max_mean = net.sgen.max_p_mw.mean()
+            scaling_mean = net.sgen.scaling.mean()
+            net.sgen.max_p_mw = max_mean
+            net.sgen.max_max_p_mw = max_max_mean
 
         if self.one_gen_per_agent:
             old_n_gens = len(net.sgen.index)
-            # Remove random generators so that there is one generator per agent
-            remove_idxs = np.random.choice(
-                net.sgen.index, len(net.sgen.index) - self.n_agents, replace=False)
-            # TODO: This is only to make this deterministic short term (for 8 gens)
-            # if self.n_agents == 8:
-            #     remove_idxs = np.array([78, 66, 77, 86, 58, 61, 93, 57, 92, 63,
-            #                             95, 80, 89, 56, 70, 97, 62, 91, 73, 74,
-            #                             65, 75, 60, 83, 68, 84, 76, 82, 85, 88,
-            #                             71, 69, 79, 90])
-            # elif self.n_agents == 12:
-            #     remove_idxs = np.array([74, 85, 56, 86, 76, 78, 66, 82, 90, 88,
-            #                             57, 63, 81, 79, 71, 69, 92, 59, 95, 84,
-            #                             62, 68, 87, 94, 67, 70, 93, 72, 97, 73])
-            # elif self.n_agents == 16:
-            #     remove_idxs = np.array([88, 80, 95, 90, 92, 62, 96, 94, 73, 56,
-            #                             91, 75, 65, 72, 76, 81, 59, 89, 85, 60,
-            #                             71, 74, 70, 83, 66, 63])
-            # elif self.n_agents == 24:
-            #     remove_idxs = np.array([85, 74, 56, 82, 65, 58, 76, 93, 95, 96,
-            #                             66, 91, 63, 83, 97, 90, 71, 86])
-            # elif self.n_agents == 32:
-            #     remove_idxs = np.array(
-            #         [56, 74, 72, 65, 68, 59, 81, 91, 88, 61])
-            # elif self.n_agents == 42:
-            #     pass
-            print('remove gens: ', remove_idxs)
-            net.sgen = net.sgen.drop(remove_idxs)
-            net.poly_cost = net.poly_cost.drop(
-                net.poly_cost.index[net.poly_cost.element.isin(remove_idxs)])
+
+            if self.n_agents < 42:
+                # Remove random generators so that there is one generator per agent
+                remove_idxs = np.random.choice(
+                    net.sgen.index, len(net.sgen.index) - self.n_agents, replace=False)
+                print('remove gens: ', remove_idxs)
+                net.sgen = net.sgen.drop(remove_idxs)
+                net.poly_cost = net.poly_cost.drop(
+                    net.poly_cost.index[net.poly_cost.element.isin(remove_idxs)])
+            elif self.n_agents > 42:
+
+                add_buses = np.random.choice(
+                    net.sgen.bus, self.n_agents - len(net.sgen.index), replace=True)
+                for bus in add_buses:
+                    pp.create_sgen(
+                        net, bus, p_mw=0, max_p_mw=max_mean, min_p_mw=0.0, scaling=scaling_mean, max_q_mvar=0.0, min_q_mvar=0.0)
+
             if self.uniform_gen_size:
-                # Increase power of remaining gens so that it stays constant
-                net.sgen.max_p_mw = net.sgen.max_p_mw * \
-                    old_n_gens / self.n_agents
-                net.sgen.max_max_p_mw = net.sgen.max_max_p_mw.mean() * old_n_gens / \
-                    self.n_agents
+                # Adjust power of remaining gens so that it stays constant
+                net.sgen.max_p_mw = max_mean * old_n_gens / self.n_agents
+                net.sgen.max_max_p_mw = max_max_mean * old_n_gens / self.n_agents
 
         return net
 
@@ -166,6 +157,46 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
                     len(self.act_keys[0][2]) + len(self.act_keys[1][2]) + self.n_agents)
 
         self.action_space = gym.spaces.Box(low, high)
+        print(self.action_space)
+
+    def _set_simbench_state(self, step: int=None, noise_factor=0.1,
+                            noise_distribution='uniform'):
+        """ Standard pre-implemented method to sample a random state from the
+        simbench time-series data and set that state.
+        Works only for simbench systems!
+        """
+        if step is None:
+            total_n_steps = len(self.profiles[('load', 'q_mvar')])
+            step = random.randint(0, total_n_steps - 1)
+
+        self.current_step = step
+        # TODO: Consider some test steps that do not get sampled!
+        for type_act in self.profiles.keys():
+            if not self.profiles[type_act].shape[1]:
+                continue
+            unit_type, actuator = type_act
+            if unit_type == 'sgen':
+                continue
+
+            data = self.profiles[type_act].loc[step, self.net[unit_type].index]
+            # Add some noise to create unique data samples
+            if noise_distribution == 'uniform':
+                # Uniform distribution: noise_factor as relative sample range
+                noise = np.random.random(
+                    len(self.net[unit_type].index)) * noise_factor * 2 + (1 - noise_factor)
+                new_values = data * noise
+            elif noise_distribution == 'normal':
+                # Normal distribution: noise_factor as relative std deviation
+                new_values = np.random.normal(
+                    loc=data, scale=data * noise_factor)
+
+            # Make sure that the range of original data remains unchanged
+            # (Technical limits of the units remain the same)
+            new_values = np.clip(new_values,
+                                 self.profiles[type_act].min(),
+                                 self.profiles[type_act].max())
+
+            self.net[unit_type].loc[:, actuator] = new_values
 
     def step(self, action, test=False):
         # TODO: Overwrite bids when learned within the algo! (otherwise random)
