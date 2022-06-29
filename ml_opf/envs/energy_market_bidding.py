@@ -99,30 +99,27 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
         if self.one_gen_per_agent:
             old_n_gens = len(net.sgen.index)
             # Remove random generators so that there is one generator per agent
-            remove_idxs = np.random.choice(
-                net.sgen.index, len(net.sgen.index) - self.n_agents, replace=False)
-            # TODO: This is only to make this deterministic short term (for 8 gens)
-            # if self.n_agents == 8:
-            #     remove_idxs = np.array([78, 66, 77, 86, 58, 61, 93, 57, 92, 63,
-            #                             95, 80, 89, 56, 70, 97, 62, 91, 73, 74,
-            #                             65, 75, 60, 83, 68, 84, 76, 82, 85, 88,
-            #                             71, 69, 79, 90])
-            # elif self.n_agents == 12:
-            #     remove_idxs = np.array([74, 85, 56, 86, 76, 78, 66, 82, 90, 88,
-            #                             57, 63, 81, 79, 71, 69, 92, 59, 95, 84,
-            #                             62, 68, 87, 94, 67, 70, 93, 72, 97, 73])
-            # elif self.n_agents == 16:
-            #     remove_idxs = np.array([88, 80, 95, 90, 92, 62, 96, 94, 73, 56,
-            #                             91, 75, 65, 72, 76, 81, 59, 89, 85, 60,
-            #                             71, 74, 70, 83, 66, 63])
-            # elif self.n_agents == 24:
-            #     remove_idxs = np.array([85, 74, 56, 82, 65, 58, 76, 93, 95, 96,
-            #                             66, 91, 63, 83, 97, 90, 71, 86])
-            # elif self.n_agents == 32:
-            #     remove_idxs = np.array(
-            #         [56, 74, 72, 65, 68, 59, 81, 91, 88, 61])
-            # elif self.n_agents == 42:
-            #     pass
+            # import pdb
+            # pdb.set_trace()
+            # remove_idxs = np.random.choice(
+            #     net.sgen.index, len(net.sgen.index) - self.n_agents, replace=False)
+            # Make environment init deterministic
+            if self.n_agents == 10:
+                remove_idxs = np.array([92, 64, 85, 89, 65, 71, 56, 68, 75, 63, 82, 61, 59, 83, 69, 81, 58,
+                                        93, 77, 87, 66, 67, 60, 90, 76, 79, 73, 94, 88, 70, 72, 95])
+            elif self.n_agents == 20:
+                remove_idxs = np.array([73, 93, 56, 80, 92, 82, 87, 60, 97, 88, 74, 90, 63, 59, 86, 64, 81,
+                                        77, 68, 70, 72, 66])
+            elif self.n_agents == 30:
+                remove_idxs = np.array(
+                    [68, 81, 95, 90, 75, 74, 91, 80, 56, 93, 92, 76])
+            elif self.n_agents == 40:
+                remove_idxs = np.array([92, 65])
+            elif self.n_agents == 42:
+                pass
+            else:
+                raise NotImplementedError(
+                    'Only 10, 20, 30, 40 agents possible')
             print('remove gens: ', remove_idxs)
             net.sgen = net.sgen.drop(remove_idxs)
             net.poly_cost = net.poly_cost.drop(
@@ -223,7 +220,6 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
         elif self.market_rules == 'pab':
             # Ignore "market price" completely here
             rewards = -self.bids * np.array(self.net.res_sgen.p_mw)
-
             if self.consider_marginal_costs:
                 rewards += self.rel_marginal_costs * self.reward_scaling * \
                     self.max_price * np.array(self.net.res_sgen.p_mw)
