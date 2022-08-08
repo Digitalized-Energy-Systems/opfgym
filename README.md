@@ -1,5 +1,5 @@
 #### Installation
-Clone the repository and run `pip install -e .`
+Clone the repository and run `pip install -e .` within some kind of virtual env
 
 #### Grid Notes
 For every environment, different simbench/pandapower energy systems can be

@@ -33,8 +33,9 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
                  overload_penalty=0.2, penalty_factor=600, learn_bids=True,
                  reward_scaling=0.0001, in_agent=False, uniform_gen_size=True,
                  other_bids='fixed', one_gen_per_agent=True,
+                 rel_marginal_costs=0.1,
                  consider_marginal_costs=True, bid_as_reward=False,
-                 *args, **kwargs):
+                 step_penalty=False, *args, **kwargs):
 
         assert market_rules in ('pab', 'uniform')
         self.market_rules = market_rules
@@ -45,9 +46,10 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
         self.other_bids = other_bids
         self.uniform_gen_size = uniform_gen_size
         self.one_gen_per_agent = one_gen_per_agent
-        self.rel_marginal_costs = 0.1
+        self.rel_marginal_costs = rel_marginal_costs
         self.consider_marginal_costs = consider_marginal_costs
         self.bid_as_reward = bid_as_reward
+        self.step_penalty = step_penalty
 
         if n_agents is not None:
             self.n_agents = n_agents
@@ -250,6 +252,12 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
             print('ext grid penalty: ', ext_grid_penalty)
 
         penalty.append(-ext_grid_penalty)
+
+        if self.step_penalty is True:
+            for idx in range(len(penalty) - 1):
+                if penalty[idx] <= -0.001:
+                    penalty[idx] -= 0.5
+
         return penalty
 
 
