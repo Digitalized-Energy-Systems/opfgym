@@ -35,7 +35,7 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
                  other_bids='fixed', one_gen_per_agent=True,
                  rel_marginal_costs=0.1,
                  consider_marginal_costs=True, bid_as_reward=False,
-                 step_penalty=False, *args, **kwargs):
+                 step_penalty=False, remove_gen_idxs=None, *args, **kwargs):
 
         assert market_rules in ('pab', 'uniform')
         self.market_rules = market_rules
@@ -50,6 +50,7 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
         self.consider_marginal_costs = consider_marginal_costs
         self.bid_as_reward = bid_as_reward
         self.step_penalty = step_penalty
+        self.remove_gen_idxs = remove_gen_idxs  # default: Remove randomly
 
         if n_agents is not None:
             self.n_agents = n_agents
@@ -101,31 +102,14 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
         if self.one_gen_per_agent:
             old_n_gens = len(net.sgen.index)
             # Remove random generators so that there is one generator per agent
-            # import pdb
-            # pdb.set_trace()
-            # remove_idxs = np.random.choice(
-            #     net.sgen.index, len(net.sgen.index) - self.n_agents, replace=False)
-            # Make environment init deterministic
-            if self.n_agents == 10:
-                remove_idxs = np.array([92, 64, 85, 89, 65, 71, 56, 68, 75, 63, 82, 61, 59, 83, 69, 81, 58,
-                                        93, 77, 87, 66, 67, 60, 90, 76, 79, 73, 94, 88, 70, 72, 95])
-            elif self.n_agents == 20:
-                remove_idxs = np.array([73, 93, 56, 80, 92, 82, 87, 60, 97, 88, 74, 90, 63, 59, 86, 64, 81,
-                                        77, 68, 70, 72, 66])
-            elif self.n_agents == 30:
-                remove_idxs = np.array(
-                    [68, 81, 95, 90, 75, 74, 91, 80, 56, 93, 92, 76])
-            elif self.n_agents == 40:
-                remove_idxs = np.array([92, 65])
-            elif self.n_agents == 42:
-                pass
-            else:
-                raise NotImplementedError(
-                    'Only 10, 20, 30, 40 agents possible')
-            print('remove gens: ', remove_idxs)
-            net.sgen = net.sgen.drop(remove_idxs)
+            if self.remove_gen_idxs is None:
+                self.remove_gen_idxs = np.random.choice(
+                    net.sgen.index, len(net.sgen.index) - self.n_agents, replace=False)
+
+            print('Remove generators: ', self.remove_gen_idxs)
+            net.sgen = net.sgen.drop(self.remove_gen_idxs)
             net.poly_cost = net.poly_cost.drop(
-                net.poly_cost.index[net.poly_cost.element.isin(remove_idxs)])
+                net.poly_cost.index[net.poly_cost.element.isin(self.remove_gen_idxs)])
             if self.uniform_gen_size:
                 # Increase power of remaining gens so that it stays constant
                 net.sgen.max_p_mw = net.sgen.max_p_mw * \
