@@ -33,7 +33,7 @@ class SimpleOpfEnv(opf_env.OpfEnv):
         reactive power flow over slack bus
     """
 
-    def __init__(self, simbench_network_name='1-LV-rural3--0-sw', gen_scaling=2.0, load_scaling=2.0, *args, **kwargs):
+    def __init__(self, simbench_network_name='1-LV-rural3--0-sw', gen_scaling=2.0, load_scaling=2.0, seed=None, *args, **kwargs):
         self.net = self._build_net(
             simbench_network_name, gen_scaling, load_scaling)
 
@@ -50,14 +50,14 @@ class SimpleOpfEnv(opf_env.OpfEnv):
         n_gens = len(self.net['sgen'].index)
         low = np.concatenate([np.zeros(n_gens), -np.ones(n_gens)])
         high = np.ones(2 * n_gens)
-        self.action_space = gym.spaces.Box(low, high)
+        self.action_space = gym.spaces.Box(low, high, seed=seed)
 
-        super().__init__(apparent_power_penalty=5000, *args, **kwargs)
+        super().__init__(apparent_power_penalty=5000, seed=seed, *args, **kwargs)
 
         if self.vector_reward is True:
             # 5 penalties and one objective function
             self.reward_space = gym.spaces.Box(
-                low=-np.ones(6) * np.inf, high=np.ones(6) * np.inf)
+                low=-np.ones(6) * np.inf, high=np.ones(6) * np.inf, seed=seed)
 
     def _build_net(self, simbench_network_name, gen_scaling, load_scaling):
         net, self.profiles = build_net(
@@ -150,7 +150,8 @@ class QMarketEnv(opf_env.OpfEnv):
 
     """
 
-    def __init__(self, simbench_network_name='1-LV-urban6--0-sw', gen_scaling=2.0, load_scaling=1.5, *args, **kwargs):
+    def __init__(self, simbench_network_name='1-LV-urban6--0-sw',
+                 gen_scaling=2.0, load_scaling=1.5, seed=None, *args, **kwargs):
         self.net = self._build_net(
             simbench_network_name, gen_scaling, load_scaling)
 
@@ -167,16 +168,17 @@ class QMarketEnv(opf_env.OpfEnv):
         self.act_keys = [('sgen', 'q_mvar', self.net['sgen'].index)]
         low = -np.ones(len(self.net['sgen'].index))
         high = np.ones(len(self.net['sgen'].index))
-        self.action_space = gym.spaces.Box(low, high)
+        self.action_space = gym.spaces.Box(low, high, seed=seed)
 
         super().__init__(ext_overpower_penalty=250,
                          apparent_power_penalty=1500,
+                         seed=seed,
                          *args, **kwargs)
 
         if self.vector_reward is True:
             # 4 penalties and one objective function
             self.reward_space = gym.spaces.Box(
-                low=-np.ones(5) * np.inf, high=np.ones(5) * np.inf)
+                low=-np.ones(5) * np.inf, high=np.ones(5) * np.inf, seed=seed)
 
     def _build_net(self, simbench_network_name, gen_scaling, load_scaling):
         net, self.profiles = build_net(
@@ -293,7 +295,7 @@ class EcoDispatchEnv(opf_env.OpfEnv):
 
     def __init__(self, simbench_network_name='1-HV-urban--0-sw', min_power=0,
                  n_agents=None, gen_scaling=1.0, load_scaling=1.5, u_penalty=300,
-                 overload_penalty=10, max_price=600, *args, **kwargs):
+                 overload_penalty=10, max_price=600, seed=None, *args, **kwargs):
         # Economic dispatch normally done in EHV (too big! use HV instead!)
         # EHV option: '1-EHV-mixed--0-sw' (340 generators!!!)
         # HV options: '1-HV-urban--0-sw' and '1-HV-mixed--0-sw'
@@ -325,17 +327,19 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         # ... and control all generators' active power values
         self.act_keys = [('sgen', 'p_mw', self.net.sgen.index),  # self.sgen_idxs),
                          ('gen', 'p_mw', self.net.gen.index)]  # self.gen_idxs)]
-        self._set_action_space()
+        self._set_action_space(seed)
         # TODO: Define constraints explicitly?! (active power min/max not default!)
 
-        super().__init__(u_penalty=u_penalty, overload_penalty=overload_penalty, *args, **kwargs)
+        super().__init__(u_penalty=u_penalty,
+                         overload_penalty=overload_penalty, seed=seed,
+                         *args, **kwargs)
 
-    def _set_action_space(self):
+    def _set_action_space(self, seed):
         """ Each power plant can be set in range from 0-100% power
         (minimal power higher than zero not considered here) """
         low = np.zeros(len(self.act_keys[0][2]) + len(self.act_keys[1][2]))
         high = np.ones(len(self.act_keys[0][2]) + len(self.act_keys[1][2]))
-        self.action_space = gym.spaces.Box(low, high)
+        self.action_space = gym.spaces.Box(low, high, seed=seed)
 
     def _build_net(self, simbench_network_name, min_power, n_agents, gen_scaling=1.0, load_scaling=1.5):
         net, self.profiles = build_net(

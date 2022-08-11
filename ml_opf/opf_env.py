@@ -20,17 +20,18 @@ class OpfEnv(gym.Env, abc.ABC):
     def __init__(self, u_penalty=300, overload_penalty=2, ext_overpower_penalty=100,
                  apparent_power_penalty=500, active_power_penalty=100,
                  vector_reward=False, single_step=True, bus_wise_obs=False,  # TODO
-                 use_time_obs=True):
+                 use_time_obs=True, seed=None):
 
         self.use_time_obs = use_time_obs
         self.observation_space = get_obs_space(
-            self.net, self.obs_keys, use_time_obs)
+            self.net, self.obs_keys, use_time_obs, seed)
 
         self.vector_reward = vector_reward
+
         if vector_reward is True:
             # 3 penalties and one objective function
             self.reward_space = gym.spaces.Box(
-                low=-np.ones(4) * np.inf, high=np.ones(4) * np.inf)
+                low=-np.ones(4) * np.inf, high=np.ones(4) * np.inf, seed=seed)
 
         self.u_penalty = u_penalty
         self.overload_penalty = overload_penalty
@@ -275,7 +276,7 @@ class OpfEnv(gym.Env, abc.ABC):
         return True
 
 
-def get_obs_space(net, obs_keys: list, use_time_obs: bool):
+def get_obs_space(net, obs_keys: list, use_time_obs: bool, seed: int):
     """ Get observation space from the constraints of the power network. """
     lows, highs = [], []
 
@@ -302,4 +303,4 @@ def get_obs_space(net, obs_keys: list, use_time_obs: bool):
             highs.append(net[unit_type][f'max_{column}'].loc[idxs].to_numpy())
 
     return gym.spaces.Box(
-        np.concatenate(lows, axis=0), np.concatenate(highs, axis=0))
+        np.concatenate(lows, axis=0), np.concatenate(highs, axis=0), seed=seed)

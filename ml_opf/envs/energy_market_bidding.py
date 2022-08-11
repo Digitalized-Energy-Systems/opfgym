@@ -35,7 +35,8 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
                  other_bids='fixed', one_gen_per_agent=True,
                  rel_marginal_costs=0.1,
                  consider_marginal_costs=True, bid_as_reward=False,
-                 step_penalty=False, remove_gen_idxs=None, *args, **kwargs):
+                 step_penalty=False, remove_gen_idxs=None,
+                 *args, **kwargs):
 
         assert market_rules in ('pab', 'uniform')
         self.market_rules = market_rules
@@ -51,6 +52,7 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
         self.bid_as_reward = bid_as_reward
         self.step_penalty = step_penalty
         self.remove_gen_idxs = remove_gen_idxs  # default: Remove randomly
+        self._seed = kwargs['seed']
 
         if n_agents is not None:
             self.n_agents = n_agents
@@ -76,10 +78,14 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
         if self.in_agent:
             # TODO: Maybe move this adjustment to RL algo instead
             self.reward_space = gym.spaces.Box(
-                low=-np.ones(1) * np.inf, high=np.ones(1) * np.inf)
+                low=-np.ones(1) * np.inf,
+                high=np.ones(1) * np.inf,
+                seed=self._seed)
         else:
             self.reward_space = gym.spaces.Box(
-                low=-np.ones(n_rewards) * np.inf, high=np.ones(n_rewards) * np.inf)
+                low=-np.ones(n_rewards) * np.inf,
+                high=np.ones(n_rewards) * np.inf,
+                seed=self._seed)
 
     def _build_net(self, *args, **kwargs):
         net = super()._build_net(*args, **kwargs)
@@ -119,11 +125,11 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
 
         return net
 
-    def _set_action_space(self):
+    def _set_action_space(self, seed):
         """ Each power plant can be set in range from 0-100% power
         (minimal power higher than zero not considered here) """
         if self.in_agent:
-            return super()._set_action_space()
+            return super()._set_action_space(seed)
 
         if self.one_gen_per_agent and self.market_rules == 'pab':
             low = np.zeros(self.n_agents * 2)
@@ -141,14 +147,14 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
             # Same as base environment: Only the setpoints
             # TODO: Maybe add bidding as actuator (instead of random sampling)
             if not self.learn_bids:
-                return super()._set_action_space()
+                return super()._set_action_space(seed)
             else:
                 low = np.zeros(
                     len(self.act_keys[0][2]) + len(self.act_keys[1][2]) + self.n_agents)
                 high = np.ones(
                     len(self.act_keys[0][2]) + len(self.act_keys[1][2]) + self.n_agents)
 
-        self.action_space = gym.spaces.Box(low, high)
+        self.action_space = gym.spaces.Box(low, high, seed=seed)
 
     def step(self, action, test=False):
         # TODO: Overwrite bids when learned within the algo! (otherwise random)
@@ -246,8 +252,8 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
 
 
 class OpfAndBiddingEcoDispatchEnvBaseMarl(OpfAndBiddingEcoDispatchEnv):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, seed=None, *args, **kwargs):
+        super().__init__(seed=seed, *args, **kwargs)
         # Each agent has one reward, six observations, and one action
         self.agent_reward_mapping = np.array(range(self.n_agents))
         # Assumption: Agents only know current time, but nothing about system
@@ -260,7 +266,8 @@ class OpfAndBiddingEcoDispatchEnvBaseMarl(OpfAndBiddingEcoDispatchEnv):
             ('poly_cost', 'cp1_eur_per_mw', self.net.poly_cost.index)]
         low = np.zeros(len(self.net.sgen.index))
         high = np.ones(len(self.net.sgen.index))
-        self.action_space = gym.spaces.Box(low, high)
+        self.action_space = gym.spaces.Box(
+            low, high, seed=self._seed)
         # Define what 100% as action means -> max price!
         self.net.poly_cost['max_max_cp1_eur_per_mw'] = (
             self.net.poly_cost.max_cp1_eur_per_mw)
@@ -300,12 +307,14 @@ class BiddingEcoDispatchEnv(pettingzoo.ParallelEnv):
         self.observation_spaces = {
             a_id: gym.spaces.Box(
                 low=self.internal_env.observation_space.low[self.internal_env.agent_obs_mapping[idx]],
-                high=self.internal_env.observation_space.high[self.internal_env.agent_obs_mapping[idx]])
+                high=self.internal_env.observation_space.high[self.internal_env.agent_obs_mapping[idx]],
+                seed=self.internal_env._seed)
             for idx, a_id in enumerate(self.agents)}
 
         # Each agent has one actuator: its bidding price on the market
         self.action_spaces = {
-            a_id: gym.spaces.Box(low=-np.zeros(1), high=np.ones(1))
+            a_id: gym.spaces.Box(
+                low=-np.zeros(1), high=np.ones(1), seed=self.internal_env._seed)
             for idx, a_id in enumerate(self.agents)}
 
         self.state_space = self.internal_env.observation_space
