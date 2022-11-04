@@ -293,6 +293,7 @@ def get_obs_space(net, obs_keys: list, use_time_obs: bool, seed: int):
             if 'min' in column or 'max' in column:
                 # Constraints need to remain scaled
                 raise AttributeError
+
             lows.append((net[unit_type][f'min_{column}'].loc[idxs]
                          / net[unit_type].scaling.loc[idxs]).to_numpy())
             highs.append((net[unit_type][f'max_{column}'].loc[idxs]

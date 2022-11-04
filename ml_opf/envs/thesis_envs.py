@@ -80,8 +80,14 @@ class SimpleOpfEnv(opf_env.OpfEnv):
             axis=0) * net['sgen']['scaling']
 
         # Some power values are always zero (for whatever reason?!)
+        # TODO: Do this in base class?
         net.sgen.drop(
             net.sgen[net.sgen.max_max_p_mw == 0.0].index, inplace=True)
+        net.load.drop(
+            net.load[net.load.min_q_mvar == net.load.max_q_mvar].index, inplace=True)
+        net.load.drop(
+            net.load[net.load.min_p_mw == net.load.max_p_mw].index, inplace=True)
+
         net.sgen['controllable'] = True
 
         cos_phi = 0.9
@@ -162,7 +168,7 @@ class QMarketEnv(opf_env.OpfEnv):
             ('sgen', 'p_mw', self.net['sgen'].index),
             ('load', 'p_mw', self.net['load'].index),
             ('load', 'q_mvar', self.net['load'].index),  # TODO: res_load?!
-            ('poly_cost', 'cq2_eur_per_mvar2', self.net.sgen.index)]
+            ('poly_cost', 'cq2_eur_per_mvar2', self.net.poly_cost.index)]
 
         # ... and control all sgens' reactive power values
         self.act_keys = [('sgen', 'q_mvar', self.net['sgen'].index)]
@@ -205,6 +211,10 @@ class QMarketEnv(opf_env.OpfEnv):
         # Some power values are always zero (for whatever reason?!)
         net.sgen.drop(
             net.sgen[net.sgen.max_max_p_mw == 0.0].index, inplace=True)
+        net.load.drop(
+            net.load[net.load.min_q_mvar == net.load.max_q_mvar].index, inplace=True)
+        net.load.drop(
+            net.load[net.load.min_p_mw == net.load.max_p_mw].index, inplace=True)
 
         net.sgen['controllable'] = True
         cos_phi = 0.90
@@ -256,7 +266,7 @@ class QMarketEnv(opf_env.OpfEnv):
     def _calc_reward(self, net):
         """ Consider quadratic reactive power costs on the market and linear
         active costs for losses in the system. """
-        q_costs = (net.poly_cost['cq2_eur_per_mvar2'].loc[net.sgen.index]
+        q_costs = (net.poly_cost[net.poly_cost.element.isin(net.sgen.index)]['cq2_eur_per_mvar2']
                    * net.res_sgen['q_mvar']**2).sum()
         if (self.net.poly_cost.et == 'ext_grid').any():
             mask = self.net.poly_cost.et == 'ext_grid'
@@ -371,6 +381,10 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         # Some power values are always zero (for whatever reason?!)
         net.sgen.drop(
             net.sgen[net.sgen.max_max_p_mw == 0.0].index, inplace=True)
+        net.load.drop(
+            net.load[net.load.min_q_mvar == net.load.max_q_mvar].index, inplace=True)
+        net.load.drop(
+            net.load[net.load.min_p_mw == net.load.max_p_mw].index, inplace=True)
 
         # TODO: Also for gen
         #     axis=0) * net['sgen']['scaling']
