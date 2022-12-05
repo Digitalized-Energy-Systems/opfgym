@@ -16,12 +16,23 @@ sb_ids = ('1-EHV-mixed--0-sw',
           '1-LV-urban6--0-sw')
 
 for sb_id in sb_ids:
-    net = sb.get_simbench_net(sb_id)
+    for scenario in (0, 1, 2):
 
-    print(sb_id, ':')
-    print('N bus: ', len(net.bus))
-    print('N ext_grid: ', len(net.ext_grid))
-    print('N gen: ', len(net.gen))
-    print('N sgen: ', len(net.sgen))
-    print('N load: ', len(net.load))
-    print('')
+        sb_id = list(sb_id)
+        sb_id[-4] = str(scenario)
+        sb_id = ''.join(sb_id)
+
+        net = sb.get_simbench_net(sb_id)
+        profiles = sb.get_absolute_values(
+            net, profiles_instead_of_study_cases=True)
+
+        max_power = profiles[('sgen', 'p_mw')].max(axis=0)
+        n_sgen = sum(max_power != 0)
+
+        print(sb_id, ':')
+        print('N bus: ', len(net.bus))
+        print('N ext_grid: ', len(net.ext_grid))
+        print('N gen: ', len(net.gen))
+        print('N sgen: ', len(net.sgen), '/', n_sgen)
+        print('N load: ', len(net.load))
+        print('')
