@@ -1,15 +1,13 @@
 
 import abc
 import random
-import pdb
 import warnings
 
 import gym
 import numpy as np
 import pandapower as pp
 
-from .penalties import (
-    voltage_violation, line_trafo_overload, apparent_overpower)
+from .penalties import (voltage_violation, line_trafo_overload)
 
 warnings.simplefilter('once')
 
