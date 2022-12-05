@@ -119,7 +119,8 @@ class SimpleOpfEnv(opf_env.OpfEnv):
         self.net.sgen['max_p_mw'] = self.net.sgen.p_mw * self.net.sgen.scaling
 
     def _calc_reward(self, net):
-        """ Objective: Maximize active power feed-in to external grid. """
+        """ Objective: Maximize active power feed-in to external grid, which is
+        equivalent to min losses because loads are constant. """
         return -(self.net.res_ext_grid.p_mw * self.active_power_costs).sum()
 
     def _calc_penalty(self):
