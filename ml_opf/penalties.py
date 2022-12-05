@@ -20,10 +20,12 @@ def voltage_violation(net, penalty_factor):
     # TODO: use vector instead
     penalty = (upper_violations + lower_violations) * penalty_factor
     if upper_violations > 0:
-        print('overvoltage: ', upper_violations * penalty_factor)
+        print('overvoltage: ', upper_violations *
+              penalty_factor, ' max u: ', max(voltages))
         # print(voltages)
     if lower_violations > 0:
-        print('undervoltage: ', lower_violations * penalty_factor)
+        print('undervoltage: ', lower_violations *
+              penalty_factor, ' min u: ', min(voltages))
         # print(voltages)
 
     return penalty
@@ -36,7 +38,8 @@ def line_trafo_overload(net, penalty_factor, unit_type: str):
     mask = loads > max_loads
     violations = (loads - max_loads)[mask].sum()
     if violations > 0:
-        print(f'{unit_type} overload: ', violations * penalty_factor)
+        print(f'{unit_type} overload: ', violations *
+              penalty_factor, 'max load: ', max(loads))
     return violations * penalty_factor
 
 
@@ -57,35 +60,6 @@ def ext_grid_overpower(net, penalty_factor, column='q_mvar'):
     if penalty > 0:
         print(f'External grid {column} violated: ', penalty)
     return penalty
-
-
-def apparent_overpower(net, penalty_factor, autocorrect=True):
-    power = (net.sgen.p_mw.to_numpy() ** 2 +
-             net.sgen.q_mvar.to_numpy() ** 2)**0.5
-    max_power = net.sgen.max_s_mva.to_numpy()
-
-    # TODO: 'res_sgen`instead?!
-
-    mask = power > max_power
-    violations = (power - max_power)[mask].sum()
-    # if violations > 0.00000:
-    #     print('apparent power over max: ', violations * penalty_factor)
-
-    if autocorrect:
-        correct_apparent_overpower(net)
-
-    return violations * penalty_factor
-
-
-def correct_apparent_overpower(net):
-    """ Apparent power is not automatically bounded by the agent. Invalid
-    actions need to be ignored, if necessary. Assumption: Always reduce
-    reactive power, if apparent power is too high. """
-    s_mva2 = net.sgen.max_s_mva.to_numpy() ** 2
-    p_mw2 = net.sgen.p_mw.to_numpy() ** 2
-    q_mvar_max = (s_mva2 - p_mw2)**0.5
-    new_values = np.minimum(net.sgen['q_mvar'].abs(), q_mvar_max)
-    net.sgen['q_mvar'] = np.sign(net.sgen['q_mvar']) * new_values
 
 
 def active_reactive_overpower(net, penalty_factor, column='p_mw',
