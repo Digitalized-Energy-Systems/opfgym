@@ -16,11 +16,29 @@ warnings.simplefilter('once')
 
 # TODO: Calc reward from pandapower cost function (for OPF comparison)
 
+
+# Use one week every two months as test data
+one_week = 7 * 24 * 4
+TEST_DATA = np.append(
+    np.arange(one_week),
+    [np.arange(9 * one_week, 10 * one_week),
+     np.arange(18 * one_week, 19 * one_week),
+     np.arange(27 * one_week, 28 * one_week),
+     np.arange(36 * one_week, 37 * one_week),
+     np.arange(45 * one_week, 46 * one_week)]
+)
+
+
 class OpfEnv(gym.Env, abc.ABC):
     def __init__(self, u_penalty=300, overload_penalty=2, ext_overpower_penalty=100,
                  apparent_power_penalty=500, active_power_penalty=100,
-                 vector_reward=False, single_step=True, bus_wise_obs=False,  # TODO
-                 use_time_obs=True, seed=None):
+                 train_test_split=False,
+                 vector_reward=False, single_step=True,
+                 bus_wise_obs=False,  # TODO: What was this about?
+                 autocorrect_prio='p_mw',
+                 pf_for_obs=None, use_time_obs=True, seed=None):
+
+        self.train_test_split = train_test_split
 
         self.use_time_obs = use_time_obs
         self.observation_space = get_obs_space(
@@ -39,19 +57,22 @@ class OpfEnv(gym.Env, abc.ABC):
         self.active_power_penalty = active_power_penalty
         self.ext_overpower_penalty = ext_overpower_penalty
 
+        self.priority = autocorrect_prio
+
         self.single_step = single_step  # TODO: Multi-step episodes not implemented yet
 
         # Full state of the system (available in training, but not in testing)
         self.state = None  # TODO: Not implemented yet
-
         self.test = False
 
         # Is a powerflow calculation required to get new observations in reset?
-        self.res_for_obs = False
-        for unit_type, _, _ in self.obs_keys:
-            if 'res_' in unit_type:
-                self.res_for_obs = True
-                break
+        self.pf_for_obs = pf_for_obs
+        if pf_for_obs is None:
+            # Automatic checking
+            for unit_type, _, _ in self.obs_keys:
+                if 'res_' in unit_type:
+                    self.pf_for_obs = True
+                    break
 
     @abc.abstractmethod
     def _calc_reward(self, net):
@@ -59,28 +80,46 @@ class OpfEnv(gym.Env, abc.ABC):
 
     def reset(self, step=None):
         self._sampling(step)
-        if self.res_for_obs is True:
+        if self.pf_for_obs is True:
             success = self._run_pf()
             if not success:
                 print('Failed powerflow calculcation in reset. Try again!')
                 return self.reset()
-        return self._get_obs()
+        return self._get_obs(self.obs_keys, self.use_time_obs)
 
     def step(self, action):
         assert not np.isnan(action).any()
+        info = {}
+
         self._apply_actions(action)
+        self._autocorrect_apparent_power(self.priority)
         success = self._run_pf()
+
+        if not success:
+            # Something went seriously wrong! Find out what!
+            # Maybe NAN in power setpoints?!
+            # Maybe simply catch this with a strong negative reward?!
+            import pdb
+            pdb.set_trace()
+
         reward = self._calc_reward(self.net)
 
         if self.single_step:
             done = True
         else:
-            raise NotImplementedError
+            if random.random() < 0.02:  # TODO! Better termination criterion
+                done = True  # TODO!
+                info['TimeLimit.truncated'] = True
+            else:
+                done = not self._sampling(step=self.current_step + 1)
 
-        obs = self._get_obs()
+        obs = self._get_obs(self.obs_keys, self.use_time_obs)
+        if np.isnan(obs).any():
+            import pdb
+            pdb.set_trace()
         assert not np.isnan(obs).any()
 
-        info = {'penalty': self._calc_penalty()}
+        info['penalty'] = self._calc_penalty()
 
         if not self.vector_reward:
             reward += sum(info['penalty'])
@@ -89,7 +128,7 @@ class OpfEnv(gym.Env, abc.ABC):
             reward = np.append(reward, info['penalty'])
         return obs, reward, done, info
 
-    def _apply_actions(self, action):
+    def _apply_actions(self, action, autocorrect=False):
         """ Apply agent actions to the power system at hand. """
         counter = 0
         # ignore invalid actions
@@ -115,10 +154,30 @@ class OpfEnv(gym.Env, abc.ABC):
             # Scaling sometimes not existing -> TODO: maybe catch this once in init
 
             self.net[unit_type][actuator].loc[idxs] = new_values
+
             counter += len(idxs)
 
         if counter != len(action):
             warnings.warn('More actions than action keys!')
+
+    def _autocorrect_apparent_power(self, priority='p_mw'):
+        """ Autocorrect to maximum apparent power if necessary. Relevant for
+        sgens, loads, and storages """
+        not_prio = 'p_mw' if priority == 'q_mvar' else 'q_mvar'
+        for unit_type in ('sgen', 'load', 'storage'):
+            df = self.net[unit_type]
+            if 'max_s_mva' in df.columns:
+                s_mva2 = df.max_s_mva.to_numpy() ** 2
+                values2 = (df[priority] * df.scaling).to_numpy() ** 2
+                # Make sure to prevent negative values for sqare root
+                max_values = np.maximum(s_mva2 - values2, 0)**0.5 / df.scaling
+                # Reduce non-priority power column
+                self.net[unit_type][not_prio] = np.sign(df[not_prio]) * \
+                    np.minimum(df[not_prio].abs(), max_values)
+
+            if np.isnan(df['p_mw']).any():
+                import pdb
+                pdb.set_trace()
 
     def _run_pf(self):
         try:
@@ -159,15 +218,37 @@ class OpfEnv(gym.Env, abc.ABC):
         r = np.random.uniform(low, high, size=(len(idxs),))
         self.net[unit_type][column].loc[idxs] = r
 
-    def _set_simbench_state(self, step: int=None, noise_factor=0.1,
-                            noise_distribution='uniform'):
+    def _set_simbench_state(self, step: int=None, test=False,
+                            noise_factor=0.1, noise_distribution='uniform'):
         """ Standard pre-implemented method to sample a random state from the
         simbench time-series data and set that state.
         Works only for simbench systems!
         """
+
+        # Use one week every two months as test data (12%)
+        # TODO
+
         if step is None:
             total_n_steps = len(self.profiles[('load', 'q_mvar')])
-            step = random.randint(0, total_n_steps - 1)
+            while True:
+                step = random.randint(0, total_n_steps - 1)
+                if test is False:
+                    if self.train_test_split and (
+                            step in TEST_DATA or step + 20 in TEST_DATA):
+                        # Do not sample too close to test data range
+                        continue
+                    break
+                elif test is True:
+                    # TODO
+                    raise NotImplementedError
+
+        if self.train_test_split and step in TEST_DATA:
+            # Next step would be test data -> end of episode
+            return False
+
+        if step > len(self.profiles[('load', 'q_mvar')]) - 1:
+            # End of time series data
+            return False
 
         self.current_step = step
         # TODO: Consider some test steps that do not get sampled!
@@ -196,11 +277,13 @@ class OpfEnv(gym.Env, abc.ABC):
 
             self.net[unit_type].loc[:, actuator] = new_values
 
-    def _get_obs(self):
-        obss = [(self.net[unit_type][column].loc[idxs].to_numpy())
-                for unit_type, column, idxs in self.obs_keys]
+        return True
 
-        if self.use_time_obs:
+    def _get_obs(self, obs_keys, use_time_obs):
+        obss = [(self.net[unit_type][column].loc[idxs].to_numpy())
+                for unit_type, column, idxs in obs_keys]
+
+        if use_time_obs:
             obss = [self._get_time_observation()] + obss
         return np.concatenate(obss)
 
