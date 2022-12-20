@@ -101,23 +101,20 @@ class OpfEnv(gym.Env, abc.ABC):
             pdb.set_trace()
 
         reward = self._calc_reward(self.net)
+        info['penalty'] = self._calc_penalty()
 
+        done = not self._sampling(step=self.current_step + 1)
         if self.single_step:
             done = True
-        else:
-            if random.random() < 0.02:  # TODO! Better termination criterion
-                done = True  # TODO!
-                info['TimeLimit.truncated'] = True
-            else:
-                done = not self._sampling(step=self.current_step + 1)
+        elif random.random() < 0.02:  # TODO! Better termination criterion
+            done = True  # TODO!
+            info['TimeLimit.truncated'] = True
 
         obs = self._get_obs(self.obs_keys, self.use_time_obs)
         if np.isnan(obs).any():
             import pdb
             pdb.set_trace()
         assert not np.isnan(obs).any()
-
-        info['penalty'] = self._calc_penalty()
 
         if not self.vector_reward:
             reward += sum(info['penalty'])
@@ -182,6 +179,7 @@ class OpfEnv(gym.Env, abc.ABC):
             pp.runpp(self.net,
                      voltage_depend_loads=False,
                      enforce_q_lims=True)
+
         except pp.powerflow.LoadflowNotConverged:
             print('Powerflow not converged!!!')
             return False
@@ -357,14 +355,10 @@ class OpfEnv(gym.Env, abc.ABC):
         return True
 
 
-def get_obs_space(net, obs_keys: list, use_time_obs: bool, seed: int):
+def get_obs_space(net, obs_keys: list, use_time_obs: bool, seed: int,
+                  last_n_obs: int=1):
     """ Get observation space from the constraints of the power network. """
     lows, highs = [], []
-
-    if use_time_obs:
-        # Time is always given as observation of lenght 6 in range [-1, 1]
-        lows.append(np.array([-1] * 6))
-        highs.append(np.array([1] * 6))
 
     for unit_type, column, idxs in obs_keys:
         if 'res_' in unit_type:
@@ -375,14 +369,23 @@ def get_obs_space(net, obs_keys: list, use_time_obs: bool, seed: int):
                 # Constraints need to remain scaled
                 raise AttributeError
 
-            lows.append((net[unit_type][f'min_{column}'].loc[idxs]
-                         / net[unit_type].scaling.loc[idxs]).to_numpy())
-            highs.append((net[unit_type][f'max_{column}'].loc[idxs]
-                          / net[unit_type].scaling.loc[idxs]).to_numpy())
+            for _ in range(last_n_obs):
+                lows.append((net[unit_type][f'min_{column}'].loc[idxs]
+                             / net[unit_type].scaling.loc[idxs]).to_numpy())
+                highs.append((net[unit_type][f'max_{column}'].loc[idxs]
+                              / net[unit_type].scaling.loc[idxs]).to_numpy())
         except AttributeError:
             print(f'Scaling for {unit_type} not defined: assume scaling=1')
-            lows.append(net[unit_type][f'min_{column}'].loc[idxs].to_numpy())
-            highs.append(net[unit_type][f'max_{column}'].loc[idxs].to_numpy())
+            for _ in range(last_n_obs):
+                lows.append(
+                    net[unit_type][f'min_{column}'].loc[idxs].to_numpy())
+                highs.append(
+                    net[unit_type][f'max_{column}'].loc[idxs].to_numpy())
+
+    if use_time_obs:
+        # Time is always given as observation of lenght 6 in range [-1, 1]
+        lows.append(np.array([-1] * 6))
+        highs.append(np.array([1] * 6))
 
     return gym.spaces.Box(
         np.concatenate(lows, axis=0), np.concatenate(highs, axis=0), seed=seed)
