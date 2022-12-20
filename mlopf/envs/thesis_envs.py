@@ -457,7 +457,8 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         return -(np.array(p_mw) * prices).sum() / 10000
 
 
-def build_net(simbench_network_name, gen_scaling=1.0, load_scaling=2.0):
+def build_net(simbench_network_name, gen_scaling=1.0, load_scaling=2.0,
+              voltage_band=0.05, max_loading=80):
     """ Init and return a simbench power network with standard configuration.
     """
 
@@ -472,11 +473,11 @@ def build_net(simbench_network_name, gen_scaling=1.0, load_scaling=2.0):
 
     # Set the system constraints
     # Define the voltage band of +-5%
-    net.bus['max_vm_pu'] = 1.05
-    net.bus['min_vm_pu'] = 0.95
+    net.bus['max_vm_pu'] = 1 + voltage_band
+    net.bus['min_vm_pu'] = 1 - voltage_band
     # Set maximum loading of lines and transformers
-    net.line['max_loading_percent'] = 80
-    net.trafo['max_loading_percent'] = 80
+    net.line['max_loading_percent'] = max_loading
+    net.trafo['max_loading_percent'] = max_loading
 
     assert not sb.profiles_are_missing(net)
     profiles = sb.get_absolute_values(net,
