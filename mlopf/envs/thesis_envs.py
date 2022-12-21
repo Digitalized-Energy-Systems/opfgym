@@ -482,6 +482,8 @@ def build_net(simbench_network_name, gen_scaling=1.0, load_scaling=2.0,
     assert not sb.profiles_are_missing(net)
     profiles = sb.get_absolute_values(net,
                                       profiles_instead_of_study_cases=True)
+    # Fix strange error in simbench: Sometimes negative active power values
+    profiles[('sgen', 'p_mw')][profiles[('sgen', 'p_mw')] < 0.0] = 0.0
 
     return net, profiles
 
