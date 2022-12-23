@@ -126,8 +126,10 @@ class OpfEnv(gym.Env, abc.ABC):
     def _apply_actions(self, action, autocorrect=False):
         """ Apply agent actions to the power system at hand. """
         counter = 0
-        # ignore invalid actions
-        action = np.clip(action, self.action_space.low, self.action_space.high)
+        # Clip invalid actions
+        action = np.clip(action,
+                         self.action_space.low[:len(action)],
+                         self.action_space.high[:len(action)])
         for unit_type, actuator, idxs in self.act_keys:
             df = self.net[unit_type]
             a = action[counter:counter + len(idxs)]
