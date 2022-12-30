@@ -362,6 +362,12 @@ def get_obs_space(net, obs_keys: list, use_time_obs: bool, seed: int,
     """ Get observation space from the constraints of the power network. """
     lows, highs = [], []
 
+    if use_time_obs:
+        # Time is always given as observation of lenght 6 in range [-1, 1]
+        # at the beginning of the observation!
+        lows.append(np.array([-1] * 6))
+        highs.append(np.array([1] * 6))
+
     for unit_type, column, idxs in obs_keys:
         if 'res_' in unit_type:
             # The constraints are never defined in the results table
@@ -383,11 +389,6 @@ def get_obs_space(net, obs_keys: list, use_time_obs: bool, seed: int,
                     net[unit_type][f'min_{column}'].loc[idxs].to_numpy())
                 highs.append(
                     net[unit_type][f'max_{column}'].loc[idxs].to_numpy())
-
-    if use_time_obs:
-        # Time is always given as observation of lenght 6 in range [-1, 1]
-        lows.append(np.array([-1] * 6))
-        highs.append(np.array([1] * 6))
 
     return gym.spaces.Box(
         np.concatenate(lows, axis=0), np.concatenate(highs, axis=0), seed=seed)
