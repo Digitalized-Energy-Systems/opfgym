@@ -32,9 +32,9 @@ class OpfEnv(gym.Env, abc.ABC):
                  apparent_power_penalty=500, active_power_penalty=100,
                  train_test_split=False,
                  vector_reward=False, single_step=True,
-                 bus_wise_obs=False,  # TODO: What was this about?
+                 bus_wise_obs=False,  # TODO: Idea to put obs together bus-wise instead of unit-wise
                  autocorrect_prio='p_mw',
-                 pf_for_obs=None, use_time_obs=True, seed=None):
+                 pf_for_obs=None, use_time_obs=False, seed=None):
 
         self.train_test_split = train_test_split
 
@@ -103,11 +103,14 @@ class OpfEnv(gym.Env, abc.ABC):
         reward = self._calc_reward(self.net)
         info['penalty'] = self._calc_penalty()
 
-        done = not self._sampling(step=self.current_step + 1)
         if self.single_step:
             done = True
         elif random.random() < 0.02:  # TODO! Better termination criterion
-            done = True  # TODO!
+            self._sampling(step=self.current_step + 1)
+            done = True  # TODO
+            info['TimeLimit.truncated'] = True
+        else:
+            done = not self._sampling(step=self.current_step + 1)
             info['TimeLimit.truncated'] = True
 
         obs = self._get_obs(self.obs_keys, self.use_time_obs)
@@ -121,6 +124,7 @@ class OpfEnv(gym.Env, abc.ABC):
         else:
             # Reward as a vector
             reward = np.append(reward, info['penalty'])
+
         return obs, reward, done, info
 
     def _apply_actions(self, action, autocorrect=False):
@@ -171,10 +175,6 @@ class OpfEnv(gym.Env, abc.ABC):
                 # Reduce non-priority power column
                 self.net[unit_type][not_prio] = np.sign(df[not_prio]) * \
                     np.minimum(df[not_prio].abs(), max_values)
-
-            if np.isnan(df['p_mw']).any():
-                import pdb
-                pdb.set_trace()
 
     def _run_pf(self):
         try:
@@ -312,22 +312,44 @@ class OpfEnv(gym.Env, abc.ABC):
                   for unit_type, column, idxs in self.act_keys]
         return np.concatenate(action)
 
-    def test_step(self, action):
-        """ TODO Use some custom data from different distribution here. For
-        example some subset of the simbench data that is not used in training """
-        obs, reward, done, info = self.step(action)
+    # def test_step(self, action):
+    #     """ TODO Use some custom data from different distribution here. For
+    #     example some subset of the simbench data that is not used in training """
+    #     obs, reward, done, info = self.step(action)
 
-        # TODO: Automatically compare with OPF here?
+    #     # TODO: Automatically compare with OPF here?
 
-        # Don't consider the penalty, to compare how good objective was learned
-        print('Test Penalty: ', info['penalty'])
+    #     print('Test Penalty: ', info['penalty'])
+    #     print('Current actions: ', self.get_current_actions())
+    #     return obs, reward, done, info
+
+    #     # Don't consider the penalty, to compare how good objective was learned?
+    #     # if self.vector_reward:
+    #     #     # Only return objective reward, not penalty reward
+    #     #     return obs, reward[0], done, info
+    #     # else:
+    #     #     # Remove previously added penalty
+    #     #     return obs, reward - sum(info['penalty']), done, info
+
+    def compute_error(self, action):
+        """ Return error compared to optimal state of the system. """
+
+        # Perform (non-optimal) action
+        self._apply_actions(action)
+        self._autocorrect_apparent_power(self.priority)
+        success = self._run_pf()
+
+        reward = self._calc_reward(self.net)
+        penalty = self._calc_penalty()
+
+        obj = sum(np.append(reward, penalty))
+
+        print('Test Penalty: ', penalty)
         print('Current actions: ', self.get_current_actions())
-        if self.vector_reward:
-            # Only return objective reward, not penalty reward
-            return obs, reward[0], done, info
-        else:
-            # Remove previously added penalty
-            return obs, reward - sum(info['penalty']), done, info
+
+        opt_obj = self.baseline_reward()
+
+        return opt_obj, obj
 
     def baseline_reward(self):
         """ Compute some baseline to compare training performance with. In this
@@ -341,11 +363,7 @@ class OpfEnv(gym.Env, abc.ABC):
         print('Base Penalty: ', penalty)
         print('Baseline actions: ', self.get_current_actions())
 
-        if not self.vector_reward:
-            return sum(np.append(reward, penalty))
-        else:
-            # Reward as a vector
-            return np.append(reward, penalty)
+        return sum(np.append(reward, penalty))
 
     def _optimal_power_flow(self):
         try:
@@ -365,30 +383,40 @@ def get_obs_space(net, obs_keys: list, use_time_obs: bool, seed: int,
     if use_time_obs:
         # Time is always given as observation of lenght 6 in range [-1, 1]
         # at the beginning of the observation!
-        lows.append(np.array([-1] * 6))
-        highs.append(np.array([1] * 6))
+        lows.append(-np.ones(6))
+        highs.append(np.ones(6))
 
     for unit_type, column, idxs in obs_keys:
         if 'res_' in unit_type:
             # The constraints are never defined in the results table
             unit_type = unit_type[4:]
+
+        try:
+            l = net[unit_type][f'min_{column}'].loc[idxs].to_numpy()
+            h = net[unit_type][f'max_{column}'].loc[idxs].to_numpy()
+        except KeyError:
+            # Special case: trafos and lines (have minimum constraint of zero)
+            l = np.zeros(len(idxs))
+            h = net[unit_type][f'max_{column}'].loc[idxs].to_numpy() * 1.5
+
+        # Special case: voltages
+        if column == 'vm_pu' or unit_type == 'ext_grid':
+            diff = h - l
+            l = l - diff / 2
+            h = h + diff / 2
+
         try:
             if 'min' in column or 'max' in column:
                 # Constraints need to remain scaled
                 raise AttributeError
-
             for _ in range(last_n_obs):
-                lows.append((net[unit_type][f'min_{column}'].loc[idxs]
-                             / net[unit_type].scaling.loc[idxs]).to_numpy())
-                highs.append((net[unit_type][f'max_{column}'].loc[idxs]
-                              / net[unit_type].scaling.loc[idxs]).to_numpy())
+                lows.append(l / net[unit_type].scaling.loc[idxs].to_numpy())
+                highs.append(h / net[unit_type].scaling.loc[idxs].to_numpy())
         except AttributeError:
             print(f'Scaling for {unit_type} not defined: assume scaling=1')
             for _ in range(last_n_obs):
-                lows.append(
-                    net[unit_type][f'min_{column}'].loc[idxs].to_numpy())
-                highs.append(
-                    net[unit_type][f'max_{column}'].loc[idxs].to_numpy())
+                lows.append(l)
+                highs.append(h)
 
     return gym.spaces.Box(
         np.concatenate(lows, axis=0), np.concatenate(highs, axis=0), seed=seed)
