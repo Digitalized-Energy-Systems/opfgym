@@ -267,12 +267,12 @@ class QMarketEnv(opf_env.OpfEnv):
     def _calc_reward(self, net):
         """ Consider quadratic reactive power costs on the market and linear
         active costs for losses in the system. """
-        q_costs = (net.poly_cost[net.poly_cost.element.isin(net.sgen.index)]['cq2_eur_per_mvar2']
-                   * net.res_sgen['q_mvar']**2).sum()
-        if (self.net.poly_cost.et == 'ext_grid').any():
-            mask = self.net.poly_cost.et == 'ext_grid'
-            prices = self.net.poly_cost.cq2_eur_per_mvar2[mask].to_numpy()
-            q_mvar = self.net.res_ext_grid.q_mvar.to_numpy()
+        q_costs = (net.poly_cost[net.poly_cost.et == 'sgen'].cq2_eur_per_mvar2
+                   * net.res_sgen.q_mvar.to_numpy()**2).sum()
+        if (net.poly_cost.et == 'ext_grid').any():
+            mask = net.poly_cost.et == 'ext_grid'
+            prices = net.poly_cost.cq2_eur_per_mvar2[mask].to_numpy()
+            q_mvar = net.res_ext_grid.q_mvar.to_numpy()
             q_costs += sum(prices * q_mvar**2)
 
         # Grid operator also wants to minimize network active power losses
@@ -306,7 +306,9 @@ class EcoDispatchEnv(opf_env.OpfEnv):
 
     def __init__(self, simbench_network_name='1-HV-urban--0-sw', min_power=0,
                  n_agents=None, gen_scaling=1.0, load_scaling=1.5, u_penalty=300,
-                 overload_penalty=10, max_price=600, seed=None, *args, **kwargs):
+                 overload_penalty=10, ext_overpower_penalty=0.01, max_price=600,
+                 seed=None,
+                 *args, **kwargs):
         # Economic dispatch normally done in EHV (too big! use HV instead!)
         # EHV option: '1-EHV-mixed--0-sw' (340 generators!!!)
         # HV options: '1-HV-urban--0-sw' and '1-HV-mixed--0-sw'
@@ -342,7 +344,9 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         # TODO: Define constraints explicitly?! (active power min/max not default!)
 
         super().__init__(u_penalty=u_penalty,
-                         overload_penalty=overload_penalty, seed=seed,
+                         overload_penalty=overload_penalty,
+                         ext_overpower_penalty=ext_overpower_penalty,
+                         seed=seed,
                          *args, **kwargs)
 
     def _set_action_space(self, seed):
@@ -387,6 +391,8 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         net.load.drop(
             net.load[net.load.min_p_mw == net.load.max_p_mw].index, inplace=True)
 
+        net.ext_grid['min_p_mw'] = 0
+
         # TODO: Also for gen
         #     axis=0) * net['sgen']['scaling']
         # net.sgen['min_max_p_mw'] = 0
@@ -420,10 +426,11 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         #             np.argsort(net.sgen.max_p_mw)[::-1][:n_agents])
 
         # assert (len(self.sgen_idxs) + len(self.gen_idxs)) > 0, 'No generators!'
+
         # Add price params to the network (as poly cost so that the OPF works)
         # Note that the external grids are seen as normal power plants
-        # for idx in net.ext_grid.index:
-        #     pp.create_poly_cost(net, idx, 'ext_grid', cp1_eur_per_mw=0)
+        for idx in net.ext_grid.index:
+            pp.create_poly_cost(net, idx, 'ext_grid', cp1_eur_per_mw=0)
         for idx in self.sgen_idxs:
             pp.create_poly_cost(net, idx, 'sgen', cp1_eur_per_mw=0)
         for idx in self.gen_idxs:
@@ -444,10 +451,11 @@ class EcoDispatchEnv(opf_env.OpfEnv):
 
     def _calc_reward(self, net):
         """ Minimize costs for active power in the system. """
-        p_mw = net.res_sgen.p_mw.loc[self.sgen_idxs]
-        p_mw = p_mw.append(net.res_gen.p_mw.loc[self.gen_idxs])
-        # TODO: Maybe make sure that p_mw of ext_grid is not negative (selling!)
-        # p_mw = p_mw.append(net.res_ext_grid.p_mw)
+        p_mw = net.res_ext_grid['p_mw'].to_numpy().copy()
+        p_mw[p_mw < 0] = 0.0
+        p_mw = np.append(
+            p_mw, net.res_sgen.p_mw.loc[self.sgen_idxs].to_numpy())
+        p_mw = np.append(p_mw, net.res_gen.p_mw.loc[self.gen_idxs].to_numpy())
 
         prices = np.array(net.poly_cost['cp1_eur_per_mw'])
 
@@ -455,6 +463,14 @@ class EcoDispatchEnv(opf_env.OpfEnv):
 
         # /10000, because too high otherwise
         return -(np.array(p_mw) * prices).sum() / 10000
+
+    def _calc_penalty(self):
+        penalty = super()._calc_penalty()
+        penalty.append(-ext_grid_overpower(
+            self.net,
+            penalty_factor=self.ext_overpower_penalty,
+            column='p_mw'))
+        return penalty
 
 
 def build_net(simbench_network_name, gen_scaling=1.0, load_scaling=2.0,
