@@ -21,8 +21,8 @@ setup(
         'scipy',
         'numba',
         'matplotlib',
-        'pandapower',
+        'pandapower==2.2.2',
         'gym',
-        'simbench',
+        'simbench==1.2.0',
     ],
 )
