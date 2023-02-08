@@ -34,7 +34,7 @@ class OpfEnv(gym.Env, abc.ABC):
                  vector_reward=False, single_step=True,
                  # TODO: Idea to put obs together bus-wise instead of unit-wise
                  bus_wise_obs=False,
-                 # TODO Idea: add voltages and loadings to obs
+                 # Idea: add voltages and loadings to obs
                  full_obs=False,
                  autocorrect_prio='p_mw',
                  pf_for_obs=None, use_time_obs=False, seed=None):
@@ -42,6 +42,13 @@ class OpfEnv(gym.Env, abc.ABC):
         self.train_test_split = train_test_split
 
         self.use_time_obs = use_time_obs
+
+        if full_obs:
+            self.obs_keys.extend([
+                ('res_bus', 'vm_pu', self.net.bus.index),
+                ('res_line', 'loading_percent', self.net.line.index),
+                ('res_trafo', 'loading_percent', self.net.trafo.index)])
+
         self.observation_space = get_obs_space(
             self.net, self.obs_keys, use_time_obs, seed)
 
@@ -81,6 +88,10 @@ class OpfEnv(gym.Env, abc.ABC):
 
     def reset(self, step=None):
         self._sampling(step)
+        # Reset all actions to default values
+        default_act = (self.action_space.low + self.action_space.high) / 2
+        self._apply_actions(default_act)
+
         if self.pf_for_obs is True:
             success = self._run_pf()
             if not success:
