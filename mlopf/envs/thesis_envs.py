@@ -1,24 +1,29 @@
 """ Collection of Reinforcement Learning environments for bachelor and master
 thesis experiments. The goal is always to train an agent to learn some kind
-of Optimal Power Flow (OPF) calculation. """
+of Optimal Power Flow (OPF) calculation.
+All these envs can also be solved with
+the pandapower OPF to calculate the performance of the DRL agents.
+
+"""
 
 import gym
 import numpy as np
 import pandapower as pp
 import simbench as sb
 
-from .. import opf_env
-from ..objectives import (min_p_loss, add_min_loss_costs)
-from ..penalties import (ext_grid_overpower, active_reactive_overpower)
+from mlopf import opf_env
+from mlopf.objectives import min_p_loss
+from mlopf.penalties import (ext_grid_overpower, active_reactive_overpower)
 
 # TODO: Create functions for recurring code (or method in upper class?!)
+# TODO: Maybe add one with controllable loads (solvable) and/or storage systems (not solvable with OPF!)
 
 
 class SimpleOpfEnv(opf_env.OpfEnv):
     """
     Standard Optimal Power Flow environment: The grid operator learns to set
     active and reactive power of all generators in the system to maximize
-    active power feed-in to the external grid. (loss min inherently included)
+    active power feed-in to the external grid.
     Since this environment has lots of actuators and a
     simple objective function, it is well suited to investigate constraint
     satisfaction.
@@ -27,7 +32,7 @@ class SimpleOpfEnv(opf_env.OpfEnv):
 
     Sensors: active+reactive power of all loads; max active power of all gens
 
-    Objective: minimize losses (TODO Add Multiple choosable objectives?)
+    Objective: maximize active power feed-in to external grid
 
     Constraints: Voltage band, line/trafo load, min/max reactive power, zero
         reactive power flow over slack bus
@@ -39,7 +44,6 @@ class SimpleOpfEnv(opf_env.OpfEnv):
 
         # Define the RL problem
         # See all load power values, sgen max active power...
-        # TODO: Add current time as observation! (see attack paper)
         self.obs_keys = [('sgen', 'max_p_mw', self.net['sgen'].index),
                          ('load', 'p_mw', self.net['load'].index),
                          ('load', 'q_mvar', self.net['load'].index)]
@@ -102,8 +106,9 @@ class SimpleOpfEnv(opf_env.OpfEnv):
         net.ext_grid['max_q_mvar'] = 0.01
         net.ext_grid['min_q_mvar'] = -0.01
 
-        # Objective: Maximize active power feed-in to external grid
-        assert len(net.gen) == 0  # TODO: Maybe add gens here, if necessary
+        # OPF objective: Maximize active power feed-in to external grid
+        # TODO: Maybe allow for gens here, if necessary
+        assert len(net.gen) == 0
         self.active_power_costs = 30
         for idx in net['ext_grid'].index:
             pp.create_poly_cost(net, idx, 'ext_grid',
@@ -115,24 +120,18 @@ class SimpleOpfEnv(opf_env.OpfEnv):
         """ Assumption: Only simbench systems with timeseries data are used. """
         self._set_simbench_state(step)
 
-        # Set constraints of current time steps (also for OPF)
+        # Set constraints of current time step (also required for OPF)
         self.net.sgen['max_p_mw'] = self.net.sgen.p_mw * self.net.sgen.scaling
 
     def _calc_reward(self, net):
-        """ Objective: Maximize active power feed-in to external grid, which is
-        equivalent to min losses because loads are constant. """
+        """ Objective: Maximize active power feed-in to external grid. """
         return -(self.net.res_ext_grid.p_mw * self.active_power_costs).sum()
 
     def _calc_penalty(self):
         penalty = super()._calc_penalty()
-        # Do not allow for high power exchange with external grid
+        # Do not allow for high reactive power exchange with external grid
         penalty.append(-ext_grid_overpower(
             self.net, self.ext_overpower_penalty, 'q_mvar'))
-
-        # Do not allow higher active power feed-in than possible
-        # (not relevant for reactive power because max_q_mvar=const)
-        penalty.append(-active_reactive_overpower(
-            self.net, self.apparent_power_penalty, column='p_mw'))
 
         return penalty
 
