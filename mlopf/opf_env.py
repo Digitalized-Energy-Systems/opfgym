@@ -32,7 +32,10 @@ class OpfEnv(gym.Env, abc.ABC):
                  apparent_power_penalty=500, active_power_penalty=100,
                  train_test_split=False,
                  vector_reward=False, single_step=True,
-                 bus_wise_obs=False,  # TODO: Idea to put obs together bus-wise instead of unit-wise
+                 # TODO: Idea to put obs together bus-wise instead of unit-wise
+                 bus_wise_obs=False,
+                 # TODO Idea: add voltages and loadings to obs
+                 full_obs=False,
                  autocorrect_prio='p_mw',
                  pf_for_obs=None, use_time_obs=False, seed=None):
 
@@ -142,6 +145,7 @@ class OpfEnv(gym.Env, abc.ABC):
             # TODO: maybe use action wrapper instead?!
             max_action = df[f'max_max_{actuator}'].loc[idxs]
             new_values = a * max_action
+
             # Autocorrect impossible setpoints (however: no penalties this way)
             if f'max_{actuator}' in df.columns:
                 mask = new_values > df[f'max_{actuator}'].loc[idxs]
@@ -199,7 +203,10 @@ class OpfEnv(gym.Env, abc.ABC):
             self.net, self.overload_penalty, 'trafo'))
         return penalty
 
-    def _sampling(self, sample_keys=None):
+    def _sampling(self, *args, **kwargs):
+        self._set_simbench_state(*args, **kwargs)
+
+    def _sample_uniform(self, sample_keys=None):
         """ Standard pre-implemented method to set power system to a new random
         state from uniform sampling. Uses the observation space as basis.
         Requirement: For every observations there must be "min_{obs}" and
@@ -308,7 +315,7 @@ class OpfEnv(gym.Env, abc.ABC):
     def get_current_actions(self):
         # Scaling not considered here yet
         action = [(self.net[f'res_{unit_type}'][column].loc[idxs]
-                   / self.net[unit_type][f'max_{column}'].loc[idxs])
+                   / self.net[unit_type][f'max_max_{column}'].loc[idxs])
                   for unit_type, column, idxs in self.act_keys]
         return np.concatenate(action)
 
@@ -338,6 +345,9 @@ class OpfEnv(gym.Env, abc.ABC):
         self._apply_actions(action)
         self._autocorrect_apparent_power(self.priority)
         success = self._run_pf()
+
+        if not success:
+            return np.nan, np.nan
 
         reward = self._calc_reward(self.net)
         penalty = self._calc_penalty()
