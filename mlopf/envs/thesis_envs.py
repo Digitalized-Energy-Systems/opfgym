@@ -116,9 +116,9 @@ class SimpleOpfEnv(opf_env.OpfEnv):
 
         return net
 
-    def _sampling(self, step=None):
+    def _sampling(self, step=None, test=False):
         """ Assumption: Only simbench systems with timeseries data are used. """
-        self._set_simbench_state(step)
+        self._set_simbench_state(step, test)
 
         # Set constraints of current time step (also required for OPF)
         self.net.sgen['max_p_mw'] = self.net.sgen.p_mw * self.net.sgen.scaling
@@ -245,9 +245,9 @@ class QMarketEnv(opf_env.OpfEnv):
 
         return net
 
-    def _sampling(self, step=None):
+    def _sampling(self, step=None, test=False):
         """ Assumption: Only simbench systems with timeseries data are used. """
-        self._set_simbench_state(step)
+        self._set_simbench_state(step, test)
 
         # Sample prices uniformly from min/max range
         self._sample_from_range(  # TODO: Are the indexes here correct??
@@ -440,9 +440,9 @@ class EcoDispatchEnv(opf_env.OpfEnv):
 
         return net
 
-    def _sampling(self, step=None):
+    def _sampling(self, step=None, test=False):
         """ Assumption: Only simbench systems with timeseries data are used. """
-        self._set_simbench_state(step)
+        self._set_simbench_state(step, test)
 
         # Sample prices uniformly from min/max range for gens/sgens/ext_grids
         self._sample_from_range(

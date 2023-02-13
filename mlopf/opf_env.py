@@ -15,7 +15,7 @@ warnings.simplefilter('once')
 # TODO: Calc reward from pandapower cost function (for OPF comparison)
 
 
-# Use one week every two months as test data
+# Use one week every two months as test data (about 11.5% of the data)
 one_week = 7 * 24 * 4
 TEST_DATA = np.append(
     np.arange(one_week),
@@ -86,8 +86,8 @@ class OpfEnv(gym.Env, abc.ABC):
     def _calc_reward(self, net):
         pass
 
-    def reset(self, step=None):
-        self._sampling(step)
+    def reset(self, step=None, test=False):
+        self._sampling(step, test)
         # Reset all actions to default values
         default_act = (self.action_space.low + self.action_space.high) / 2
         self._apply_actions(default_act)
@@ -99,7 +99,7 @@ class OpfEnv(gym.Env, abc.ABC):
                 return self.reset()
         return self._get_obs(self.obs_keys, self.use_time_obs)
 
-    def step(self, action):
+    def step(self, action, test=False):
         assert not np.isnan(action).any()
         info = {}
 
@@ -120,11 +120,11 @@ class OpfEnv(gym.Env, abc.ABC):
         if self.single_step:
             done = True
         elif random.random() < 0.02:  # TODO! Better termination criterion
-            self._sampling(step=self.current_step + 1)
+            self._sampling(step=self.current_step + 1, test=test)
             done = True  # TODO
             info['TimeLimit.truncated'] = True
         else:
-            done = not self._sampling(step=self.current_step + 1)
+            done = not self._sampling(step=self.current_step + 1, test=test)
             info['TimeLimit.truncated'] = True
 
         obs = self._get_obs(self.obs_keys, self.use_time_obs)
@@ -215,6 +215,7 @@ class OpfEnv(gym.Env, abc.ABC):
         return penalty
 
     def _sampling(self, *args, **kwargs):
+        """ Default method: Set random simbench state. """
         self._set_simbench_state(*args, **kwargs)
 
     def _sample_uniform(self, sample_keys=None):
@@ -241,22 +242,19 @@ class OpfEnv(gym.Env, abc.ABC):
         Works only for simbench systems!
         """
 
-        # Use one week every two months as test data (12%)
-        # TODO
-
         if step is None:
             total_n_steps = len(self.profiles[('load', 'q_mvar')])
-            while True:
-                step = random.randint(0, total_n_steps - 1)
-                if test is False:
+            if test is True:
+                step = np.random.choice(TEST_DATA)
+            else:
+                while True:
+                    step = random.randint(0, total_n_steps - 1)
                     if self.train_test_split and (
                             step in TEST_DATA or step + 20 in TEST_DATA):
                         # Do not sample too close to test data range
+                        # TODO: 'step + 20' is a bit too random
                         continue
                     break
-                elif test is True:
-                    # TODO
-                    raise NotImplementedError
 
         if self.train_test_split and step in TEST_DATA:
             # Next step would be test data -> end of episode
