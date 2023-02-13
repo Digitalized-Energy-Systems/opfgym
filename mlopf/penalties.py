@@ -19,14 +19,12 @@ def voltage_violation(net, penalty_factor):
     lower_violations = (min_voltages - voltages)[lower_mask].sum()
     # TODO: use vector instead
     penalty = (upper_violations + lower_violations) * penalty_factor
-    if upper_violations > 0:
-        print('overvoltage: ', upper_violations *
-              penalty_factor, ' max u: ', max(voltages))
-        # print(voltages)
-    if lower_violations > 0:
-        print('undervoltage: ', lower_violations *
-              penalty_factor, ' min u: ', min(voltages))
-        # print(voltages)
+    # if upper_violations > 0:
+    #     print('overvoltage: ', upper_violations *
+    #           penalty_factor, ' max u: ', max(voltages))
+    # if lower_violations > 0:
+    #     print('undervoltage: ', lower_violations *
+    #           penalty_factor, ' min u: ', min(voltages))
 
     return penalty
 
@@ -37,9 +35,9 @@ def line_trafo_overload(net, penalty_factor, unit_type: str):
 
     mask = loads > max_loads
     violations = (loads - max_loads)[mask].sum()
-    if violations > 0:
-        print(f'{unit_type} overload: ', violations *
-              penalty_factor, 'max load: ', max(loads))
+    # if violations > 0:
+    #     print(f'{unit_type} overload: ', violations *
+    #           penalty_factor, 'max load: ', max(loads))
     return violations * penalty_factor
 
 
@@ -57,8 +55,8 @@ def ext_grid_overpower(net, penalty_factor, column='q_mvar'):
     lower_violations = (min_power - power)[lower_mask].sum()
 
     penalty = (upper_violations + lower_violations) * penalty_factor
-    if penalty > 0:
-        print(f'External grid {column} violated: ', penalty)
+    # if penalty > 0:
+    #     print(f'External grid {column} violated: ', penalty)
     return penalty
 
 
@@ -68,8 +66,8 @@ def active_reactive_overpower(net, penalty_factor, column='p_mw',
     max_power = net.sgen[f'max_{column}'].to_numpy()
     mask = power > max_power
     violations = (power - max_power)[mask].sum()
-    if violations > 0:
-        print(f'{column} power over max: ', violations * penalty_factor)
+    # if violations > 0:
+    #     print(f'{column} power over max: ', violations * penalty_factor)
 
     if autocorrect:
         correct_active_reactive_overpower(net, column)
