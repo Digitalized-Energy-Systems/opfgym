@@ -28,18 +28,27 @@ TEST_DATA = np.append(
 
 
 class OpfEnv(gym.Env, abc.ABC):
-    def __init__(self, u_penalty=300, overload_penalty=2, ext_overpower_penalty=100,
-                 apparent_power_penalty=500, active_power_penalty=100,
+    def __init__(self, u_penalty=300,
+                 overload_penalty=2,
+                 ext_overpower_penalty=100,
+                 active_power_penalty=100,
                  train_test_split=False,
-                 vector_reward=False, single_step=True,
+                 vector_reward=False,
+                 single_step=True,
                  # TODO: Idea to put obs together bus-wise instead of unit-wise
                  bus_wise_obs=False,
-                 # Idea: add voltages and loadings to obs
                  full_obs=False,
                  autocorrect_prio='p_mw',
-                 pf_for_obs=None, use_time_obs=False, seed=None):
+                 pf_for_obs=None,
+                 use_time_obs=False,
+                 train_data='noisy_simbench',
+                 test_data='noisy_simbench',
+                 seed=None):
 
+        # Should be always True. Maybe only allow False for paper investigation
         self.train_test_split = train_test_split
+        self.train_data = train_data
+        self.test_data = test_data
 
         self.use_time_obs = use_time_obs
 
@@ -61,7 +70,6 @@ class OpfEnv(gym.Env, abc.ABC):
 
         self.u_penalty = u_penalty
         self.overload_penalty = overload_penalty
-        self.apparent_power_penalty = apparent_power_penalty
         self.active_power_penalty = active_power_penalty
         self.ext_overpower_penalty = ext_overpower_penalty
 
@@ -71,7 +79,6 @@ class OpfEnv(gym.Env, abc.ABC):
 
         # Full state of the system (available in training, but not in testing)
         self.state = None  # TODO: Not implemented yet
-        self.test = False
 
         # Is a powerflow calculation required to get new observations in reset?
         self.pf_for_obs = pf_for_obs
@@ -84,6 +91,7 @@ class OpfEnv(gym.Env, abc.ABC):
 
     @abc.abstractmethod
     def _calc_reward(self, net):
+        # TODO: Default: Compute costs from poly costs!
         pass
 
     def reset(self, step=None, test=False):
@@ -214,9 +222,20 @@ class OpfEnv(gym.Env, abc.ABC):
             self.net, self.overload_penalty, 'trafo'))
         return penalty
 
-    def _sampling(self, *args, **kwargs):
-        """ Default method: Set random simbench state. """
-        self._set_simbench_state(*args, **kwargs)
+    def _sampling(self, step, test, *args, **kwargs):
+        """ Default method: Set random and noisy simbench state. """
+        data_distr = self.test_data if test is True else self.train_data
+
+        # Maybe also allow different kinds of noise and similar! with `**sampling_params`?
+        if data_distr == 'noisy_simbench':
+            self._set_simbench_state(step, test, *args, **kwargs)
+        elif data_distr == 'simbench':
+            self._set_simbench_state(
+                step, test, noise_factor=0.0, *args, **kwargs)
+        elif data_distr == 'full_uniform':
+            self._sample_uniform()
+        elif data_distr == 'noisy_baseline':
+            raise NotImplementedError
 
     def _sample_uniform(self, sample_keys=None):
         """ Standard pre-implemented method to set power system to a new random
@@ -239,39 +258,37 @@ class OpfEnv(gym.Env, abc.ABC):
                             noise_factor=0.1, noise_distribution='uniform'):
         """ Standard pre-implemented method to sample a random state from the
         simbench time-series data and set that state.
+
         Works only for simbench systems!
         """
 
         if step is None:
             total_n_steps = len(self.profiles[('load', 'q_mvar')])
-            if test is True:
+            if test is True and self.train_test_split is True:
                 step = np.random.choice(TEST_DATA)
             else:
                 while True:
                     step = random.randint(0, total_n_steps - 1)
-                    if self.train_test_split and (
-                            step in TEST_DATA or step + 20 in TEST_DATA):
-                        # Do not sample too close to test data range
-                        # TODO: 'step + 20' is a bit too random
+                    if self.train_test_split and step in TEST_DATA:
                         continue
                     break
+        else:
+            if self.train_test_split and step in TEST_DATA:
+                # Next step would be test data -> end of episode
+                return False
 
-        if self.train_test_split and step in TEST_DATA:
-            # Next step would be test data -> end of episode
-            return False
-
-        if step > len(self.profiles[('load', 'q_mvar')]) - 1:
-            # End of time series data
-            return False
+            if step > len(self.profiles[('load', 'q_mvar')]) - 1:
+                # End of time series data
+                return False
 
         self.current_step = step
-        # TODO: Consider some test steps that do not get sampled!
+
         for type_act in self.profiles.keys():
             if not self.profiles[type_act].shape[1]:
                 continue
             unit_type, actuator = type_act
-
             data = self.profiles[type_act].loc[step, self.net[unit_type].index]
+
             # Add some noise to create unique data samples
             if noise_distribution == 'uniform':
                 # Uniform distribution: noise_factor as relative sample range

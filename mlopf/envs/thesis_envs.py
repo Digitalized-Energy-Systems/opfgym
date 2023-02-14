@@ -17,6 +17,14 @@ from mlopf.penalties import (ext_grid_overpower, active_reactive_overpower)
 
 # TODO: Create functions for recurring code (or method in upper class?!)
 # TODO: Maybe add one with controllable loads (solvable) and/or storage systems (not solvable with OPF!)
+# Needs to be large-scale with big obs/act spaces! (otherwise to easy to solve)
+# New kind of objective? eg min losses, min load reduction, TODO
+# New kinds of constraints? TODO possibilities?
+# Add normal gens to actuators? -> EHV system?!
+# Use noise observations? -> stochastic environment! # TODO: simply add this to base env as flag!
+# Use multi-level grid? Is this maybe already possible?! # TODO
+
+# TODO: maybe add another env with discrete action spaces (or even both?! but probably separate idea and paper)
 
 
 class SimpleOpfEnv(opf_env.OpfEnv):
@@ -38,7 +46,7 @@ class SimpleOpfEnv(opf_env.OpfEnv):
         reactive power flow over slack bus
     """
 
-    def __init__(self, simbench_network_name='1-LV-rural3--0-sw', gen_scaling=2.0, load_scaling=2.0, seed=None, *args, **kwargs):
+    def __init__(self, simbench_network_name='1-LV-rural3--0-sw', gen_scaling=2.5, load_scaling=2.0, seed=None, *args, **kwargs):
         self.net = self._build_net(
             simbench_network_name, gen_scaling, load_scaling)
 
@@ -56,7 +64,8 @@ class SimpleOpfEnv(opf_env.OpfEnv):
         high = np.ones(2 * n_gens)
         self.action_space = gym.spaces.Box(low, high, seed=seed)
 
-        super().__init__(apparent_power_penalty=5000, seed=seed, *args, **kwargs)
+        super().__init__(ext_overpower_penalty=500,
+                         seed=seed, *args, **kwargs)
 
         if self.vector_reward is True:
             # 5 penalties and one objective function
@@ -117,8 +126,7 @@ class SimpleOpfEnv(opf_env.OpfEnv):
         return net
 
     def _sampling(self, step=None, test=False):
-        """ Assumption: Only simbench systems with timeseries data are used. """
-        self._set_simbench_state(step, test)
+        super()._sampling(step, test)
 
         # Set constraints of current time step (also required for OPF)
         self.net.sgen['max_p_mw'] = self.net.sgen.p_mw * self.net.sgen.scaling
@@ -177,7 +185,6 @@ class QMarketEnv(opf_env.OpfEnv):
         self.action_space = gym.spaces.Box(low, high, seed=seed)
 
         super().__init__(ext_overpower_penalty=250,
-                         apparent_power_penalty=1500,
                          seed=seed,
                          *args, **kwargs)
 
@@ -223,7 +230,7 @@ class QMarketEnv(opf_env.OpfEnv):
 
         # TODO: Currently finetuned for simbench grid '1-LV-urban6--0-sw'
         # TODO: Maybe see ext grid as just another reactive power provider?! (costs instead of constraints)
-        # Advantage: That would remove one hyperparametery
+        # Advantage: That would remove one hyperparameter
         net.ext_grid['max_q_mvar'] = 0.01
         net.ext_grid['min_q_mvar'] = -0.01  # TODO: verify this
 
@@ -246,8 +253,7 @@ class QMarketEnv(opf_env.OpfEnv):
         return net
 
     def _sampling(self, step=None, test=False):
-        """ Assumption: Only simbench systems with timeseries data are used. """
-        self._set_simbench_state(step, test)
+        super()._sampling(step, test)
 
         # Sample prices uniformly from min/max range
         self._sample_from_range(  # TODO: Are the indexes here correct??
@@ -441,8 +447,7 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         return net
 
     def _sampling(self, step=None, test=False):
-        """ Assumption: Only simbench systems with timeseries data are used. """
-        self._set_simbench_state(step, test)
+        super()._sampling(step, test)
 
         # Sample prices uniformly from min/max range for gens/sgens/ext_grids
         self._sample_from_range(
