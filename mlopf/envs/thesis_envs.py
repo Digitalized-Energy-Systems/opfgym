@@ -165,18 +165,23 @@ class QMarketEnv(opf_env.OpfEnv):
     """
 
     def __init__(self, simbench_network_name='1-LV-urban6--0-sw',
-                 gen_scaling=2.0, load_scaling=1.5, seed=None, *args, **kwargs):
+                 gen_scaling=2.0, load_scaling=1.5, seed=None, min_obs=False,
+                 *args, **kwargs):
         self.net = self._build_net(
             simbench_network_name, gen_scaling, load_scaling)
 
         # Define the RL problem
         # See all load power values, sgen active power, and sgen prices...
         # TODO: Add current time as observation! (see attack paper)
-        self.obs_keys = [
-            ('sgen', 'p_mw', self.net['sgen'].index),
-            ('load', 'p_mw', self.net['load'].index),
-            ('load', 'q_mvar', self.net['load'].index),  # TODO: res_load?!
-            ('poly_cost', 'cq2_eur_per_mvar2', self.net.poly_cost.index)]
+        if min_obs:
+            self.obs_keys = [
+                ('poly_cost', 'cq2_eur_per_mvar2', self.net.poly_cost.index)]
+        else:
+            self.obs_keys = [
+                ('sgen', 'p_mw', self.net['sgen'].index),
+                ('load', 'p_mw', self.net['load'].index),
+                ('load', 'q_mvar', self.net['load'].index),
+                ('poly_cost', 'cq2_eur_per_mvar2', self.net.poly_cost.index)]
 
         # ... and control all sgens' reactive power values
         self.act_keys = [('sgen', 'q_mvar', self.net['sgen'].index)]
