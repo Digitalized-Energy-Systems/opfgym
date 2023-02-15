@@ -208,14 +208,14 @@ class QMarketEnv(opf_env.OpfEnv):
         net.load['max_q_mvar'] = self.profiles[('load', 'q_mvar')].max(
             axis=0) * net['load']['scaling']
 
+        # Constraints for observation space and sampling
         net.sgen['max_max_p_mw'] = self.profiles[('sgen', 'p_mw')].max(
             axis=0) * net['sgen']['scaling']
-        net.sgen['min_max_p_mw'] = self.profiles[('sgen', 'p_mw')].min(
+        net.sgen['min_min_p_mw'] = self.profiles[('sgen', 'p_mw')].min(
             axis=0) * net['sgen']['scaling']
-        net.sgen['max_p_mw'] = net.sgen['max_max_p_mw']
-        net.sgen['min_p_mw'] = net.sgen['min_max_p_mw']
 
         # Some power values are always zero (for whatever reason?!)
+        # TODO: Move this to base class to prevent repetition
         net.sgen.drop(
             net.sgen[net.sgen.max_max_p_mw == 0.0].index, inplace=True)
         net.load.drop(

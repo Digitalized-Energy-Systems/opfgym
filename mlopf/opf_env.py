@@ -6,6 +6,7 @@ import warnings
 import gym
 import numpy as np
 import pandapower as pp
+import pandas as pd
 
 from .penalties import (voltage_violation, line_trafo_overload)
 
@@ -32,7 +33,7 @@ class OpfEnv(gym.Env, abc.ABC):
                  overload_penalty=2,
                  ext_overpower_penalty=100,
                  active_power_penalty=100,
-                 train_test_split=False,
+                 train_test_split=True,
                  vector_reward=False,
                  single_step=True,
                  # TODO: Idea to put obs together bus-wise instead of unit-wise
@@ -42,7 +43,7 @@ class OpfEnv(gym.Env, abc.ABC):
                  pf_for_obs=None,
                  use_time_obs=False,
                  train_data='noisy_simbench',
-                 test_data='noisy_simbench',
+                 test_data='simbench',
                  seed=None):
 
         # Should be always True. Maybe only allow False for paper investigation
@@ -246,13 +247,26 @@ class OpfEnv(gym.Env, abc.ABC):
         if not sample_keys:
             sample_keys = self.obs_keys
         for unit_type, column, idxs in sample_keys:
-            self._sample_from_range(unit_type, column, idxs)
+            if 'res_' not in unit_type:
+                self._sample_from_range(unit_type, column, idxs)
 
     def _sample_from_range(self, unit_type, column, idxs):
-        low = self.net[unit_type][f'min_{column}'].loc[idxs]
-        high = self.net[unit_type][f'max_{column}'].loc[idxs]
+        # Make sure to sample from biggest range
+        df = self.net[unit_type]
+        try:
+            low = df[f'min_min_{column}'].loc[idxs]
+        except KeyError:
+            low = df[f'min_{column}'].loc[idxs]
+        try:
+            high = df[f'max_max_{column}'].loc[idxs]
+        except KeyError:
+            high = df[f'max_{column}'].loc[idxs]
+
         r = np.random.uniform(low, high, size=(len(idxs),))
-        self.net[unit_type][column].loc[idxs] = r
+        try:
+            self.net[unit_type][column].loc[idxs] = r / df.scaling
+        except AttributeError:
+            self.net[unit_type][column].loc[idxs] = r
 
     def _set_simbench_state(self, step: int=None, test=False,
                             noise_factor=0.1, noise_distribution='uniform'):
@@ -428,8 +442,14 @@ def get_obs_space(net, obs_keys: list, use_time_obs: bool, seed: int,
             unit_type = unit_type[4:]
 
         try:
-            l = net[unit_type][f'min_{column}'].loc[idxs].to_numpy()
-            h = net[unit_type][f'max_{column}'].loc[idxs].to_numpy()
+            if f'min_min_{column}' in net[unit_type].columns:
+                l = net[unit_type][f'min_min_{column}'].loc[idxs].to_numpy()
+            else:
+                l = net[unit_type][f'min_{column}'].loc[idxs].to_numpy()
+            if f'max_max_{column}' in net[unit_type].columns:
+                h = net[unit_type][f'max_max_{column}'].loc[idxs].to_numpy()
+            else:
+                h = net[unit_type][f'max_{column}'].loc[idxs].to_numpy()
         except KeyError:
             # Special case: trafos and lines (have minimum constraint of zero)
             l = np.zeros(len(idxs))
@@ -453,6 +473,9 @@ def get_obs_space(net, obs_keys: list, use_time_obs: bool, seed: int,
             for _ in range(last_n_obs):
                 lows.append(l)
                 highs.append(h)
+
+    assert not sum(pd.isna(l).any() for l in lows)
+    assert not sum(pd.isna(h).any() for h in highs)
 
     return gym.spaces.Box(
         np.concatenate(lows, axis=0), np.concatenate(highs, axis=0), seed=seed)
