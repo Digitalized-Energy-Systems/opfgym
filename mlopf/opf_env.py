@@ -44,12 +44,17 @@ class OpfEnv(gym.Env, abc.ABC):
                  use_time_obs=False,
                  train_data='noisy_simbench',
                  test_data='simbench',
+                 sampling_kwargs=None,
                  seed=None):
 
         # Should be always True. Maybe only allow False for paper investigation
         self.train_test_split = train_test_split
         self.train_data = train_data
         self.test_data = test_data
+        if sampling_kwargs:
+            self.sampling_kwargs = sampling_kwargs
+        else:
+            self.sampling_kwargs = {}
 
         self.use_time_obs = use_time_obs
 
@@ -229,9 +234,10 @@ class OpfEnv(gym.Env, abc.ABC):
     def _sampling(self, step, test, *args, **kwargs):
         """ Default method: Set random and noisy simbench state. """
         data_distr = self.test_data if test is True else self.train_data
+        kwargs.update(self.sampling_kwargs)
 
         # Maybe also allow different kinds of noise and similar! with `**sampling_params`?
-        if data_distr == 'noisy_simbench':
+        if data_distr == 'noisy_simbench' or 'noise_factor' in kwargs.keys():
             self._set_simbench_state(step, test, *args, **kwargs)
         elif data_distr == 'simbench':
             self._set_simbench_state(
@@ -254,8 +260,8 @@ class OpfEnv(gym.Env, abc.ABC):
                 self._sample_from_range(unit_type, column, idxs)
 
     def _sample_from_range(self, unit_type, column, idxs):
-        # Make sure to sample from biggest range
         df = self.net[unit_type]
+        # Make sure to sample from biggest possible range
         try:
             low = df[f'min_min_{column}'].loc[idxs]
         except KeyError:
