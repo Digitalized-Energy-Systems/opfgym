@@ -148,6 +148,9 @@ class OpfEnv(gym.Env, abc.ABC):
             # Reward as a vector
             reward = np.append(reward, info['penalty'])
 
+        # Is this a valid system state? -> constraints violated?
+        info['valid'] = (sum(info['penalty']) == 0)
+
         return obs, reward, done, info
 
     def _apply_actions(self, action, autocorrect=False):
