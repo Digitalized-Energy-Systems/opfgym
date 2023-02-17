@@ -38,10 +38,10 @@ class OpfEnv(gym.Env, abc.ABC):
                  single_step=True,
                  # TODO: Idea to put obs together bus-wise instead of unit-wise
                  bus_wise_obs=False,
-                 full_obs=True,
+                 add_res_obs=True,
                  autocorrect_prio='p_mw',
                  pf_for_obs=None,
-                 use_time_obs=False,
+                 add_time_obs=False,
                  train_data='noisy_simbench',
                  test_data='simbench',
                  sampling_kwargs=None,
@@ -56,16 +56,17 @@ class OpfEnv(gym.Env, abc.ABC):
         else:
             self.sampling_kwargs = {}
 
-        self.use_time_obs = use_time_obs
+        self.add_time_obs = add_time_obs
 
-        if full_obs:
+        # Automatically add observations that require previous pf calculation
+        if add_res_obs:
             self.obs_keys.extend([
                 ('res_bus', 'vm_pu', self.net.bus.index),
                 ('res_line', 'loading_percent', self.net.line.index),
                 ('res_trafo', 'loading_percent', self.net.trafo.index)])
 
         self.observation_space = get_obs_space(
-            self.net, self.obs_keys, use_time_obs, seed)
+            self.net, self.obs_keys, add_time_obs, seed)
 
         self.vector_reward = vector_reward
 
@@ -111,7 +112,7 @@ class OpfEnv(gym.Env, abc.ABC):
             if not success:
                 print('Failed powerflow calculcation in reset. Try again!')
                 return self.reset()
-        return self._get_obs(self.obs_keys, self.use_time_obs)
+        return self._get_obs(self.obs_keys, self.add_time_obs)
 
     def step(self, action, test=False):
         assert not np.isnan(action).any()
@@ -141,7 +142,7 @@ class OpfEnv(gym.Env, abc.ABC):
             done = not self._sampling(step=self.current_step + 1, test=test)
             info['TimeLimit.truncated'] = True
 
-        obs = self._get_obs(self.obs_keys, self.use_time_obs)
+        obs = self._get_obs(self.obs_keys, self.add_time_obs)
         if np.isnan(obs).any():
             import pdb
             pdb.set_trace()
@@ -333,11 +334,11 @@ class OpfEnv(gym.Env, abc.ABC):
 
         return True
 
-    def _get_obs(self, obs_keys, use_time_obs):
+    def _get_obs(self, obs_keys, add_time_obs):
         obss = [(self.net[unit_type][column].loc[idxs].to_numpy())
                 for unit_type, column, idxs in obs_keys]
 
-        if use_time_obs:
+        if add_time_obs:
             obss = [self._get_time_observation()] + obss
         return np.concatenate(obss)
 
@@ -434,12 +435,12 @@ class OpfEnv(gym.Env, abc.ABC):
         return True
 
 
-def get_obs_space(net, obs_keys: list, use_time_obs: bool, seed: int,
+def get_obs_space(net, obs_keys: list, add_time_obs: bool, seed: int,
                   last_n_obs: int=1):
     """ Get observation space from the constraints of the power network. """
     lows, highs = [], []
 
-    if use_time_obs:
+    if add_time_obs:
         # Time is always given as observation of lenght 6 in range [-1, 1]
         # at the beginning of the observation!
         lows.append(-np.ones(6))
