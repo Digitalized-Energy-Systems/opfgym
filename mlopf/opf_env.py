@@ -38,7 +38,7 @@ class OpfEnv(gym.Env, abc.ABC):
                  single_step=True,
                  # TODO: Idea to put obs together bus-wise instead of unit-wise
                  bus_wise_obs=False,
-                 full_obs=False,
+                 full_obs=True,
                  autocorrect_prio='p_mw',
                  pf_for_obs=None,
                  use_time_obs=False,
@@ -321,7 +321,7 @@ class OpfEnv(gym.Env, abc.ABC):
             elif noise_distribution == 'normal':
                 # Normal distribution: noise_factor as relative std deviation
                 new_values = np.random.normal(
-                    loc=data, scale=data * noise_factor)
+                    loc=data, scale=data.abs() * noise_factor)
 
             # Make sure that the range of original data remains unchanged
             # (Technical limits of the units remain the same)
