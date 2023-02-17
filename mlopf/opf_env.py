@@ -317,7 +317,7 @@ class OpfEnv(gym.Env, abc.ABC):
                 # Uniform distribution: noise_factor as relative sample range
                 noise = np.random.random(
                     len(self.net[unit_type].index)) * noise_factor * 2 + (1 - noise_factor)
-                new_values = data * noise
+                new_values = (data * noise).to_numpy()
             elif noise_distribution == 'normal':
                 # Normal distribution: noise_factor as relative std deviation
                 new_values = np.random.normal(
@@ -326,8 +326,8 @@ class OpfEnv(gym.Env, abc.ABC):
             # Make sure that the range of original data remains unchanged
             # (Technical limits of the units remain the same)
             new_values = np.clip(new_values,
-                                 self.profiles[type_act].min(),
-                                 self.profiles[type_act].max())
+                                 self.profiles[type_act].min().to_numpy(),
+                                 self.profiles[type_act].max().to_numpy())
 
             self.net[unit_type].loc[:, actuator] = new_values
 
