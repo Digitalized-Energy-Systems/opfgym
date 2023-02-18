@@ -79,30 +79,6 @@ class SimpleOpfEnv(opf_env.OpfEnv):
             simbench_network_name, gen_scaling, load_scaling)
 
         net.load['controllable'] = False
-        # Constraints required for observation space only
-        net.load['min_p_mw'] = self.profiles[('load', 'p_mw')].min(
-            axis=0) * net['load']['scaling']
-        net.load['max_p_mw'] = self.profiles[('load', 'p_mw')].max(
-            axis=0) * net['load']['scaling']
-        net.load['min_q_mvar'] = self.profiles[('load', 'q_mvar')].min(
-            axis=0) * net['load']['scaling']
-        net.load['max_q_mvar'] = self.profiles[('load', 'q_mvar')].max(
-            axis=0) * net['load']['scaling']  # TODO: This code repeats often
-
-        net.sgen['max_max_p_mw'] = self.profiles[('sgen', 'p_mw')].max(
-            axis=0) * net['sgen']['scaling']
-        net.sgen['min_max_p_mw'] = self.profiles[('sgen', 'p_mw')].min(
-            axis=0) * net['sgen']['scaling']
-
-        # Some power values are always zero (for whatever reason?!)
-        # TODO: Do this in base class?
-        net.sgen.drop(
-            net.sgen[net.sgen.max_max_p_mw == 0.0].index, inplace=True)
-        net.load.drop(
-            net.load[net.load.min_q_mvar == net.load.max_q_mvar].index, inplace=True)
-        net.load.drop(
-            net.load[net.load.min_p_mw == net.load.max_p_mw].index, inplace=True)
-
         net.sgen['controllable'] = True
 
         cos_phi = 0.9
@@ -206,30 +182,6 @@ class QMarketEnv(opf_env.OpfEnv):
             simbench_network_name, gen_scaling, load_scaling)
 
         net.load['controllable'] = False
-        # Constraints required for observation space only
-        net.load['min_p_mw'] = self.profiles[('load', 'p_mw')].min(
-            axis=0) * net['load']['scaling']
-        net.load['max_p_mw'] = self.profiles[('load', 'p_mw')].max(
-            axis=0) * net['load']['scaling']
-        net.load['min_q_mvar'] = self.profiles[('load', 'q_mvar')].min(
-            axis=0) * net['load']['scaling']
-        net.load['max_q_mvar'] = self.profiles[('load', 'q_mvar')].max(
-            axis=0) * net['load']['scaling']
-
-        # Constraints for observation space and sampling
-        net.sgen['max_max_p_mw'] = self.profiles[('sgen', 'p_mw')].max(
-            axis=0) * net['sgen']['scaling']
-        net.sgen['min_min_p_mw'] = self.profiles[('sgen', 'p_mw')].min(
-            axis=0) * net['sgen']['scaling']
-
-        # Some power values are always zero (for whatever reason?!)
-        # TODO: Move this to base class to prevent repetition
-        net.sgen.drop(
-            net.sgen[net.sgen.max_max_p_mw == 0.0].index, inplace=True)
-        net.load.drop(
-            net.load[net.load.min_q_mvar == net.load.max_q_mvar].index, inplace=True)
-        net.load.drop(
-            net.load[net.load.min_p_mw == net.load.max_p_mw].index, inplace=True)
 
         net.sgen['controllable'] = True
         cos_phi = 0.90
@@ -379,32 +331,12 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         net.gen['vm_pu'] = 1.0
 
         net.load['controllable'] = False
-        # Load constraints required for observation space only
-        net.load['min_p_mw'] = self.profiles[('load', 'p_mw')].min(
-            axis=0) * net['load']['scaling']
-        net.load['max_p_mw'] = self.profiles[('load', 'p_mw')].max(
-            axis=0) * net['load']['scaling']
-        net.load['min_q_mvar'] = self.profiles[('load', 'q_mvar')].min(
-            axis=0) * net['load']['scaling']
-        net.load['max_q_mvar'] = self.profiles[('load', 'q_mvar')].max(
-            axis=0) * net['load']['scaling']
 
-        # Generator constraints required for observation and OPF!
+        # Generator constraints required for OPF!
         net.sgen['min_p_mw'] = 0
-        net.sgen['max_p_mw'] = self.profiles[('sgen', 'p_mw')].max(
-            axis=0) * net['sgen']['scaling']
+        net.sgen['max_p_mw'] = net.sgen['max_max_p_mw']
         net.gen['min_p_mw'] = 0
-        net.gen['max_p_mw'] = self.profiles[('gen', 'p_mw')].max(
-            axis=0) * net['gen']['scaling']
-        net.sgen['max_max_p_mw'] = net.sgen['max_p_mw']
-        net.gen['max_max_p_mw'] = net.gen['max_p_mw']
-        # Some power values are always zero (for whatever reason?!)
-        net.sgen.drop(
-            net.sgen[net.sgen.max_max_p_mw == 0.0].index, inplace=True)
-        net.load.drop(
-            net.load[net.load.min_q_mvar == net.load.max_q_mvar].index, inplace=True)
-        net.load.drop(
-            net.load[net.load.min_p_mw == net.load.max_p_mw].index, inplace=True)
+        net.gen['max_p_mw'] = net.gen['max_max_p_mw']
 
         net.ext_grid['min_p_mw'] = 0
 
@@ -512,6 +444,23 @@ def build_net(simbench_network_name, gen_scaling=1.0, load_scaling=2.0,
                                       profiles_instead_of_study_cases=True)
     # Fix strange error in simbench: Sometimes negative active power values
     profiles[('sgen', 'p_mw')][profiles[('sgen', 'p_mw')] < 0.0] = 0.0
+
+    # Another strange error: Sometimes min and max power are both zero
+    # Remove these units from profile and pp net!
+    for type_act in profiles.keys():
+        unit_type, column = type_act
+        net_df = net[unit_type]
+
+        net_df[f'max_max_{column}'] = profiles[type_act].max(
+            axis=0) * net_df.scaling
+        net_df[f'min_min_{column}'] = profiles[type_act].min(
+            axis=0) * net_df.scaling
+
+        net_df.drop(net_df[net_df.max_max_p_mw == net_df.min_min_p_mw].index,
+                    inplace=True)
+
+        df = profiles[type_act]
+        df.drop(columns=df.columns[df.min() == df.max()], inplace=True)
 
     return net, profiles
 
