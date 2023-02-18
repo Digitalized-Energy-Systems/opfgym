@@ -8,7 +8,7 @@ import numpy as np
 import pandapower as pp
 import pandas as pd
 
-from .penalties import (voltage_violation, line_trafo_overload)
+from .penalties import (voltage_violation, line_overload, trafo_overload)
 
 warnings.simplefilter('once')
 
@@ -29,10 +29,7 @@ TEST_DATA = np.append(
 
 
 class OpfEnv(gym.Env, abc.ABC):
-    def __init__(self, u_penalty=300,
-                 overload_penalty=2,
-                 ext_overpower_penalty=100,
-                 active_power_penalty=100,
+    def __init__(self,
                  train_test_split=True,
                  vector_reward=False,
                  single_step=True,
@@ -45,6 +42,10 @@ class OpfEnv(gym.Env, abc.ABC):
                  train_data='noisy_simbench',
                  test_data='simbench',
                  sampling_kwargs=None,
+                 volt_pen_kwargs=None,
+                 line_pen_kwargs=None,
+                 trafo_pen_kwargs=None,
+                 ext_grid_pen_kwargs=None,
                  seed=None):
 
         # Should be always True. Maybe only allow False for paper investigation
@@ -75,10 +76,15 @@ class OpfEnv(gym.Env, abc.ABC):
             self.reward_space = gym.spaces.Box(
                 low=-np.ones(4) * np.inf, high=np.ones(4) * np.inf, seed=seed)
 
-        self.u_penalty = u_penalty
-        self.overload_penalty = overload_penalty
-        self.active_power_penalty = active_power_penalty
-        self.ext_overpower_penalty = ext_overpower_penalty
+        # Default penalties are purely linear
+        self.volt_pen = (volt_pen_kwargs if volt_pen_kwargs
+                         else {'linear_penalty': 300})
+        self.line_pen = (line_pen_kwargs if line_pen_kwargs
+                         else {'linear_penalty': 2})
+        self.trafo_pen = (trafo_pen_kwargs if volt_pen_kwargs
+                          else {'linear_penalty': 2})
+        self.ext_grid_pen = (ext_grid_pen_kwargs if volt_pen_kwargs
+                             else {'linear_penalty': 100})
 
         self.priority = autocorrect_prio
 
@@ -225,11 +231,9 @@ class OpfEnv(gym.Env, abc.ABC):
         from the reward.
         Standard penalties: voltage band, overload of lines & transformers. """
         penalty = []
-        penalty.append(-voltage_violation(self.net, self.u_penalty))
-        penalty.append(-line_trafo_overload(
-            self.net, self.overload_penalty, 'line'))
-        penalty.append(-line_trafo_overload(
-            self.net, self.overload_penalty, 'trafo'))
+        penalty.append(-voltage_violation(self.net, **self.volt_pen))
+        penalty.append(-line_overload(self.net, **self.line_pen))
+        penalty.append(-trafo_overload(self.net, **self.trafo_pen))
         return penalty
 
     def _sampling(self, step, test, *args, **kwargs):

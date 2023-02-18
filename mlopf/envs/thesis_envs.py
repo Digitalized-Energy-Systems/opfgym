@@ -13,7 +13,8 @@ import simbench as sb
 
 from mlopf import opf_env
 from mlopf.objectives import min_p_loss
-from mlopf.penalties import (ext_grid_overpower, active_reactive_overpower)
+# This is done in every env -> move to base class
+from mlopf.penalties import ext_grid_overpower
 
 # TODO: Create functions for recurring code (or method in upper class?!)
 # TODO: Maybe add one with controllable loads (solvable) and/or storage systems (not solvable with OPF!)
@@ -64,8 +65,9 @@ class SimpleOpfEnv(opf_env.OpfEnv):
         high = np.ones(2 * n_gens)
         self.action_space = gym.spaces.Box(low, high, seed=seed)
 
-        super().__init__(ext_overpower_penalty=500,
-                         seed=seed, *args, **kwargs)
+        if 'ext_grid_pen_kwargs' not in kwargs:
+            kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 500}
+        super().__init__(seed=seed, *args, **kwargs)
 
         if self.vector_reward is True:
             # 5 penalties and one objective function
@@ -139,7 +141,7 @@ class SimpleOpfEnv(opf_env.OpfEnv):
         penalty = super()._calc_penalty()
         # Do not allow for high reactive power exchange with external grid
         penalty.append(-ext_grid_overpower(
-            self.net, self.ext_overpower_penalty, 'q_mvar'))
+            self.net, 'q_mvar', **self.ext_grid_pen))
 
         return penalty
 
@@ -189,8 +191,9 @@ class QMarketEnv(opf_env.OpfEnv):
         high = np.ones(len(self.net['sgen'].index))
         self.action_space = gym.spaces.Box(low, high, seed=seed)
 
-        super().__init__(ext_overpower_penalty=250,
-                         seed=seed,
+        if 'ext_grid_pen_kwargs' not in kwargs:
+            kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 250}
+        super().__init__(seed=seed,
                          *args, **kwargs)
 
         if self.vector_reward is True:
@@ -293,7 +296,7 @@ class QMarketEnv(opf_env.OpfEnv):
     def _calc_penalty(self):
         penalty = super()._calc_penalty()
         penalty.append(-ext_grid_overpower(
-            self.net, self.ext_overpower_penalty, 'q_mvar'))
+            self.net, 'q_mvar', **self.ext_grid_pen))
 
         return penalty
 
@@ -315,10 +318,8 @@ class EcoDispatchEnv(opf_env.OpfEnv):
     """
 
     def __init__(self, simbench_network_name='1-HV-urban--0-sw', min_power=0,
-                 n_agents=None, gen_scaling=1.0, load_scaling=1.5, u_penalty=300,
-                 overload_penalty=10, ext_overpower_penalty=0.01, max_price=600,
-                 seed=None,
-                 *args, **kwargs):
+                 n_agents=None, gen_scaling=1.0, load_scaling=1.5, max_price=600,
+                 seed=None, *args, **kwargs):
         # Economic dispatch normally done in EHV (too big! use HV instead!)
         # EHV option: '1-EHV-mixed--0-sw' (340 generators!!!)
         # HV options: '1-HV-urban--0-sw' and '1-HV-mixed--0-sw'
@@ -353,10 +354,14 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         self._set_action_space(seed)
         # TODO: Define constraints explicitly?! (active power min/max not default!)
 
-        super().__init__(u_penalty=u_penalty,
-                         overload_penalty=overload_penalty,
-                         ext_overpower_penalty=ext_overpower_penalty,
-                         seed=seed,
+        # Set default values
+        if 'line_pen_kwargs' not in kwargs:
+            kwargs['line_pen_kwargs'] = {'linear_penalty': 10}
+        if 'trafo_pen_kwargs' not in kwargs:
+            kwargs['trafo_pen_kwargs'] = {'linear_penalty': 10}
+        if 'ext_grid_pen_kwargs' not in kwargs:
+            kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 0.01}
+        super().__init__(seed=seed,
                          *args, **kwargs)
 
     def _set_action_space(self, seed):
@@ -476,9 +481,7 @@ class EcoDispatchEnv(opf_env.OpfEnv):
     def _calc_penalty(self):
         penalty = super()._calc_penalty()
         penalty.append(-ext_grid_overpower(
-            self.net,
-            penalty_factor=self.ext_overpower_penalty,
-            column='p_mw'))
+            self.net, column='p_mw', **self.ext_grid_pen))
         return penalty
 
 
