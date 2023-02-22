@@ -81,9 +81,9 @@ class OpfEnv(gym.Env, abc.ABC):
                          else {'linear_penalty': 300})
         self.line_pen = (line_pen_kwargs if line_pen_kwargs
                          else {'linear_penalty': 2})
-        self.trafo_pen = (trafo_pen_kwargs if volt_pen_kwargs
+        self.trafo_pen = (trafo_pen_kwargs if trafo_pen_kwargs
                           else {'linear_penalty': 2})
-        self.ext_grid_pen = (ext_grid_pen_kwargs if volt_pen_kwargs
+        self.ext_grid_pen = (ext_grid_pen_kwargs if ext_grid_pen_kwargs
                              else {'linear_penalty': 100})
 
         self.priority = autocorrect_prio
@@ -136,7 +136,7 @@ class OpfEnv(gym.Env, abc.ABC):
             pdb.set_trace()
 
         reward = self._calc_reward(self.net)
-        info['penalty'] = self._calc_penalty()
+        info['penalties'], info['valids'] = self._calc_penalty()
 
         if self.single_step:
             done = True
@@ -155,13 +155,10 @@ class OpfEnv(gym.Env, abc.ABC):
         assert not np.isnan(obs).any()
 
         if not self.vector_reward:
-            reward += sum(info['penalty'])
+            reward += sum(info['penalties'])
         else:
             # Reward as a vector
-            reward = np.append(reward, info['penalty'])
-
-        # Is this a valid system state? -> constraints violated?
-        info['valid'] = (sum(info['penalty']) == 0)
+            reward = np.append(reward, info['penalties'])
 
         return obs, reward, done, info
 
@@ -230,11 +227,12 @@ class OpfEnv(gym.Env, abc.ABC):
         """ Constraint violations result in a penalty that can be subtracted
         from the reward.
         Standard penalties: voltage band, overload of lines & transformers. """
-        penalty = []
-        penalty.append(-voltage_violation(self.net, **self.volt_pen))
-        penalty.append(-line_overload(self.net, **self.line_pen))
-        penalty.append(-trafo_overload(self.net, **self.trafo_pen))
-        return penalty
+        penalties_valids = [voltage_violation(self.net, **self.volt_pen),
+                            line_overload(self.net, **self.line_pen),
+                            trafo_overload(self.net, **self.trafo_pen)]
+
+        penalties, valids = zip(*penalties_valids)
+        return list(penalties), list(valids)
 
     def _sampling(self, step, test, *args, **kwargs):
         """ Default method: Set random and noisy simbench state. """
@@ -380,7 +378,7 @@ class OpfEnv(gym.Env, abc.ABC):
 
     #     # TODO: Automatically compare with OPF here?
 
-    #     print('Test Penalty: ', info['penalty'])
+    #     print('Test Penalty: ', info['penalties'])
     #     print('Current actions: ', self.get_current_actions())
     #     return obs, reward, done, info
 
@@ -390,7 +388,7 @@ class OpfEnv(gym.Env, abc.ABC):
     #     #     return obs, reward[0], done, info
     #     # else:
     #     #     # Remove previously added penalty
-    #     #     return obs, reward - sum(info['penalty']), done, info
+    #     #     return obs, reward - sum(info['penalties']), done, info
 
     def compute_error(self, action):
         """ Return error compared to optimal state of the system. """
@@ -404,11 +402,11 @@ class OpfEnv(gym.Env, abc.ABC):
             return np.nan, np.nan
 
         reward = self._calc_reward(self.net)
-        penalty = self._calc_penalty()
+        penalties, valids = self._calc_penalty()
 
-        obj = sum(np.append(reward, penalty))
+        obj = sum(np.append(reward, penalties))
 
-        print('Test Penalty: ', penalty)
+        print('Test Penalty: ', penalties)
         print('Current actions: ', self.get_current_actions())
 
         opt_obj = self.baseline_reward()
@@ -423,11 +421,11 @@ class OpfEnv(gym.Env, abc.ABC):
         if not success:
             return np.nan
         reward = self._calc_reward(self.net)
-        penalty = self._calc_penalty()
-        print('Base Penalty: ', penalty)
+        penalties, valids = self._calc_penalty()
+        print('Base Penalty: ', penalties)
         print('Baseline actions: ', self.get_current_actions())
 
-        return sum(np.append(reward, penalty))
+        return sum(np.append(reward, penalties))
 
     def _optimal_power_flow(self):
         try:

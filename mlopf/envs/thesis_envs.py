@@ -114,12 +114,13 @@ class SimpleOpfEnv(opf_env.OpfEnv):
         return -(self.net.res_ext_grid.p_mw * self.active_power_costs).sum()
 
     def _calc_penalty(self):
-        penalty = super()._calc_penalty()
-        # Do not allow for high reactive power exchange with external grid
-        penalty.append(-ext_grid_overpower(
-            self.net, 'q_mvar', **self.ext_grid_pen))
+        penalties, valids = super()._calc_penalty()
+        pen, val = ext_grid_overpower(self.net, 'q_mvar', **self.ext_grid_pen)
 
-        return penalty
+        penalties.append(pen)
+        valids.append(val)
+
+        return penalties, valids
 
 
 class QMarketEnv(opf_env.OpfEnv):
@@ -246,11 +247,13 @@ class QMarketEnv(opf_env.OpfEnv):
         return -q_costs - loss_costs
 
     def _calc_penalty(self):
-        penalty = super()._calc_penalty()
-        penalty.append(-ext_grid_overpower(
-            self.net, 'q_mvar', **self.ext_grid_pen))
+        penalties, valids = super()._calc_penalty()
+        pen, val = ext_grid_overpower(self.net, 'q_mvar', **self.ext_grid_pen)
 
-        return penalty
+        penalties.append(pen)
+        valids.append(val)
+
+        return penalties, valids
 
 
 class EcoDispatchEnv(opf_env.OpfEnv):
@@ -411,10 +414,13 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         return -(np.array(p_mw) * prices).sum() / 10000
 
     def _calc_penalty(self):
-        penalty = super()._calc_penalty()
-        penalty.append(-ext_grid_overpower(
-            self.net, column='p_mw', **self.ext_grid_pen))
-        return penalty
+        penalties, valids = super()._calc_penalty()
+        pen, val = ext_grid_overpower(self.net, 'p_mw', **self.ext_grid_pen)
+
+        penalties.append(pen)
+        valids.append(val)
+
+        return penalties, valids
 
 
 def build_net(simbench_network_name, gen_scaling=1.0, load_scaling=2.0,
