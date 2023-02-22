@@ -48,4 +48,5 @@ def ext_grid_overpower(net, column='p_mw', *args, **kwargs):
         net, 'ext_grid', column, 'max', *args, **kwargs)
     pen2, valid2 = compute_penalty(
         net, 'ext_grid', column, 'min', *args, **kwargs)
+
     return pen1 + pen2, valid1 and valid2

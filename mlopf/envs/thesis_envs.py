@@ -13,8 +13,6 @@ import simbench as sb
 
 from mlopf import opf_env
 from mlopf.objectives import min_p_loss
-# This is done in every env -> move to base class
-from mlopf.penalties import ext_grid_overpower
 
 # TODO: Create functions for recurring code (or method in upper class?!)
 # TODO: Maybe add one with controllable loads (solvable) and/or storage systems (not solvable with OPF!)
@@ -112,15 +110,6 @@ class SimpleOpfEnv(opf_env.OpfEnv):
     def _calc_reward(self, net):
         """ Objective: Maximize active power feed-in to external grid. """
         return -(self.net.res_ext_grid.p_mw * self.active_power_costs).sum()
-
-    def _calc_penalty(self):
-        penalties, valids = super()._calc_penalty()
-        pen, val = ext_grid_overpower(self.net, 'q_mvar', **self.ext_grid_pen)
-
-        penalties.append(pen)
-        valids.append(val)
-
-        return penalties, valids
 
 
 class QMarketEnv(opf_env.OpfEnv):
@@ -245,15 +234,6 @@ class QMarketEnv(opf_env.OpfEnv):
         loss_costs = min_p_loss(net) * self.loss_costs
 
         return -q_costs - loss_costs
-
-    def _calc_penalty(self):
-        penalties, valids = super()._calc_penalty()
-        pen, val = ext_grid_overpower(self.net, 'q_mvar', **self.ext_grid_pen)
-
-        penalties.append(pen)
-        valids.append(val)
-
-        return penalties, valids
 
 
 class EcoDispatchEnv(opf_env.OpfEnv):
@@ -412,15 +392,6 @@ class EcoDispatchEnv(opf_env.OpfEnv):
 
         # /10000, because too high otherwise
         return -(np.array(p_mw) * prices).sum() / 10000
-
-    def _calc_penalty(self):
-        penalties, valids = super()._calc_penalty()
-        pen, val = ext_grid_overpower(self.net, 'p_mw', **self.ext_grid_pen)
-
-        penalties.append(pen)
-        valids.append(val)
-
-        return penalties, valids
 
 
 def build_net(simbench_network_name, gen_scaling=1.0, load_scaling=2.0,

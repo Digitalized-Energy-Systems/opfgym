@@ -8,7 +8,8 @@ import numpy as np
 import pandapower as pp
 import pandas as pd
 
-from .penalties import (voltage_violation, line_overload, trafo_overload)
+from .penalties import (voltage_violation, line_overload,
+                        trafo_overload, ext_grid_overpower)
 
 warnings.simplefilter('once')
 
@@ -229,7 +230,10 @@ class OpfEnv(gym.Env, abc.ABC):
         Standard penalties: voltage band, overload of lines & transformers. """
         penalties_valids = [voltage_violation(self.net, **self.volt_pen),
                             line_overload(self.net, **self.line_pen),
-                            trafo_overload(self.net, **self.trafo_pen)]
+                            trafo_overload(self.net, **self.trafo_pen),
+                            ext_grid_overpower(
+                                self.net, 'q_mvar', **self.ext_grid_pen),
+                            ext_grid_overpower(self.net, 'p_mw', **self.ext_grid_pen)]
 
         penalties, valids = zip(*penalties_valids)
         return list(penalties), list(valids)
