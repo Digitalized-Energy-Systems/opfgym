@@ -120,6 +120,7 @@ class OpfEnv(gym.Env, abc.ABC):
                 logging.warning(
                     'Failed powerflow calculcation in reset. Try again!')
                 return self.reset()
+
         return self._get_obs(self.obs_keys, self.add_time_obs)
 
     def step(self, action, test=False):
@@ -252,6 +253,8 @@ class OpfEnv(gym.Env, abc.ABC):
                 step, test, noise_factor=0.0, *args, **kwargs)
         elif data_distr == 'full_uniform':
             self._sample_uniform()
+        elif data_distr == 'normal_around_mean':
+            self._sample_normal(*args, **kwargs)
         elif data_distr == 'noisy_baseline':
             raise NotImplementedError
 
@@ -285,8 +288,22 @@ class OpfEnv(gym.Env, abc.ABC):
         except AttributeError:
             self.net[unit_type][column].loc[idxs] = r
 
+    def _sample_normal(self, std=0.3):
+        """ Sample data around mean values from simbench data. """
+        for unit_type, column, idxs in self.obs_keys:
+            if 'res_' not in unit_type and 'poly_cost' not in unit_type:
+                df = self.net[unit_type].loc[idxs]
+                mean = df[f'mean_{column}']
+                max_values = (df[f'max_max_{column}'] / df.scaling).to_numpy()
+                min_values = (df[f'min_min_{column}'] / df.scaling).to_numpy()
+                diff = max_values - min_values
+                random_values = np.random.normal(mean, std * diff, len(mean))
+                random_values = np.clip(random_values, min_values, max_values)
+                self.net[unit_type][column].loc[idxs] = random_values
+
     def _set_simbench_state(self, step: int=None, test=False,
-                            noise_factor=0.1, noise_distribution='uniform'):
+                            noise_factor=0.1, noise_distribution='uniform',
+                            *args, **kwargs):
         """ Standard pre-implemented method to sample a random state from the
         simbench time-series data and set that state.
 

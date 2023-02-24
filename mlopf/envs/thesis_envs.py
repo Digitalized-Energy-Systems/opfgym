@@ -424,6 +424,8 @@ def build_net(simbench_network_name, gen_scaling=1.0, load_scaling=2.0,
             axis=0) * net_df.scaling
         net_df[f'min_min_{column}'] = profiles[type_act].min(
             axis=0) * net_df.scaling
+        # Compute mean. Sometimes required for data sampling.
+        net_df[f'mean_{column}'] = profiles[type_act].mean(axis=0)
 
         net_df.drop(net_df[net_df.max_max_p_mw == net_df.min_min_p_mw].index,
                     inplace=True)
