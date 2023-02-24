@@ -12,7 +12,7 @@ import pandapower as pp
 import simbench as sb
 
 from mlopf import opf_env
-from mlopf.objectives import min_p_loss
+from mlopf.objectives import min_p_loss, min_pp_costs
 
 # TODO: Create functions for recurring code (or method in upper class?!)
 # TODO: Maybe add one with controllable loads (solvable) and/or storage systems (not solvable with OPF!)
@@ -107,10 +107,6 @@ class SimpleOpfEnv(opf_env.OpfEnv):
         # Set constraints of current time step (also required for OPF)
         self.net.sgen['max_p_mw'] = self.net.sgen.p_mw * self.net.sgen.scaling
 
-    def _calc_reward(self, net):
-        """ Objective: Maximize active power feed-in to external grid. """
-        return -(self.net.res_ext_grid.p_mw * self.active_power_costs).sum()
-
 
 class QMarketEnv(opf_env.OpfEnv):
     """
@@ -195,6 +191,12 @@ class QMarketEnv(opf_env.OpfEnv):
             pp.create_poly_cost(net, idx, 'ext_grid',
                                 cp1_eur_per_mw=self.loss_costs,
                                 cq2_eur_per_mvar2=0)  # TODO: Verify this
+
+        # Add loss costs so that objective = loss minimization
+        # for idx in net['load'].index:
+        #     pp.create_poly_cost(net, idx, 'load',
+        #                         cp1_eur_per_mw=-self.loss_costs,
+        #                         cq2_eur_per_mvar2=0)
         # Define range from which to sample reactive power prices on market
         self.max_price = 30000
         net.poly_cost['min_cq2_eur_per_mvar2'] = 0
@@ -218,22 +220,6 @@ class QMarketEnv(opf_env.OpfEnv):
                  (self.net.sgen.p_mw * self.net.sgen.scaling)**2)**0.5
         self.net.sgen['min_q_mvar'] = -q_max
         self.net.sgen['max_q_mvar'] = q_max
-
-    def _calc_reward(self, net):
-        """ Consider quadratic reactive power costs on the market and linear
-        active costs for losses in the system. """
-        q_costs = (net.poly_cost[net.poly_cost.et == 'sgen'].cq2_eur_per_mvar2
-                   * net.res_sgen.q_mvar.to_numpy()**2).sum()
-        if (net.poly_cost.et == 'ext_grid').any():
-            mask = net.poly_cost.et == 'ext_grid'
-            prices = net.poly_cost.cq2_eur_per_mvar2[mask].to_numpy()
-            q_mvar = net.res_ext_grid.q_mvar.to_numpy()
-            q_costs += sum(prices * q_mvar**2)
-
-        # Grid operator also wants to minimize network active power losses
-        loss_costs = min_p_loss(net) * self.loss_costs
-
-        return -q_costs - loss_costs
 
 
 class EcoDispatchEnv(opf_env.OpfEnv):
@@ -379,19 +365,25 @@ class EcoDispatchEnv(opf_env.OpfEnv):
             'poly_cost', 'cp1_eur_per_mw', self.net.poly_cost.index)
 
     def _calc_reward(self, net):
-        """ Minimize costs for active power in the system. """
-        p_mw = net.res_ext_grid['p_mw'].to_numpy().copy()
-        p_mw[p_mw < 0] = 0.0
-        p_mw = np.append(
-            p_mw, net.res_sgen.p_mw.loc[self.sgen_idxs].to_numpy())
-        p_mw = np.append(p_mw, net.res_gen.p_mw.loc[self.gen_idxs].to_numpy())
-
-        prices = np.array(net.poly_cost['cp1_eur_per_mw'])
-
-        assert len(prices) == len(p_mw)
-
         # /10000, because too high otherwise
-        return -(np.array(p_mw) * prices).sum() / 10000
+        return super()._calc_reward(net) / 10000
+
+        # TODO: There seems to be a slight difference in RL and OPF objective!
+        # -> "p_mw[p_mw < 0] = 0.0" is not considered for OPF?!
+
+        """ Minimize costs for active power in the system. """
+        # p_mw = net.res_ext_grid['p_mw'].to_numpy().copy()
+        # p_mw[p_mw < 0] = 0.0
+        # p_mw = np.append(
+        #     p_mw, net.res_sgen.p_mw.loc[self.sgen_idxs].to_numpy())
+        # p_mw = np.append(p_mw, net.res_gen.p_mw.loc[self.gen_idxs].to_numpy())
+
+        # prices = np.array(net.poly_cost['cp1_eur_per_mw'])
+
+        # assert len(prices) == len(p_mw)
+
+        # # /10000, because too high otherwise
+        # return -(np.array(p_mw) * prices).sum() / 10000
 
 
 def build_net(simbench_network_name, gen_scaling=1.0, load_scaling=2.0,

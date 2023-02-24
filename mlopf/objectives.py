@@ -58,6 +58,21 @@ def min_pp_costs(net):
     pandapower-OPF. Attention: Not equivalent to 'net.res_cost' after
     pp-OPF, because internal cost calculation of pandapower is strange. """
 
+    # Maybe more efficient
+    # costs2 = 0
+    # for unit_type in ('sgen', 'gen', 'ext_grid', 'load', 'storage'):
+    #     poly_costs = net.poly_cost[net.poly_cost.et == unit_type]
+    #     if len(poly_costs) == 0:
+    #         continue
+
+    #     p_mw = net[f'res_{unit_type}']['p_mw'].to_numpy()
+    #     q_mvar = net[f'res_{unit_type}']['q_mvar'].to_numpy()
+
+    #     costs2 += (p_mw * poly_costs['cp1_eur_per_mw']).sum()
+    #     costs2 += (p_mw**2 * poly_costs['cp2_eur_per_mw2']).sum()
+    #     costs2 += (q_mvar * poly_costs['cq1_eur_per_mvar']).sum()
+    #     costs2 += (q_mvar**2 * poly_costs['cq2_eur_per_mvar2']).sum()
+
     # TODO: piece-wise costs not implemented yet!
     costs = 0
     for idx in net.poly_cost.index:

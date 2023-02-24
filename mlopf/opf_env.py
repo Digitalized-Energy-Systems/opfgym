@@ -1,5 +1,6 @@
 
 import abc
+import logging
 import random
 import warnings
 
@@ -8,8 +9,9 @@ import numpy as np
 import pandapower as pp
 import pandas as pd
 
-from .penalties import (voltage_violation, line_overload,
-                        trafo_overload, ext_grid_overpower)
+from mlopf.penalties import (voltage_violation, line_overload,
+                             trafo_overload, ext_grid_overpower)
+from mlopf.objectives import min_pp_costs
 
 warnings.simplefilter('once')
 
@@ -34,8 +36,6 @@ class OpfEnv(gym.Env, abc.ABC):
                  train_test_split=True,
                  vector_reward=False,
                  single_step=True,
-                 # TODO: Idea to put obs together bus-wise instead of unit-wise
-                 bus_wise_obs=False,
                  add_res_obs=True,
                  autocorrect_prio='p_mw',
                  pf_for_obs=None,
@@ -103,10 +103,10 @@ class OpfEnv(gym.Env, abc.ABC):
                     self.pf_for_obs = True
                     break
 
-    @abc.abstractmethod
     def _calc_reward(self, net):
-        # TODO: Default: Compute costs from poly costs!
-        pass
+        """ Default: Compute reward/costs from poly costs. Works only if
+        defined as pandapower OPF problem and only for poly costs! """
+        return -min_pp_costs(net)
 
     def reset(self, step=None, test=False):
         self._sampling(step, test)
@@ -117,7 +117,8 @@ class OpfEnv(gym.Env, abc.ABC):
         if self.pf_for_obs is True:
             success = self._run_pf()
             if not success:
-                print('Failed powerflow calculcation in reset. Try again!')
+                logging.warning(
+                    'Failed powerflow calculcation in reset. Try again!')
                 return self.reset()
         return self._get_obs(self.obs_keys, self.add_time_obs)
 
@@ -220,7 +221,7 @@ class OpfEnv(gym.Env, abc.ABC):
                      enforce_q_lims=True)
 
         except pp.powerflow.LoadflowNotConverged:
-            print('Powerflow not converged!!!')
+            logging.warning('Powerflow not converged!!!')
             return False
         return True
 
@@ -410,8 +411,8 @@ class OpfEnv(gym.Env, abc.ABC):
 
         obj = sum(np.append(reward, penalties))
 
-        print('Test Penalty: ', penalties)
-        print('Current actions: ', self.get_current_actions())
+        logging.info(f'Test Penalty: {penalties}')
+        logging.info(f'Current actions: {self.get_current_actions()}')
 
         opt_obj = self.baseline_reward()
 
@@ -426,8 +427,8 @@ class OpfEnv(gym.Env, abc.ABC):
             return np.nan
         reward = self._calc_reward(self.net)
         penalties, valids = self._calc_penalty()
-        print('Base Penalty: ', penalties)
-        print('Baseline actions: ', self.get_current_actions())
+        logging.info(f'Base Penalty: {penalties}')
+        logging.info(f'Baseline actions: {self.get_current_actions()}')
 
         return sum(np.append(reward, penalties))
 
@@ -436,7 +437,7 @@ class OpfEnv(gym.Env, abc.ABC):
             # TODO: Make sure that this does not change the actual grid, but only a copy of it
             pp.runopp(self.net)
         except pp.optimal_powerflow.OPFNotConverged:
-            print('OPF not converged!!!')
+            logging.warning('OPF not converged!!!')
             return False
         return True
 
@@ -485,7 +486,8 @@ def get_obs_space(net, obs_keys: list, add_time_obs: bool, seed: int,
                 lows.append(l / net[unit_type].scaling.loc[idxs].to_numpy())
                 highs.append(h / net[unit_type].scaling.loc[idxs].to_numpy())
         except AttributeError:
-            print(f'Scaling for {unit_type} not defined: assume scaling=1')
+            logging.info(
+                f'Scaling for {unit_type} not defined: assume scaling=1')
             for _ in range(last_n_obs):
                 lows.append(l)
                 highs.append(h)
