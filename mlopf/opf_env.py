@@ -426,14 +426,14 @@ class OpfEnv(gym.Env, abc.ABC):
         reward = self._calc_reward(self.net)
         penalties, valids = self._calc_penalty()
 
-        obj = sum(np.append(reward, penalties))
+        # obj = sum(np.append(reward, penalties))
 
         logging.info(f'Test Penalty: {penalties}')
         logging.info(f'Current actions: {self.get_current_actions()}')
 
         opt_obj = self.baseline_reward()
 
-        return opt_obj, obj
+        return opt_obj, reward
 
     def baseline_reward(self):
         """ Compute some baseline to compare training performance with. In this
