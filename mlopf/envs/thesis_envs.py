@@ -181,22 +181,25 @@ class QMarketEnv(opf_env.OpfEnv):
         net.ext_grid['min_q_mvar'] = -0.01  # TODO: verify this
 
         # Add price params to the network (as poly cost so that the OPF works)
+        # Add loss costs at slack so that objective = loss minimization
         self.loss_costs = 30
         for idx in net.sgen.index:
             pp.create_poly_cost(net, idx, 'sgen',
                                 cp1_eur_per_mw=self.loss_costs,
                                 cq2_eur_per_mvar2=0)
-        assert len(net.gen) == 0  # TODO: Maybe add gens here, if necessary
+
         for idx in net['ext_grid'].index:
             pp.create_poly_cost(net, idx, 'ext_grid',
                                 cp1_eur_per_mw=self.loss_costs,
-                                cq2_eur_per_mvar2=0)  # TODO: Verify this
+                                cq2_eur_per_mvar2=0)
 
-        # Add loss costs so that objective = loss minimization
-        # for idx in net['load'].index:
-        #     pp.create_poly_cost(net, idx, 'load',
-        #                         cp1_eur_per_mw=-self.loss_costs,
-        #                         cq2_eur_per_mvar2=0)
+        for idx in net['load'].index:
+            pp.create_poly_cost(net, idx, 'load',
+                                cp1_eur_per_mw=-self.loss_costs,
+                                cq2_eur_per_mvar2=0)
+
+        assert len(net.gen) == 0  # TODO: Maybe add gens here, if necessary
+
         # Define range from which to sample reactive power prices on market
         self.max_price = 30000
         net.poly_cost['min_cq2_eur_per_mvar2'] = 0
@@ -208,9 +211,12 @@ class QMarketEnv(opf_env.OpfEnv):
         super()._sampling(step, test)
 
         # Sample prices uniformly from min/max range
-        self._sample_from_range(  # TODO: Are the indexes here correct??
-            'poly_cost', 'cq2_eur_per_mvar2', self.net.poly_cost.index)
-        # TODO: Verify this (test for slack as q provider)
+        self._sample_from_range(
+            'poly_cost', 'cq2_eur_per_mvar2',
+            self.net.poly_cost[self.net.poly_cost.et == 'sgen'].index)
+        self._sample_from_range(
+            'poly_cost', 'cq2_eur_per_mvar2',
+            self.net.poly_cost[self.net.poly_cost.et == 'ext_grid'].index)
 
         # active power is not controllable (only relevant for actual OPF)
         self.net.sgen['max_p_mw'] = self.net.sgen.p_mw * self.net.sgen.scaling
