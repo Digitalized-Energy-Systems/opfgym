@@ -136,7 +136,6 @@ class QMarketEnv(opf_env.OpfEnv):
 
         # Define the RL problem
         # See all load power values, sgen active power, and sgen prices...
-        # TODO: Add current time as observation! (see attack paper)
         if min_obs:
             self.obs_keys = [
                 ('poly_cost', 'cq2_eur_per_mvar2', self.net.poly_cost.index)]
@@ -175,10 +174,8 @@ class QMarketEnv(opf_env.OpfEnv):
         net.sgen['max_max_q_mvar'] = net.sgen['max_s_mva']
 
         # TODO: Currently finetuned for simbench grid '1-LV-urban6--0-sw'
-        # TODO: Maybe see ext grid as just another reactive power provider?! (costs instead of constraints)
-        # Advantage: That would remove one hyperparameter
         net.ext_grid['max_q_mvar'] = 0.01
-        net.ext_grid['min_q_mvar'] = -0.01  # TODO: verify this
+        net.ext_grid['min_q_mvar'] = -0.01
 
         # Add price params to the network (as poly cost so that the OPF works)
         # Add loss costs at slack so that objective = loss minimization
@@ -195,8 +192,7 @@ class QMarketEnv(opf_env.OpfEnv):
 
         for idx in net['load'].index:
             pp.create_poly_cost(net, idx, 'load',
-                                cp1_eur_per_mw=-self.loss_costs,
-                                cq2_eur_per_mvar2=0)
+                                cp1_eur_per_mw=-self.loss_costs)
 
         assert len(net.gen) == 0  # TODO: Maybe add gens here, if necessary
 
@@ -222,8 +218,7 @@ class QMarketEnv(opf_env.OpfEnv):
         self.net.sgen['max_p_mw'] = self.net.sgen.p_mw * self.net.sgen.scaling
         self.net.sgen['min_p_mw'] = 0.999999 * self.net.sgen.max_p_mw
 
-        q_max = (self.net.sgen['max_s_mva']**2 -
-                 (self.net.sgen.p_mw * self.net.sgen.scaling)**2)**0.5
+        q_max = (self.net.sgen.max_s_mva**2 - self.net.sgen.max_p_mw**2)**0.5
         self.net.sgen['min_q_mvar'] = -q_max
         self.net.sgen['max_q_mvar'] = q_max
 
