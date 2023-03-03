@@ -487,13 +487,15 @@ def get_obs_space(net, obs_keys: list, add_time_obs: bool, seed: int,
         except KeyError:
             # Special case: trafos and lines (have minimum constraint of zero)
             l = np.zeros(len(idxs))
+            # Assumption: No lines with loading more than 150%
             h = net[unit_type][f'max_{column}'].loc[idxs].to_numpy() * 1.5
 
         # Special case: voltages
         if column == 'vm_pu' or unit_type == 'ext_grid':
             diff = h - l
-            l = l - diff / 2
-            h = h + diff / 2
+            # Assumption: If [0.95, 1.05] voltage band, no voltage outside [0.875, 1.125] range
+            l = l - diff * 0.75
+            h = h + diff * 0.75
 
         try:
             if 'min' in column or 'max' in column:
