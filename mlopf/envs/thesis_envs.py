@@ -52,8 +52,7 @@ class SimpleOpfEnv(opf_env.OpfEnv):
 
         self.cos_phi = cos_phi
         self.max_q_exchange = max_q_exchange
-        self.net = self._build_net(
-            simbench_network_name, gen_scaling, load_scaling)
+        self.net = self._build_net(simbench_network_name, *args, **kwargs)
 
         # Define the RL problem
         # See all load power values, sgen max active power...
@@ -78,9 +77,8 @@ class SimpleOpfEnv(opf_env.OpfEnv):
             self.reward_space = gym.spaces.Box(
                 low=-np.ones(6) * np.inf, high=np.ones(6) * np.inf, seed=seed)
 
-    def _build_net(self, simbench_network_name, gen_scaling, load_scaling):
-        net, self.profiles = build_net(
-            simbench_network_name, gen_scaling, load_scaling)
+    def _build_net(self, simbench_network_name, *args, **kwargs):
+        net, self.profiles = build_net(simbench_network_name, *args, **kwargs)
 
         net.load['controllable'] = False
         net.sgen['controllable'] = True
@@ -139,8 +137,7 @@ class QMarketEnv(opf_env.OpfEnv):
 
         self.cos_phi = cos_phi
         self.max_q_exchange = max_q_exchange
-        self.net = self._build_net(
-            simbench_network_name, gen_scaling, load_scaling)
+        self.net = self._build_net(simbench_network_name, *args, **kwargs)
 
         # Define the RL problem
         # See all load power values, sgen active power, and sgen prices...
@@ -162,17 +159,15 @@ class QMarketEnv(opf_env.OpfEnv):
 
         if 'ext_grid_pen_kwargs' not in kwargs:
             kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 250}
-        super().__init__(seed=seed,
-                         *args, **kwargs)
+        super().__init__(seed=seed, *args, **kwargs)
 
         if self.vector_reward is True:
             # 4 penalties and one objective function
             self.reward_space = gym.spaces.Box(
                 low=-np.ones(5) * np.inf, high=np.ones(5) * np.inf, seed=seed)
 
-    def _build_net(self, simbench_network_name, gen_scaling, load_scaling):
-        net, self.profiles = build_net(
-            simbench_network_name, gen_scaling, load_scaling)
+    def _build_net(self, simbench_network_name, *args, **kwargs):
+        net, self.profiles = build_net(simbench_network_name, *args, **kwargs)
 
         net.load['controllable'] = False
 
@@ -263,7 +258,7 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         # compare: https://en.wikipedia.org/wiki/Cost_of_electricity_by_source
 
         self.net = self._build_net(
-            simbench_network_name, min_power, n_agents, gen_scaling, load_scaling)
+            simbench_network_name, min_power, n_agents, *args, **kwargs)
 
         # Define the RL problem
         # See all load power values, non-controlled generators, and generator prices...
@@ -290,8 +285,7 @@ class EcoDispatchEnv(opf_env.OpfEnv):
             kwargs['trafo_pen_kwargs'] = {'linear_penalty': 10}
         if 'ext_grid_pen_kwargs' not in kwargs:
             kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 0.01}
-        super().__init__(seed=seed,
-                         *args, **kwargs)
+        super().__init__(seed=seed, *args, **kwargs)
 
     def _set_action_space(self, seed):
         """ Each power plant can be set in range from 0-100% power
@@ -300,9 +294,8 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         high = np.ones(len(self.act_keys[0][2]) + len(self.act_keys[1][2]))
         self.action_space = gym.spaces.Box(low, high, seed=seed)
 
-    def _build_net(self, simbench_network_name, min_power, n_agents, gen_scaling=1.0, load_scaling=1.5):
-        net, self.profiles = build_net(
-            simbench_network_name, gen_scaling, load_scaling)
+    def _build_net(self, simbench_network_name, min_power, n_agents, *args, **kwargs):
+        net, self.profiles = build_net(simbench_network_name, *args, **kwargs)
         # Set voltage setpoints a bit higher than 1.0 to consider voltage drop?
         net.ext_grid['vm_pu'] = 1.0
         net.gen['vm_pu'] = 1.0
@@ -395,11 +388,10 @@ class EcoDispatchEnv(opf_env.OpfEnv):
 
 
 def build_net(simbench_network_name, gen_scaling=1.0, load_scaling=2.0,
-              voltage_band=0.05, max_loading=80):
+              voltage_band=0.05, max_loading=80, *args, **kwargs):
     """ Init and return a simbench power network with standard configuration.
     """
 
-    # No standard case was selected
     net = sb.get_simbench_net(simbench_network_name)
 
     # Scale up loads to make task a bit more difficult

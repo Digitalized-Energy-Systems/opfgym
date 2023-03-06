@@ -47,7 +47,7 @@ class OpfEnv(gym.Env, abc.ABC):
                  line_pen_kwargs=None,
                  trafo_pen_kwargs=None,
                  ext_grid_pen_kwargs=None,
-                 seed=None):
+                 seed=None, *args, **kwargs):
 
         # Should be always True. Maybe only allow False for paper investigation
         self.train_test_split = train_test_split
