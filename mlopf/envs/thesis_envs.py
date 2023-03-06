@@ -45,7 +45,13 @@ class SimpleOpfEnv(opf_env.OpfEnv):
         reactive power flow over slack bus
     """
 
-    def __init__(self, simbench_network_name='1-LV-rural3--0-sw', gen_scaling=2.5, load_scaling=2.0, seed=None, *args, **kwargs):
+    def __init__(self, simbench_network_name='1-LV-rural3--0-sw',
+                 gen_scaling=2.5, load_scaling=2.0, cos_phi=0.9,
+                 max_q_exchange=0.01, seed=None,
+                 *args, **kwargs):
+
+        self.cos_phi = cos_phi
+        self.max_q_exchange = max_q_exchange
         self.net = self._build_net(
             simbench_network_name, gen_scaling, load_scaling)
 
@@ -79,8 +85,7 @@ class SimpleOpfEnv(opf_env.OpfEnv):
         net.load['controllable'] = False
         net.sgen['controllable'] = True
 
-        cos_phi = 0.9
-        net.sgen['max_s_mva'] = net.sgen['max_max_p_mw'] / cos_phi
+        net.sgen['max_s_mva'] = net.sgen['max_max_p_mw'] / self.cos_phi
         # Assumption: Mandatory reactive power provision of cos_phi
         net.sgen['max_max_q_mvar'] = (
             net.sgen['max_s_mva']**2 - net.sgen['max_max_p_mw']**2)**0.5
@@ -88,8 +93,8 @@ class SimpleOpfEnv(opf_env.OpfEnv):
         net.sgen['min_q_mvar'] = -net.sgen['max_max_q_mvar']
 
         # TODO: Currently finetuned for simbench grids '1-LV-urban6--0-sw' and '1-LV-rural3--0-sw'
-        net.ext_grid['max_q_mvar'] = 0.01
-        net.ext_grid['min_q_mvar'] = -0.01
+        net.ext_grid['max_q_mvar'] = self.max_q_exchange
+        net.ext_grid['min_q_mvar'] = -self.max_q_exchange
 
         # OPF objective: Maximize active power feed-in to external grid
         # TODO: Maybe allow for gens here, if necessary
@@ -130,7 +135,10 @@ class QMarketEnv(opf_env.OpfEnv):
 
     def __init__(self, simbench_network_name='1-LV-urban6--0-sw',
                  gen_scaling=2.0, load_scaling=1.5, seed=None, min_obs=False,
-                 *args, **kwargs):
+                 cos_phi=0.9, max_q_exchange=0.01, *args, **kwargs):
+
+        self.cos_phi = cos_phi
+        self.max_q_exchange = max_q_exchange
         self.net = self._build_net(
             simbench_network_name, gen_scaling, load_scaling)
 
@@ -169,13 +177,12 @@ class QMarketEnv(opf_env.OpfEnv):
         net.load['controllable'] = False
 
         net.sgen['controllable'] = True
-        cos_phi = 0.90
-        net.sgen['max_s_mva'] = net.sgen['max_max_p_mw'] / cos_phi
+        net.sgen['max_s_mva'] = net.sgen['max_max_p_mw'] / self.cos_phi
         net.sgen['max_max_q_mvar'] = net.sgen['max_s_mva']
 
         # TODO: Currently finetuned for simbench grid '1-LV-urban6--0-sw'
-        net.ext_grid['max_q_mvar'] = 0.01
-        net.ext_grid['min_q_mvar'] = -0.01
+        net.ext_grid['max_q_mvar'] = self.max_q_exchange
+        net.ext_grid['min_q_mvar'] = -self.max_q_exchange
 
         # Add price params to the network (as poly cost so that the OPF works)
         # Add loss costs at slack so that objective = loss minimization
