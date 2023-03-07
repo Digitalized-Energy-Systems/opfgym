@@ -39,6 +39,7 @@ class OpfEnv(gym.Env, abc.ABC):
                  add_res_obs=True,
                  autocorrect_prio='p_mw',
                  pf_for_obs=None,
+                 diff_reward=False,
                  add_time_obs=False,
                  train_data='noisy_simbench',
                  test_data='simbench',
@@ -103,12 +104,12 @@ class OpfEnv(gym.Env, abc.ABC):
                     self.pf_for_obs = True
                     break
 
-    def _calc_reward(self, net):
-        """ Default: Compute reward/costs from poly costs. Works only if
-        defined as pandapower OPF problem and only for poly costs! """
-        return -min_pp_costs(net)
+        self.diff_reward = diff_reward
+        if diff_reward:
+            self.pf_for_obs = True
 
     def reset(self, step=None, test=False):
+        self.info = {}
         self._sampling(step, test)
         # Reset all actions to default values
         default_act = (self.action_space.low + self.action_space.high) / 2
@@ -121,124 +122,9 @@ class OpfEnv(gym.Env, abc.ABC):
                     'Failed powerflow calculcation in reset. Try again!')
                 return self.reset()
 
+            self.prev_obj = self._calc_full_objective(self.net)
+
         return self._get_obs(self.obs_keys, self.add_time_obs)
-
-    def step(self, action, test=False):
-        assert not np.isnan(action).any()
-        info = {}
-
-        self._apply_actions(action)
-        self._autocorrect_apparent_power(self.priority)
-        success = self._run_pf()
-
-        if not success:
-            # Something went seriously wrong! Find out what!
-            # Maybe NAN in power setpoints?!
-            # Maybe simply catch this with a strong negative reward?!
-            import pdb
-            pdb.set_trace()
-
-        reward = self._calc_reward(self.net)
-        info['penalties'], info['valids'] = self._calc_penalty()
-
-        if self.single_step:
-            done = True
-        elif random.random() < 0.02:  # TODO! Better termination criterion
-            self._sampling(step=self.current_step + 1, test=test)
-            done = True  # TODO
-            info['TimeLimit.truncated'] = True
-        else:
-            done = not self._sampling(step=self.current_step + 1, test=test)
-            info['TimeLimit.truncated'] = True
-
-        obs = self._get_obs(self.obs_keys, self.add_time_obs)
-        if np.isnan(obs).any():
-            import pdb
-            pdb.set_trace()
-        assert not np.isnan(obs).any()
-
-        if not self.vector_reward:
-            reward += sum(info['penalties'])
-        else:
-            # Reward as a vector
-            reward = np.append(reward, info['penalties'])
-
-        return obs, reward, done, info
-
-    def _apply_actions(self, action, autocorrect=False):
-        """ Apply agent actions to the power system at hand. """
-        counter = 0
-        # Clip invalid actions
-        action = np.clip(action,
-                         self.action_space.low[:len(action)],
-                         self.action_space.high[:len(action)])
-        for unit_type, actuator, idxs in self.act_keys:
-            df = self.net[unit_type]
-            a = action[counter:counter + len(idxs)]
-            # Actions are relative to the maximum possible (scaled) value
-            # Attention: The negative range is always equal to the pos range!
-            # TODO: maybe use action wrapper instead?!
-            max_action = df[f'max_max_{actuator}'].loc[idxs]
-            new_values = a * max_action
-
-            # Autocorrect impossible setpoints (however: no penalties this way)
-            if f'max_{actuator}' in df.columns:
-                mask = new_values > df[f'max_{actuator}'].loc[idxs]
-                new_values[mask] = df[f'max_{actuator}'].loc[idxs][mask]
-            if f'min_{actuator}' in df.columns:
-                mask = new_values < df[f'min_{actuator}'].loc[idxs]
-                new_values[mask] = df[f'min_{actuator}'].loc[idxs][mask]
-
-            if 'scaling' in df.columns:
-                new_values /= df.scaling.loc[idxs]
-            # Scaling sometimes not existing -> TODO: maybe catch this once in init
-
-            self.net[unit_type][actuator].loc[idxs] = new_values
-
-            counter += len(idxs)
-
-        if counter != len(action):
-            warnings.warn('More actions than action keys!')
-
-    def _autocorrect_apparent_power(self, priority='p_mw'):
-        """ Autocorrect to maximum apparent power if necessary. Relevant for
-        sgens, loads, and storages """
-        not_prio = 'p_mw' if priority == 'q_mvar' else 'q_mvar'
-        for unit_type in ('sgen', 'load', 'storage'):
-            df = self.net[unit_type]
-            if 'max_s_mva' in df.columns:
-                s_mva2 = df.max_s_mva.to_numpy() ** 2
-                values2 = (df[priority] * df.scaling).to_numpy() ** 2
-                # Make sure to prevent negative values for sqare root
-                max_values = np.maximum(s_mva2 - values2, 0)**0.5 / df.scaling
-                # Reduce non-priority power column
-                self.net[unit_type][not_prio] = np.sign(df[not_prio]) * \
-                    np.minimum(df[not_prio].abs(), max_values)
-
-    def _run_pf(self):
-        try:
-            pp.runpp(self.net,
-                     voltage_depend_loads=False,
-                     enforce_q_lims=True)
-
-        except pp.powerflow.LoadflowNotConverged:
-            logging.warning('Powerflow not converged!!!')
-            return False
-        return True
-
-    def _calc_penalty(self):
-        """ Constraint violations result in a penalty that can be subtracted
-        from the reward.
-        Standard penalties: voltage band, overload of lines & transformers. """
-        penalties_valids = [voltage_violation(self.net, **self.volt_pen),
-                            line_overload(self.net, **self.line_pen),
-                            trafo_overload(self.net, **self.trafo_pen),
-                            ext_grid_overpower(
-                                self.net, 'q_mvar', **self.ext_grid_pen),
-                            ext_grid_overpower(self.net, 'p_mw', **self.ext_grid_pen)]
-
-        penalties, valids = zip(*penalties_valids)
-        return list(penalties), list(valids)
 
     def _sampling(self, step, test, *args, **kwargs):
         """ Default method: Set random and noisy simbench state. """
@@ -358,6 +244,138 @@ class OpfEnv(gym.Env, abc.ABC):
 
         return True
 
+    def step(self, action, test=False):
+        assert not np.isnan(action).any()
+        self.info = {}
+
+        self._apply_actions(action)
+
+        success = self._run_pf()
+
+        if not success:
+            # Something went seriously wrong! Find out what!
+            # Maybe NAN in power setpoints?!
+            # Maybe simply catch this with a strong negative reward?!
+            import pdb
+            pdb.set_trace()
+
+        reward = self._calc_full_objective(self.net)
+        if self.diff_reward:
+            # Do not use the objective as reward, but their diff instead
+            reward = reward - self.prev_obj
+
+        if self.single_step:
+            done = True
+        elif random.random() < 0.02:  # TODO! Better termination criterion
+            self._sampling(step=self.current_step + 1, test=test)
+            done = True  # TODO
+            self.info['TimeLimit.truncated'] = True
+        else:
+            done = not self._sampling(step=self.current_step + 1, test=test)
+            self.info['TimeLimit.truncated'] = True
+
+        obs = self._get_obs(self.obs_keys, self.add_time_obs)
+        assert not np.isnan(obs).any()
+
+        return obs, reward, done, self.info
+
+    def _apply_actions(self, action, autocorrect=False):
+        """ Apply agent actions to the power system at hand. """
+        counter = 0
+        # Clip invalid actions
+        action = np.clip(action,
+                         self.action_space.low[:len(action)],
+                         self.action_space.high[:len(action)])
+        for unit_type, actuator, idxs in self.act_keys:
+            df = self.net[unit_type]
+            a = action[counter:counter + len(idxs)]
+            # Actions are relative to the maximum possible (scaled) value
+            # Attention: The negative range is always equal to the pos range!
+            # TODO: maybe use action wrapper instead?!
+            max_action = df[f'max_max_{actuator}'].loc[idxs]
+            new_values = a * max_action
+
+            # Autocorrect impossible setpoints (however: no penalties this way)
+            if f'max_{actuator}' in df.columns:
+                mask = new_values > df[f'max_{actuator}'].loc[idxs]
+                new_values[mask] = df[f'max_{actuator}'].loc[idxs][mask]
+            if f'min_{actuator}' in df.columns:
+                mask = new_values < df[f'min_{actuator}'].loc[idxs]
+                new_values[mask] = df[f'min_{actuator}'].loc[idxs][mask]
+
+            if 'scaling' in df.columns:
+                new_values /= df.scaling.loc[idxs]
+            # Scaling sometimes not existing -> TODO: maybe catch this once in init
+
+            self.net[unit_type][actuator].loc[idxs] = new_values
+
+            counter += len(idxs)
+
+        if counter != len(action):
+            warnings.warn('More actions than action keys!')
+
+        self._autocorrect_apparent_power(self.priority)
+
+    def _autocorrect_apparent_power(self, priority='p_mw'):
+        """ Autocorrect to maximum apparent power if necessary. Relevant for
+        sgens, loads, and storages """
+        not_prio = 'p_mw' if priority == 'q_mvar' else 'q_mvar'
+        for unit_type in ('sgen', 'load', 'storage'):
+            df = self.net[unit_type]
+            if 'max_s_mva' in df.columns:
+                s_mva2 = df.max_s_mva.to_numpy() ** 2
+                values2 = (df[priority] * df.scaling).to_numpy() ** 2
+                # Make sure to prevent negative values for sqare root
+                max_values = np.maximum(s_mva2 - values2, 0)**0.5 / df.scaling
+                # Reduce non-priority power column
+                self.net[unit_type][not_prio] = np.sign(df[not_prio]) * \
+                    np.minimum(df[not_prio].abs(), max_values)
+
+    def _run_pf(self):
+        try:
+            pp.runpp(self.net,
+                     voltage_depend_loads=False,
+                     enforce_q_lims=True)
+
+        except pp.powerflow.LoadflowNotConverged:
+            logging.warning('Powerflow not converged!!!')
+            return False
+        return True
+
+    def _calc_objective(self, net):
+        """ Default: Compute reward/costs from poly costs. Works only if
+        defined as pandapower OPF problem and only for poly costs! If that is
+        not the case, this method needs to be overwritten! """
+        return np.array((-min_pp_costs(net), ))
+
+    def _calc_penalty(self):
+        """ Constraint violations result in a penalty that can be subtracted
+        from the reward.
+        Standard penalties: voltage band, overload of lines & transformers. """
+        penalties_valids = [voltage_violation(self.net, **self.volt_pen),
+                            line_overload(self.net, **self.line_pen),
+                            trafo_overload(self.net, **self.trafo_pen),
+                            ext_grid_overpower(
+                                self.net, 'q_mvar', **self.ext_grid_pen),
+                            ext_grid_overpower(self.net, 'p_mw', **self.ext_grid_pen)]
+
+        penalties, valids = zip(*penalties_valids)
+        return list(penalties), list(valids)
+
+    def _calc_full_objective(self, net):
+        """ Calculate the objective and the penalties together. """
+        self.info['objectives'] = self._calc_objective(net)
+        self.info['penalties'], self.info['valids'] = self._calc_penalty()
+
+        rewards = np.append(self.info['objectives'], self.info['penalties'])
+
+        if not self.vector_reward:
+            # Return scalar reward
+            return sum(rewards)
+        else:
+            # Reward as a numpy array
+            return rewards
+
     def _get_obs(self, obs_keys, add_time_obs):
         obss = [(self.net[unit_type][column].loc[idxs].to_numpy())
                 for unit_type, column, idxs in obs_keys]
@@ -423,7 +441,7 @@ class OpfEnv(gym.Env, abc.ABC):
         if not success:
             return np.nan, np.nan
 
-        reward = self._calc_reward(self.net)
+        reward = sum(self._calc_objective(self.net))
         penalties, valids = self._calc_penalty()
 
         # obj = sum(np.append(reward, penalties))
@@ -442,12 +460,12 @@ class OpfEnv(gym.Env, abc.ABC):
         success = self._optimal_power_flow()
         if not success:
             return np.nan
-        reward = self._calc_reward(self.net)
+        rewards = self._calc_objective(self.net)
         penalties, valids = self._calc_penalty()
         logging.info(f'Base Penalty: {penalties}')
         logging.info(f'Baseline actions: {self.get_current_actions()}')
 
-        return sum(np.append(reward, penalties))
+        return sum(np.append(rewards, penalties))
 
     def _optimal_power_flow(self):
         try:

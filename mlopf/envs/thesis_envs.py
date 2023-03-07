@@ -52,7 +52,9 @@ class SimpleOpfEnv(opf_env.OpfEnv):
 
         self.cos_phi = cos_phi
         self.max_q_exchange = max_q_exchange
-        self.net = self._build_net(simbench_network_name, *args, **kwargs)
+        self.net = self._build_net(
+            simbench_network_name, gen_scaling=gen_scaling,
+            load_scaling=load_scaling, *args, **kwargs)
 
         # Define the RL problem
         # See all load power values, sgen max active power...
@@ -137,7 +139,9 @@ class QMarketEnv(opf_env.OpfEnv):
 
         self.cos_phi = cos_phi
         self.max_q_exchange = max_q_exchange
-        self.net = self._build_net(simbench_network_name, *args, **kwargs)
+        self.net = self._build_net(
+            simbench_network_name, gen_scaling=gen_scaling,
+            load_scaling=load_scaling, *args, **kwargs)
 
         # Define the RL problem
         # See all load power values, sgen active power, and sgen prices...
@@ -258,7 +262,8 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         # compare: https://en.wikipedia.org/wiki/Cost_of_electricity_by_source
 
         self.net = self._build_net(
-            simbench_network_name, min_power, n_agents, *args, **kwargs)
+            simbench_network_name, min_power, n_agents, gen_scaling=gen_scaling,
+            load_scaling=load_scaling, *args, **kwargs)
 
         # Define the RL problem
         # See all load power values, non-controlled generators, and generator prices...
@@ -409,8 +414,8 @@ def build_net(simbench_network_name, gen_scaling=1.0, load_scaling=2.0,
     net.trafo['max_loading_percent'] = max_loading
 
     assert not sb.profiles_are_missing(net)
-    profiles = sb.get_absolute_values(net,
-                                      profiles_instead_of_study_cases=True)
+    profiles = sb.get_absolute_values(
+        net, profiles_instead_of_study_cases=True)
     # Fix strange error in simbench: Sometimes negative active power values
     profiles[('sgen', 'p_mw')][profiles[('sgen', 'p_mw')] < 0.0] = 0.0
 
