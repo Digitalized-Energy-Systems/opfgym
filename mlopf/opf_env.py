@@ -16,9 +16,6 @@ from mlopf.objectives import min_pp_costs
 warnings.simplefilter('once')
 
 
-# TODO: Calc reward from pandapower cost function (for OPF comparison)
-
-
 # Use one week every two months as test data (about 11.5% of the data)
 one_week = 7 * 24 * 4
 TEST_DATA = np.append(
@@ -346,7 +343,7 @@ class OpfEnv(gym.Env, abc.ABC):
         """ Default: Compute reward/costs from poly costs. Works only if
         defined as pandapower OPF problem and only for poly costs! If that is
         not the case, this method needs to be overwritten! """
-        return np.array((-min_pp_costs(net), ))
+        return -min_pp_costs(net)
 
     def _calc_penalty(self):
         """ Constraint violations result in a penalty that can be subtracted

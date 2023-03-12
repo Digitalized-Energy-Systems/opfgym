@@ -3,6 +3,7 @@
 A set of objective functions for pandapower networks.
 """
 
+import numpy as np
 import pandapower as pp
 
 
@@ -58,38 +59,48 @@ def min_pp_costs(net):
     pandapower-OPF. Attention: Not equivalent to 'net.res_cost' after
     pp-OPF, because internal cost calculation of pandapower is strange. """
 
-    # Maybe more efficient
-    # costs2 = 0
-    # for unit_type in ('sgen', 'gen', 'ext_grid', 'load', 'storage'):
-    #     poly_costs = net.poly_cost[net.poly_cost.et == unit_type]
-    #     if len(poly_costs) == 0:
-    #         continue
-
-    #     p_mw = net[f'res_{unit_type}']['p_mw'].to_numpy()
-    #     q_mvar = net[f'res_{unit_type}']['q_mvar'].to_numpy()
-
-    #     costs2 += (p_mw * poly_costs['cp1_eur_per_mw']).sum()
-    #     costs2 += (p_mw**2 * poly_costs['cp2_eur_per_mw2']).sum()
-    #     costs2 += (q_mvar * poly_costs['cq1_eur_per_mvar']).sum()
-    #     costs2 += (q_mvar**2 * poly_costs['cq2_eur_per_mvar2']).sum()
-
     # TODO: piece-wise costs not implemented yet!
-    costs = 0
-    for idx in net.poly_cost.index:
-        element = net.poly_cost.element[idx]
-        et = net.poly_cost.et[idx]
+    all_costs = []
+    for unit_type in ('sgen', 'gen', 'ext_grid', 'load', 'storage'):
+        poly_costs = net.poly_cost[net.poly_cost.et == unit_type]
+        if len(poly_costs) == 0:
+            continue
 
-        costs += net.poly_cost.cp0_eur[idx] + net.poly_cost.cq0_eur[idx]
-        costs += (net[f'res_{et}']['p_mw'][element]
-                  * net.poly_cost['cp1_eur_per_mw'][idx])
-        costs += (net[f'res_{et}']['p_mw'][element]**2
-                  * net.poly_cost['cp2_eur_per_mw2'][idx])
-        costs += (net[f'res_{et}']['q_mvar'][element]
-                  * net.poly_cost['cq1_eur_per_mvar'][idx])
-        costs += (net[f'res_{et}']['q_mvar'][element]**2
-                  * net.poly_cost['cq2_eur_per_mvar2'][idx])
+        idxs = poly_costs.element
+        p_mw = net[f'res_{unit_type}'].p_mw.iloc[idxs].to_numpy()
+        q_mvar = net[f'res_{unit_type}'].q_mvar.iloc[idxs].to_numpy()
 
-    return costs
+        # TODO: Add const cost factor somehow like: poly_costs.cp0_eur[p_mw!=0]
+        costs = (p_mw * poly_costs.cp1_eur_per_mw
+                 + p_mw**2 * poly_costs.cp2_eur_per_mw2
+                 + q_mvar * poly_costs.cq1_eur_per_mvar
+                 + q_mvar**2 * poly_costs.cq2_eur_per_mvar2)
+
+        all_costs.append(costs.to_numpy())
+
+    all_costs = np.concatenate(all_costs)
+
+    #
+    # all_costs2 = []
+    # for idx in net.poly_cost.index:
+    #     element = net.poly_cost.element[idx]
+    #     et = net.poly_cost.et[idx]
+
+    #     costs = net.poly_cost.cp0_eur[idx] + net.poly_cost.cq0_eur[idx]
+    #     costs += (net[f'res_{et}']['p_mw'][element]
+    #               * net.poly_cost['cp1_eur_per_mw'][idx])
+    #     costs += (net[f'res_{et}']['p_mw'][element]**2
+    #               * net.poly_cost['cp2_eur_per_mw2'][idx])
+    #     costs += (net[f'res_{et}']['q_mvar'][element]
+    #               * net.poly_cost['cq1_eur_per_mvar'][idx])
+    #     costs += (net[f'res_{et}']['q_mvar'][element]**2
+    #               * net.poly_cost['cq2_eur_per_mvar2'][idx])
+
+    #     all_costs2.append(costs)
+
+    # all_costs2 = np.array(all_costs2)
+
+    return all_costs
 
 
 def add_min_loss_costs(net, p_price=30):

@@ -166,9 +166,10 @@ class QMarketEnv(opf_env.OpfEnv):
         super().__init__(seed=seed, *args, **kwargs)
 
         if self.vector_reward is True:
-            # 4 penalties and one objective function
+            # 2 penalties and `n_sgen+1` objective functions
+            n_objs = 2 + len(self.net.sgen) + 1
             self.reward_space = gym.spaces.Box(
-                low=-np.ones(5) * np.inf, high=np.ones(5) * np.inf, seed=seed)
+                low=-np.ones(n_objs) * np.inf, high=np.ones(n_objs) * np.inf, seed=seed)
 
     def _build_net(self, simbench_network_name, *args, **kwargs):
         net, self.profiles = build_net(simbench_network_name, *args, **kwargs)
@@ -227,6 +228,29 @@ class QMarketEnv(opf_env.OpfEnv):
         q_max = (self.net.sgen.max_s_mva**2 - self.net.sgen.max_p_mw**2)**0.5
         self.net.sgen['min_q_mvar'] = -q_max
         self.net.sgen['max_q_mvar'] = q_max
+
+    def _calc_objective(self, net):
+        """ Define what to do in vector_reward-case. """
+        objs = super()._calc_objective(net)
+        if self.vector_reward:
+            # Structure: [sgen1_costs, sgen2_costs, ..., loss_costs]
+            return np.append(objs[0:len(self.net.sgen)],
+                             sum(objs[len(self.net.sgen):]))
+        else:
+            return objs
+
+    def _calc_penalty(self):
+        """ Define what to do in vector_reward-case. """
+        # Attention: This probably works only for the default system '1-LV-urban6--0-sw'
+        # because only ext_grid q violations there and nothing else
+        penalties, valids = super()._calc_penalty()
+        if self.vector_reward:
+            # Structure: [ext_grid_pen, other_pens]
+            penalties = np.array((penalties[3], sum(penalties) - penalties[3]))
+            valids = np.append(valids[3], np.append(
+                valids[0:3], valids[4:]).all())
+
+        return penalties, valids
 
 
 class EcoDispatchEnv(opf_env.OpfEnv):
@@ -291,6 +315,14 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         if 'ext_grid_pen_kwargs' not in kwargs:
             kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 0.01}
         super().__init__(seed=seed, *args, **kwargs)
+
+        if self.vector_reward is True:
+            # 5 penalties and `n_sgen` objective functions
+            n_objs = 5 + len(self.net.sgen)
+            self.reward_space = gym.spaces.Box(
+                low=-np.ones(n_objs) * np.inf,
+                high=np.ones(n_objs) * np.inf,
+                seed=seed)
 
     def _set_action_space(self, seed):
         """ Each power plant can be set in range from 0-100% power
