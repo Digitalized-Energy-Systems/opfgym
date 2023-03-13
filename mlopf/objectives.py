@@ -6,6 +6,8 @@ A set of objective functions for pandapower networks.
 import numpy as np
 import pandapower as pp
 
+import time
+
 
 def min_p_loss(net):
     """ Minimize active power losses for a given network. """
@@ -79,26 +81,6 @@ def min_pp_costs(net):
         all_costs.append(costs.to_numpy())
 
     all_costs = np.concatenate(all_costs)
-
-    #
-    # all_costs2 = []
-    # for idx in net.poly_cost.index:
-    #     element = net.poly_cost.element[idx]
-    #     et = net.poly_cost.et[idx]
-
-    #     costs = net.poly_cost.cp0_eur[idx] + net.poly_cost.cq0_eur[idx]
-    #     costs += (net[f'res_{et}']['p_mw'][element]
-    #               * net.poly_cost['cp1_eur_per_mw'][idx])
-    #     costs += (net[f'res_{et}']['p_mw'][element]**2
-    #               * net.poly_cost['cp2_eur_per_mw2'][idx])
-    #     costs += (net[f'res_{et}']['q_mvar'][element]
-    #               * net.poly_cost['cq1_eur_per_mvar'][idx])
-    #     costs += (net[f'res_{et}']['q_mvar'][element]**2
-    #               * net.poly_cost['cq2_eur_per_mvar2'][idx])
-
-    #     all_costs2.append(costs)
-
-    # all_costs2 = np.array(all_costs2)
 
     return all_costs
 
