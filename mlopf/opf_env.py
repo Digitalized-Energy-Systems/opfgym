@@ -8,6 +8,7 @@ import gym
 import numpy as np
 import pandapower as pp
 import pandas as pd
+import scipy
 
 from mlopf.penalties import (voltage_violation, line_overload,
                              trafo_overload, ext_grid_overpower)
@@ -171,7 +172,7 @@ class OpfEnv(gym.Env, abc.ABC):
         except AttributeError:
             self.net[unit_type][column].loc[idxs] = r
 
-    def _sample_normal(self, std=0.3):
+    def _sample_normal(self, std=0.3, truncated=False):
         """ Sample data around mean values from simbench data. """
         for unit_type, column, idxs in self.obs_keys:
             if 'res_' not in unit_type and 'poly_cost' not in unit_type:
@@ -180,8 +181,12 @@ class OpfEnv(gym.Env, abc.ABC):
                 max_values = (df[f'max_max_{column}'] / df.scaling).to_numpy()
                 min_values = (df[f'min_min_{column}'] / df.scaling).to_numpy()
                 diff = max_values - min_values
-                random_values = np.random.normal(mean, std * diff, len(mean))
-                random_values = np.clip(random_values, min_values, max_values)
+                if truncated:
+                    random_values = scipy.stats.truncnorm.rvs(
+                        min_values,max_values,mean,std * diff,len(mean))
+                else:
+                    random_values = np.random.normal(mean, std * diff, len(mean))
+                    random_values = np.clip(random_values, min_values, max_values)
                 self.net[unit_type][column].loc[idxs] = random_values
 
     def _set_simbench_state(self, step: int=None, test=False,
