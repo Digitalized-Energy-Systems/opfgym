@@ -9,6 +9,7 @@ import numpy as np
 import pandapower as pp
 import pandas as pd
 import scipy
+from scipy import stats
 
 from mlopf.penalties import (voltage_violation, line_overload,
                              trafo_overload, ext_grid_overpower)
@@ -182,7 +183,7 @@ class OpfEnv(gym.Env, abc.ABC):
                 min_values = (df[f'min_min_{column}'] / df.scaling).to_numpy()
                 diff = max_values - min_values
                 if truncated:
-                    random_values = scipy.stats.truncnorm.rvs(
+                    random_values = stats.truncnorm.rvs(
                         min_values,max_values,mean,std * diff,len(mean))
                 else:
                     random_values = np.random.normal(mean, std * diff, len(mean))
