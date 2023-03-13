@@ -6,8 +6,6 @@ A set of objective functions for pandapower networks.
 import numpy as np
 import pandapower as pp
 
-import time
-
 
 def min_p_loss(net):
     """ Minimize active power losses for a given network. """
