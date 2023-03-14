@@ -184,10 +184,12 @@ class OpfEnv(gym.Env, abc.ABC):
                 diff = max_values - min_values
                 if truncated:
                     random_values = stats.truncnorm.rvs(
-                        min_values,max_values,mean,std * diff,len(mean))
+                        min_values, max_values, mean, std * diff, len(mean))
                 else:
-                    random_values = np.random.normal(mean, std * diff, len(mean))
-                    random_values = np.clip(random_values, min_values, max_values)
+                    random_values = np.random.normal(
+                        mean, std * diff, len(mean))
+                    random_values = np.clip(
+                        random_values, min_values, max_values)
                 self.net[unit_type][column].loc[idxs] = random_values
 
     def _set_simbench_state(self, step: int=None, test=False,
@@ -355,12 +357,14 @@ class OpfEnv(gym.Env, abc.ABC):
         """ Constraint violations result in a penalty that can be subtracted
         from the reward.
         Standard penalties: voltage band, overload of lines & transformers. """
-        penalties_valids = [voltage_violation(self.net, **self.volt_pen),
-                            line_overload(self.net, **self.line_pen),
-                            trafo_overload(self.net, **self.trafo_pen),
-                            ext_grid_overpower(
-                                self.net, 'q_mvar', **self.ext_grid_pen),
-                            ext_grid_overpower(self.net, 'p_mw', **self.ext_grid_pen)]
+
+        penalties_valids = [
+            voltage_violation(self.net, self.info, **self.volt_pen),
+            line_overload(self.net, self.info, **self.line_pen),
+            trafo_overload(self.net, self.info, **self.trafo_pen),
+            ext_grid_overpower(self.net, self.info,
+                               'q_mvar', **self.ext_grid_pen),
+            ext_grid_overpower(self.net, self.info, 'p_mw', **self.ext_grid_pen)]
 
         penalties, valids = zip(*penalties_valids)
         return list(penalties), list(valids)
