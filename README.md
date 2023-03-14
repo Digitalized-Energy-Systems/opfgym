@@ -1,5 +1,39 @@
+#### General
+A set of benchmark environments to solve the Optimal Power Flow (OPF) problem
+with reinforcement learning (RL) algorithms. All environments use the openai
+gym interface. (exception: `env.render()` not implemented)
+
 #### Installation
 Clone the repository and run `pip install -e .` within some kind of virtual env
+
+#### Environments
+Currently, three OPF environments with the openai gym environment are available:
+
+### Standard OPF (SimpleOpfEnv)
+Run `from mlopf.envs.thesis_envs import SimpleOpfEnv` to import this env.
+This env is the simplest one to learn. The objective is to maximize renewable
+generation subject to constraints.
+
+### Reactive power market (QMarketEnv)
+Run `from mlopf.envs.thesis_envs import QMarketEnv` to import this env.
+This env had intermediate difficulty. The objective is the minimize costs and
+reactive power costs in a local reactive power market.
+
+### Economic dispatch (EcoDispatchEnv)
+Run `from mlopf.envs.thesis_envs import EcoDispatchEnv` to import this env.
+This is the most difficult environment. The goal is to perform an economic
+dispatch, i.e. to minimize active power costs subject to constraints.
+
+### Multi-agent bidding in reactive power market (BiddingQMarketEnv)
+TODO
+
+#### OPF parameters
+All OPF environments are customizable. Parameters are:
+* `simbench_network_name`: Define which simbench system to use (see table)
+* `gen_scaling`: Define how much to upscale the generators (e.g. to create more potential constraint violations and therefore more difficult problems)
+* `load_scaling`: Equivalent to `gen_scaling`
+* `voltage_band`: Define the voltage band (default `0.05` for +-0.05pu)
+* `max_loading`: Define the maximum load of lines and trafos (default `80` for 80%)
 
 #### Grid Notes
 For every environment, different simbench/pandapower energy systems can be
@@ -11,7 +45,7 @@ To decide which system to use for experiments, here a quick list with the
 relevant information for each simbench system for quick access:
 (Insert 0,1,2 for current, future and far future system)
 
-| simbench id       | n_buses   | n_ext_grid    | n_gen     | n_sgen        | n_loads   |
+| simbench_network_name   | n_buses   | n_ext_grid    | n_gen     | n_sgen        | n_loads   |
 |---|---|---|---|---|---|
 | 1-EHV-mixed--<0,1,2>-sw | 3085      | 7             | 338       | 225/233/241 *(225/225/225)   | 390       |
 | 1-HV-mixed--<0,1,2>-sw  | 306/355/377       | 3             | 0         | 103/109/124 *(57/63/78) | 58        |
@@ -27,21 +61,13 @@ relevant information for each simbench system for quick access:
 | 1-LV-semiurb5--<0,1,2>-sw | 111     | 1             | 0         | 9/14/15         | 104/118/129       |
 | 1-LV-urban6--<0,1,2>-sw | 59        | 1             | 0         | 5/7/12         | 111/112/135       |
 
-Asterisk: Generators with non-zero active power (reason for zero power unknown)
+Asterisk: Generators with non-zero active power (reason for zero power unknown).
+They are automatically removed from the system.
+
+Attention: All constraints and other variables are tuned for the default
+simbench systems. Whenever, you change the simbench system, it could happen
+that the OPF is not solvable anymore, e.g. because the constraints are too tight.
 
 
-#### Environments
-TODO
-
-### Standard OPF (SimpleOpfEnv)
-
-### Reactive power market (QMarketEnv)
-
-### Economic dispatch (EcoDispatchEnv)
-
-### Multi-agent bidding in reactive power market (BiddingQMarketEnv)
-
-
-
-#### How to create a new env
-What needs to be done? (action_space, observation_space, sampling, etc)
+#### How to create a new env?
+TODO: What needs to be done if you want to implement your own OPF environment? (action_space, observation_space, sampling, etc)
