@@ -1,33 +1,33 @@
-#### General
+### General
 A set of benchmark environments to solve the Optimal Power Flow (OPF) problem
 with reinforcement learning (RL) algorithms. All environments use the openai
 gym interface. (exception: `env.render()` not implemented)
 
-#### Installation
+### Installation
 Clone the repository and run `pip install -e .` within some kind of virtual env
 
-#### Environments
+### Environments
 Currently, three OPF environments with the openai gym environment are available:
 
-### Standard OPF (SimpleOpfEnv)
+####Standard OPF (SimpleOpfEnv)
 Run `from mlopf.envs.thesis_envs import SimpleOpfEnv` to import this env.
 This env is the simplest one to learn. The objective is to maximize renewable
 generation subject to constraints.
 
-### Reactive power market (QMarketEnv)
+#### Reactive power market (QMarketEnv)
 Run `from mlopf.envs.thesis_envs import QMarketEnv` to import this env.
 This env had intermediate difficulty. The objective is the minimize costs and
 reactive power costs in a local reactive power market.
 
-### Economic dispatch (EcoDispatchEnv)
+#### Economic dispatch (EcoDispatchEnv)
 Run `from mlopf.envs.thesis_envs import EcoDispatchEnv` to import this env.
 This is the most difficult environment. The goal is to perform an economic
 dispatch, i.e. to minimize active power costs subject to constraints.
 
-### Multi-agent bidding in reactive power market (BiddingQMarketEnv)
+#### Multi-agent bidding in reactive power market (BiddingQMarketEnv)
 TODO
 
-#### OPF parameters
+### OPF parameters
 All OPF environments are customizable. Parameters are:
 * `simbench_network_name`: Define which simbench system to use (see table)
 * `gen_scaling`: Define how much to upscale the generators (e.g. to create more potential constraint violations and therefore more difficult problems)
@@ -35,7 +35,7 @@ All OPF environments are customizable. Parameters are:
 * `voltage_band`: Define the voltage band (default `0.05` for +-0.05pu)
 * `max_loading`: Define the maximum load of lines and trafos (default `80` for 80%)
 
-#### Grid Notes
+### Grid Notes
 For every environment, different simbench/pandapower energy systems can be
 choosen. The difficulty of the learning problem depends mainly on the number of
 generators (~number of actuators) and the number of buses (~number of sensors
@@ -69,5 +69,5 @@ simbench systems. Whenever, you change the simbench system, it could happen
 that the OPF is not solvable anymore, e.g. because the constraints are too tight.
 
 
-#### How to create a new env?
+### How to create a new env?
 TODO: What needs to be done if you want to implement your own OPF environment? (action_space, observation_space, sampling, etc)
