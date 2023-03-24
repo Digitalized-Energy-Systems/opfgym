@@ -41,8 +41,8 @@ class SimpleOpfEnv(opf_env.OpfEnv):
 
     Objective: maximize active power feed-in to external grid
 
-    Constraints: Voltage band, line/trafo load, min/max reactive power, zero
-        reactive power flow over slack bus
+    Constraints: Voltage band, line/trafo load, min/max reactive power,
+        constrained reactive power flow over slack bus
     """
 
     def __init__(self, simbench_network_name='1-LV-rural3--0-sw',
@@ -66,9 +66,6 @@ class SimpleOpfEnv(opf_env.OpfEnv):
         self.act_keys = [('sgen', 'p_mw', self.net['sgen'].index),
                          ('sgen', 'q_mvar', self.net['sgen'].index)]
         n_gens = len(self.net['sgen'].index)
-        low = np.concatenate([np.zeros(n_gens), -np.ones(n_gens)])
-        high = np.ones(2 * n_gens)
-        self.action_space = gym.spaces.Box(low, high, seed=seed)
 
         if 'ext_grid_pen_kwargs' not in kwargs:
             kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 500}
@@ -128,8 +125,8 @@ class QMarketEnv(opf_env.OpfEnv):
 
     Objective: minimize reactive power costs + minimize loss costs
 
-    Constraints: Voltage band, line/trafo load, min/max reactive power, zero
-        reactive power flow over slack bus
+    Constraints: Voltage band, line/trafo load, min/max reactive power,
+        constrained reactive power flow over slack bus
 
     """
 
@@ -157,9 +154,6 @@ class QMarketEnv(opf_env.OpfEnv):
 
         # ... and control all sgens' reactive power values
         self.act_keys = [('sgen', 'q_mvar', self.net['sgen'].index)]
-        low = -np.ones(len(self.net['sgen'].index))
-        high = np.ones(len(self.net['sgen'].index))
-        self.action_space = gym.spaces.Box(low, high, seed=seed)
 
         if 'ext_grid_pen_kwargs' not in kwargs:
             kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 250}
@@ -258,14 +252,15 @@ class EcoDispatchEnv(opf_env.OpfEnv):
     Economic Dispatch/Active power market environment: The grid operator
     procures active power from generators to minimize losses within its system.
 
-    Actuators: Active power of all gens (reactive power?!)
+    Actuators: Active power of all gens
 
-    Sensors: active+reactive power of all loads; (TODO: active power of all other gens);
+    Sensors: active+reactive power of all loads; (TODO: active power of all other gens?);
         active power prices of all gens
 
-    Objective: minimize active power costs + minimize loss costs
+    Objective: minimize active power costs
 
-    Constraints: Voltage band, line/trafo load, min/max active power limits (automatically)
+    Constraints: Voltage band, line/trafo load, min/max active power limits
+        (automatically), active power exchange with external grid
 
     """
 
@@ -304,7 +299,6 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         # ... and control all generators' active power values
         self.act_keys = [('sgen', 'p_mw', self.net.sgen.index),  # self.sgen_idxs),
                          ('gen', 'p_mw', self.net.gen.index)]  # self.gen_idxs)]
-        self._set_action_space(seed)
         # TODO: Define constraints explicitly?! (active power min/max not default!)
 
         # Set default values
@@ -313,7 +307,7 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         if 'trafo_pen_kwargs' not in kwargs:
             kwargs['trafo_pen_kwargs'] = {'linear_penalty': 10}
         if 'ext_grid_pen_kwargs' not in kwargs:
-            kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 0.01}
+            kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 1}
         super().__init__(seed=seed, *args, **kwargs)
 
         if self.vector_reward is True:
@@ -323,13 +317,6 @@ class EcoDispatchEnv(opf_env.OpfEnv):
                 low=-np.ones(n_objs) * np.inf,
                 high=np.ones(n_objs) * np.inf,
                 seed=seed)
-
-    def _set_action_space(self, seed):
-        """ Each power plant can be set in range from 0-100% power
-        (minimal power higher than zero not considered here) """
-        low = np.zeros(len(self.act_keys[0][2]) + len(self.act_keys[1][2]))
-        high = np.ones(len(self.act_keys[0][2]) + len(self.act_keys[1][2]))
-        self.action_space = gym.spaces.Box(low, high, seed=seed)
 
     def _build_net(self, simbench_network_name, min_power, n_agents, *args, **kwargs):
         net, self.profiles = build_net(simbench_network_name, *args, **kwargs)
@@ -345,6 +332,7 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         net.gen['min_p_mw'] = 0
         net.gen['max_p_mw'] = net.gen['max_max_p_mw']
 
+        # Prevent "selling" of active power to upper system
         net.ext_grid['min_p_mw'] = 0
 
         # TODO: Also for gen
@@ -353,6 +341,7 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         net.sgen['controllable'] = True
         net.gen['controllable'] = True
 
+        # Ignore reactive power completely
         cos_phi = 1.0
         for unit_type in ('gen', 'sgen'):
             net[unit_type]['max_s_mva'] = net[unit_type]['max_max_p_mw'] / cos_phi
@@ -402,9 +391,9 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         self._sample_from_range(
             'poly_cost', 'cp1_eur_per_mw', self.net.poly_cost.index)
 
-    def _calc_reward(self, net):
+    def _calc_objective(self, net):
         # /10000, because too high otherwise
-        return super()._calc_reward(net) / 10000
+        return super()._calc_objective(net) / 10000
 
         # TODO: There seems to be a slight difference in RL and OPF objective!
         # -> "p_mw[p_mw < 0] = 0.0" is not considered for OPF?!

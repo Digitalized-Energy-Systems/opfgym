@@ -61,6 +61,7 @@ class OpfEnv(gym.Env, abc.ABC):
         self.add_time_obs = add_time_obs
 
         # Automatically add observations that require previous pf calculation
+        # TODO: Probably good idea to add ext_grid p/q as well
         if add_res_obs:
             self.obs_keys.extend([
                 ('res_bus', 'vm_pu', self.net.bus.index),
@@ -69,6 +70,7 @@ class OpfEnv(gym.Env, abc.ABC):
 
         self.observation_space = get_obs_space(
             self.net, self.obs_keys, add_time_obs, seed)
+        self.action_space = get_action_space(self.act_keys, seed)
 
         self.vector_reward = vector_reward
 
@@ -541,3 +543,17 @@ def get_obs_space(net, obs_keys: list, add_time_obs: bool, seed: int,
 
     return gym.spaces.Box(
         np.concatenate(lows, axis=0), np.concatenate(highs, axis=0), seed=seed)
+
+
+def get_action_space(act_keys: list, seed: int):
+    """ Get RL action space from defined actuators. """
+    low = np.array([])
+    high = np.array([])
+    for unit_type, column, idxs in act_keys:
+        condition = (unit_type == 'storage' or column == 'q_mvar')
+        new_lows = -np.ones(len(idxs)) if condition else np.zeros(len(idxs))
+
+        low = np.append(low, new_lows)
+        high = np.append(high, np.ones(len(idxs)))
+
+    return gym.spaces.Box(low, high, seed=seed)

@@ -67,8 +67,8 @@ def min_pp_costs(net):
             continue
 
         idxs = poly_costs.element
-        p_mw = net[f'res_{unit_type}'].p_mw.iloc[idxs].to_numpy()
-        q_mvar = net[f'res_{unit_type}'].q_mvar.iloc[idxs].to_numpy()
+        p_mw = net[f'res_{unit_type}'].p_mw.loc[idxs].to_numpy()
+        q_mvar = net[f'res_{unit_type}'].q_mvar.loc[idxs].to_numpy()
 
         # TODO: Add const cost factor somehow like: poly_costs.cp0_eur[p_mw!=0]
         costs = (p_mw * poly_costs.cp1_eur_per_mw
