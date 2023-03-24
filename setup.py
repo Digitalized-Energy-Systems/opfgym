@@ -18,11 +18,12 @@ setup(
     license='MIT',
     install_requires=[
         'numpy==1.18.3',
-        'scipy',
+        'scipy==1.4.1',
         'numba',
+        'pandas==1.3.5',
         'matplotlib',
         'pandapower==2.2.2',
-        'gym',
         'simbench==1.2.0',
+        'gym',
     ],
 )
