@@ -243,11 +243,15 @@ class OpfEnv(gym.Env, abc.ABC):
 
             # Make sure that the range of original data remains unchanged
             # (Technical limits of the units remain the same)
-            new_values = np.clip(new_values,
-                                 self.profiles[type_act].min().to_numpy(),
-                                 self.profiles[type_act].max().to_numpy())
+            new_values = np.clip(
+                new_values,
+                self.profiles[type_act].min(
+                )[self.net[unit_type].index].to_numpy(),
+                self.profiles[type_act].max(
+                )[self.net[unit_type].index].to_numpy())
 
-            self.net[unit_type].loc[:, actuator] = new_values
+            self.net[unit_type].loc[self.net[unit_type].index,
+                                    actuator] = new_values
 
         return True
 
