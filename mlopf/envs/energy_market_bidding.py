@@ -35,8 +35,7 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
                  other_bids='fixed', one_gen_per_agent=True,
                  rel_marginal_costs=0.1,
                  consider_marginal_costs=True, bid_as_reward=False,
-                 step_penalty=False, remove_gen_idxs=None,
-                 *args, **kwargs):
+                 remove_gen_idxs=None, *args, **kwargs):
 
         assert market_rules in ('pab', 'uniform')
         self.market_rules = market_rules
@@ -50,29 +49,24 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
         self.rel_marginal_costs = rel_marginal_costs
         self.consider_marginal_costs = consider_marginal_costs
         self.bid_as_reward = bid_as_reward
-        self.step_penalty = step_penalty
         self.remove_gen_idxs = remove_gen_idxs  # default: Remove randomly
         self._seed = kwargs['seed']
 
-        if n_agents is not None:
-            self.n_agents = n_agents
-            # Simply use the first n agents for bidding (all other: bid internal costs)
-            self.agent_idxs = np.arange(n_agents)
-        else:
-            self.n_agents = len(self.net.sgen.index)
-            self.agent_idxs = np.array(self.net.sgen.index)
+        self.n_agents = n_agents
+        self.agent_idxs = np.arange(n_agents)
 
         super().__init__(simbench_network_name, 0, n_agents,
-                         gen_scaling, load_scaling, u_penalty, overload_penalty,
-                         *args, **kwargs)
+                         gen_scaling, load_scaling, *args, **kwargs)
+        # Overwrite action space
+        self._set_action_space(self._seed)
 
         self.internal_costs = 20  # Arbitrary value currently: 2 ct/kwh
-        # TODO: Add marginal costs for the power plants (different for each!)
+        # TODO: Add marginal costs for the power plants? (different for each!)
         self.max_power = np.array(self.net.sgen.max_p_mw)
         self.n_gens = len(self.net.sgen.index)
 
         if self.vector_reward:
-            n_rewards = self.n_gens + 4
+            n_rewards = self.n_gens + 5 + 1
         else:
             n_rewards = self.n_gens + 1
         if self.in_agent:
@@ -90,6 +84,7 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
     def _build_net(self, *args, **kwargs):
         net = super()._build_net(*args, **kwargs)
 
+        net.ext_grid['controllable'] = True
         # Cost function to set penalty in OPF
         net.ext_grid['min_p_mw'] = -10000
         net.ext_grid['max_p_mw'] = 10000
@@ -97,7 +92,8 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
                            points=[[-10000, 0, 0],
                                    [0, 10000, self.penalty_factor]],
                            power_type='p')
-        # net.poly_cost = net.poly_cost.drop(0)
+        # Remove poly cost instead
+        net.poly_cost = net.poly_cost.drop(0)
         # TODO: Maybe remove in base env? or update obs space (this is a potential error)
 
         if self.uniform_gen_size:
@@ -129,9 +125,10 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
         """ Each power plant can be set in range from 0-100% power
         (minimal power higher than zero not considered here) """
         if self.in_agent:
-            return super()._set_action_space(seed)
+            low = np.zeros(len(self.act_keys[0][2]) + len(self.act_keys[1][2]))
+            high = np.ones(len(self.act_keys[0][2]) + len(self.act_keys[1][2]))
 
-        if self.one_gen_per_agent and self.market_rules == 'pab':
+        elif self.one_gen_per_agent and self.market_rules == 'pab':
             low = np.zeros(self.n_agents * 2)
             high = np.ones(self.n_agents * 2)
 
@@ -147,7 +144,10 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
             # Same as base environment: Only the setpoints
             # TODO: Maybe add bidding as actuator (instead of random sampling)
             if not self.learn_bids:
-                return super()._set_action_space(seed)
+                low = np.zeros(
+                    len(self.act_keys[0][2]) + len(self.act_keys[1][2]))
+                high = np.ones(
+                    len(self.act_keys[0][2]) + len(self.act_keys[1][2]))
             else:
                 low = np.zeros(
                     len(self.act_keys[0][2]) + len(self.act_keys[1][2]) + self.n_agents)
@@ -196,59 +196,57 @@ class OpfAndBiddingEcoDispatchEnv(EcoDispatchEnv):
         obs, reward, done, info = super().step(action=action)
 
         if self.vector_reward is not True:
-            reward -= sum(info['penalty'])
-            reward = np.append(reward, sum(info['penalty']))
+            reward -= sum(info['penalties'])
+            reward = np.append(reward, sum(info['penalties']))
 
         return obs, reward, done, info
 
-    def _calc_reward(self, net):
-        """ Create a reward vector (!) that consists of market profit for each
-        agent """
-        # TODO: Currently no objective function, except for cost min, but only constraint satisfaction
-        if self.market_rules == 'uniform':
-            return -self.market_price * np.array(self.net.res_sgen.p_mw)
-        elif self.market_rules == 'lmp':
-            raise NotImplementedError
-        elif self.market_rules == 'pab':
-            # Ignore "market price" completely here
-            rewards = -self.bids * np.array(self.net.res_sgen.p_mw)
-            if self.consider_marginal_costs:
-                rewards += self.rel_marginal_costs * self.reward_scaling * \
-                    self.max_price * np.array(self.net.res_sgen.p_mw)
+    # TODO: Currently buggy
+    # def _calc_objective(self, net):
+    #     """ Create a reward vector (!) that consists of market profit for each
+    #     agent """
+    #     # TODO: Currently no objective function, except for cost min, but only constraint satisfaction
+    #     if self.market_rules == 'uniform':
+    #         return -self.market_price * np.array(self.net.res_sgen.p_mw)
+    #     elif self.market_rules == 'lmp':
+    #         raise NotImplementedError
+    #     elif self.market_rules == 'pab':
+    #         # Ignore "market price" completely here
+    #         rewards = -self.bids * np.array(self.net.res_sgen.p_mw)
+    #         if self.consider_marginal_costs:
+    #             rewards += self.rel_marginal_costs * self.reward_scaling * \
+    #                 self.max_price * np.array(self.net.res_sgen.p_mw)
 
-            # To prevent zero gradient -> bid as negative reward if bid too high
-            # The OPF often fails to set the setpoints to exactly zero
-            # TODO: Maybe make this optional
-            rel_setpoints = np.array(
-                self.net.res_sgen.p_mw / self.net.sgen.max_p_mw)
-            if self.bid_as_reward is True:
-                rewards[rel_setpoints < 0.05] += self.bids[rel_setpoints < 0.05]
-            else:
-                rewards[rel_setpoints < 0.001] = 0.0
+    #         # To prevent zero gradient -> bid as negative reward if bid too high
+    #         # The OPF often fails to set the setpoints to exactly zero
+    #         # TODO: Maybe make this optional
+    #         rel_setpoints = np.array(
+    #             self.net.res_sgen.p_mw / self.net.sgen.max_p_mw)
+    #         if self.bid_as_reward is True:
+    #             rewards[rel_setpoints < 0.05] += self.bids[rel_setpoints < 0.05]
+    #         else:
+    #             rewards[rel_setpoints < 0.001] = 0.0
 
-            return rewards
+    #         return rewards
 
     def _calc_penalty(self):
-        penalty = super()._calc_penalty()
+        penalties, valids = super()._calc_penalty()
         # Do not allow to procure active power from superordinate system
-        ext_grid_penalty = (sum(self.net.res_ext_grid.p_mw)
-                            ) * self.penalty_factor * self.reward_scaling
-
         if sum(self.net.res_ext_grid.p_mw) < 0:
             # No negative penalties allowed
-            ext_grid_penalty = 0
+            ext_grid_penalty = 0.0
+        else:
+            ext_grid_penalty = (sum(self.net.res_ext_grid.p_mw)
+                                ) * self.penalty_factor * self.reward_scaling
 
-        if ext_grid_penalty > 1.0:
-            print('ext grid penalty: ', ext_grid_penalty)
+        # if ext_grid_penalty > 1.0:
+        #     print('ext grid penalty: ', ext_grid_penalty)
 
-        penalty.append(-ext_grid_penalty)
+        penalties.append(-ext_grid_penalty)
+        # Soft constraint: Always valid!
+        valids.append(True)
 
-        if self.step_penalty is True:
-            for idx in range(len(penalty) - 1):
-                if penalty[idx] <= -0.001:
-                    penalty[idx] -= 0.5
-
-        return penalty
+        return penalties, valids
 
 
 class OpfAndBiddingEcoDispatchEnvBaseMarl(OpfAndBiddingEcoDispatchEnv):
