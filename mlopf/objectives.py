@@ -53,7 +53,7 @@ def maximize_profit(net, units: dict):
     return profit
 
 
-def min_pp_costs(net):
+def min_pp_costs(net, autoscale=False):
     """ Minimize total costs as implemented in pandapower network.
     Useful if cost function is already implemented or for comparison with
     pandapower-OPF. Attention: Not equivalent to 'net.res_cost' after
@@ -67,16 +67,36 @@ def min_pp_costs(net):
             continue
 
         idxs = poly_costs.element
-        p_mw = net[f'res_{unit_type}'].p_mw.loc[idxs].to_numpy()
-        q_mvar = net[f'res_{unit_type}'].q_mvar.loc[idxs].to_numpy()
+        res_df = net[f'res_{unit_type}']
+        p_mw = res_df.p_mw.loc[idxs].to_numpy()
+        q_mvar = res_df.q_mvar.loc[idxs].to_numpy()
+        linear_active_price = poly_costs.cp1_eur_per_mw.to_numpy()
+        quadr_active_price = poly_costs.cp2_eur_per_mw2.to_numpy()
+        linear_reactive_price = poly_costs.cq1_eur_per_mvar.to_numpy()
+        quadr_reactive_price = poly_costs.cq2_eur_per_mvar2.to_numpy()
+
+        if autoscale:
+            import pdb  # Check if original data changed!
+            pdb.set_trace()
+            df = net[unit_type]
+            p_mw /= (df.max_max_p_mw / df.scaling).loc[idxs]
+            q_mvar /= (df.max_max_q_mvar / df.scaling).loc[idxs]
+            if "max_cp1_eur_per_mw" in poly_costs.columns:
+                linear_active_price /= poly_costs.max_cp1_eur_per_mw
+            if "max_cp2_eur_per_mw2" in poly_costs.columns:
+                quadr_active_price /= poly_costs.max_cp2_eur_per_mw2
+            if "max_cq1_eur_per_mvar" in poly_costs.columns:
+                linear_reactive_price /= poly_costs.max_cq1_eur_per_mvar
+            if "max_cq2_eur_per_mvar2" in poly_costs.columns:
+                quadr_reactive_price /= poly_costs.max_cq2_eur_per_mvar2
 
         # TODO: Add const cost factor somehow like: poly_costs.cp0_eur[p_mw!=0]
-        costs = (p_mw * poly_costs.cp1_eur_per_mw
-                 + p_mw**2 * poly_costs.cp2_eur_per_mw2
-                 + q_mvar * poly_costs.cq1_eur_per_mvar
-                 + q_mvar**2 * poly_costs.cq2_eur_per_mvar2)
+        costs = (p_mw * linear_active_price
+                 + p_mw**2 * quadr_active_price
+                 + q_mvar * linear_reactive_price
+                 + q_mvar**2 * quadr_reactive_price)
 
-        all_costs.append(costs.to_numpy())
+        all_costs.append(costs)
 
     all_costs = np.concatenate(all_costs)
 
