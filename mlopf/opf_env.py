@@ -47,7 +47,8 @@ class OpfEnv(gym.Env, abc.ABC):
                  line_pen_kwargs=None,
                  trafo_pen_kwargs=None,
                  ext_grid_pen_kwargs=None,
-                 seed=None, *args, **kwargs):
+                 seed=None, squash_reward=False,
+                 *args, **kwargs):
 
         # Should be always True. Maybe only allow False for paper investigation
         self.train_test_split = train_test_split
@@ -73,6 +74,7 @@ class OpfEnv(gym.Env, abc.ABC):
         self.action_space = get_action_space(self.act_keys, seed)
 
         self.vector_reward = vector_reward
+        self.squash_reward = squash_reward
 
         if vector_reward is True:
             # 3 penalties and one objective function
@@ -274,6 +276,8 @@ class OpfEnv(gym.Env, abc.ABC):
         if self.diff_reward:
             # Do not use the objective as reward, but their diff instead
             reward = reward - self.prev_obj
+        if self.squash_reward:
+            reward = np.sign(reward) * np.log(np.abs(reward) + 1)
 
         if self.single_step:
             done = True
