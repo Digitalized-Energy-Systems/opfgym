@@ -173,6 +173,7 @@ class QMarketEnv(opf_env.OpfEnv):
         net.sgen['controllable'] = True
         net.sgen['max_s_mva'] = net.sgen['max_max_p_mw'] / self.cos_phi
         net.sgen['max_max_q_mvar'] = net.sgen['max_s_mva']
+        net.sgen['min_min_q_mvar'] = -net.sgen['max_s_mva']
 
         # TODO: Currently finetuned for simbench grid '1-LV-urban6--0-sw'
         net.ext_grid['max_q_mvar'] = self.max_q_exchange

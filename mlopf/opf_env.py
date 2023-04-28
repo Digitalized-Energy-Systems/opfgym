@@ -35,11 +35,12 @@ class OpfEnv(gym.Env, abc.ABC):
                  train_test_split=True,
                  vector_reward=False,
                  single_step=True,
-                 add_res_obs=True,
                  autocorrect_prio='p_mw',
                  pf_for_obs=None,
+                 add_res_obs=True,
                  diff_reward=False,
                  add_time_obs=False,
+                 add_act_obs=False,
                  train_data='noisy_simbench',
                  test_data='simbench',
                  sampling_kwargs=None,
@@ -68,6 +69,11 @@ class OpfEnv(gym.Env, abc.ABC):
                 ('res_bus', 'vm_pu', self.net.bus.index),
                 ('res_line', 'loading_percent', self.net.line.index),
                 ('res_trafo', 'loading_percent', self.net.trafo.index)])
+
+        self.add_act_obs = add_act_obs
+        if add_act_obs:
+            # The agent can observe its previous actions
+            self.obs_keys.extend(self.act_keys)
 
         self.observation_space = get_obs_space(
             self.net, self.obs_keys, add_time_obs, seed)
@@ -114,9 +120,14 @@ class OpfEnv(gym.Env, abc.ABC):
     def reset(self, step=None, test=False):
         self.info = {}
         self._sampling(step, test)
-        # Reset all actions to default values
-        default_act = (self.action_space.low + self.action_space.high) / 2
-        self._apply_actions(default_act)
+        if self.add_act_obs:
+            # Use random actions as starting point
+            # TODO: Maybe better to combine this with multi-step?!
+            act = self.action_space.sample()
+        else:
+            # Reset all actions to default values
+            act = (self.action_space.low + self.action_space.high) / 2
+        self._apply_actions(act)
 
         if self.pf_for_obs is True:
             success = self._run_pf()
@@ -273,10 +284,10 @@ class OpfEnv(gym.Env, abc.ABC):
             pdb.set_trace()
 
         reward = self._calc_full_objective(self.net)
-        if self.diff_reward:
+        if self.diff_reward and not test:
             # Do not use the objective as reward, but their diff instead
             reward = reward - self.prev_obj
-        if self.squash_reward:
+        if self.squash_reward and not test:
             reward = np.sign(reward) * np.log(np.abs(reward) + 1)
 
         if self.single_step:
