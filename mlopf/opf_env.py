@@ -37,7 +37,7 @@ class OpfEnv(gym.Env, abc.ABC):
                  single_step=True,
                  autocorrect_prio='p_mw',
                  pf_for_obs=None,
-                 add_res_obs=True,
+                 add_res_obs=False,
                  diff_reward=False,
                  add_time_obs=False,
                  add_act_obs=False,
@@ -60,8 +60,15 @@ class OpfEnv(gym.Env, abc.ABC):
         else:
             self.sampling_kwargs = {}
 
-        self.add_time_obs = add_time_obs
+        self.add_act_obs = add_act_obs
+        # TODO: set res obs to True as well!
+        if add_act_obs:
+            # The agent can observe its previous actions
+            self.obs_keys.extend(self.act_keys)
+            # Does not make sense without observing results from previous act
+            add_res_obs = True
 
+        self.add_time_obs = add_time_obs
         # Automatically add observations that require previous pf calculation
         # TODO: Probably good idea to add ext_grid p/q as well
         if add_res_obs:
@@ -69,11 +76,6 @@ class OpfEnv(gym.Env, abc.ABC):
                 ('res_bus', 'vm_pu', self.net.bus.index),
                 ('res_line', 'loading_percent', self.net.line.index),
                 ('res_trafo', 'loading_percent', self.net.trafo.index)])
-
-        self.add_act_obs = add_act_obs
-        if add_act_obs:
-            # The agent can observe its previous actions
-            self.obs_keys.extend(self.act_keys)
 
         self.observation_space = get_obs_space(
             self.net, self.obs_keys, add_time_obs, seed)
