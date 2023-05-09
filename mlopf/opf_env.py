@@ -27,6 +27,7 @@ class OpfEnv(gym.Env, abc.ABC):
                  autocorrect_prio='p_mw',
                  pf_for_obs=None,
                  diff_reward=False,
+                 remove_normal_obs=False,
                  add_res_obs=False,
                  add_time_obs=False,
                  add_act_obs=False,
@@ -49,8 +50,12 @@ class OpfEnv(gym.Env, abc.ABC):
         else:
             self.sampling_kwargs = {}
 
+        if remove_normal_obs:
+            # Completely overwrite the observation definition
+            self.obs_keys = []
+            assert add_res_obs or add_time_obs or add_act_obs
+
         self.add_act_obs = add_act_obs
-        # TODO: set res obs to True as well!
         if add_act_obs:
             # The agent can observe its previous actions
             self.obs_keys.extend(self.act_keys)
@@ -58,13 +63,14 @@ class OpfEnv(gym.Env, abc.ABC):
             add_res_obs = True
 
         self.add_time_obs = add_time_obs
-        # Automatically add observations that require previous pf calculation
-        # TODO: Probably good idea to add ext_grid p/q as well
+        # Add observations that require previous pf calculation
         if add_res_obs:
             self.obs_keys.extend([
                 ('res_bus', 'vm_pu', self.net.bus.index),
                 ('res_line', 'loading_percent', self.net.line.index),
-                ('res_trafo', 'loading_percent', self.net.trafo.index)])
+                ('res_trafo', 'loading_percent', self.net.trafo.index),
+                ('res_ext_grid', 'p_mw', self.net.ext_grid.index),
+                ('res_ext_grid', 'q_mvar', self.net.ext_grid.index)])
 
         self.observation_space = get_obs_space(
             self.net, self.obs_keys, add_time_obs, seed)
@@ -213,15 +219,15 @@ class OpfEnv(gym.Env, abc.ABC):
         if step is None:
             total_n_steps = len(self.profiles[('load', 'q_mvar')])
             if test is True and self.train_test_split is True:
-                step = np.random.choice(test_steps)
+                step = np.random.choice(self.test_steps)
             else:
                 while True:
                     step = random.randint(0, total_n_steps - 1)
-                    if self.train_test_split and step in test_steps:
+                    if self.train_test_split and step in self.test_steps:
                         continue
                     break
         else:
-            if self.train_test_split and step in test_steps:
+            if self.train_test_split and step in self.test_steps:
                 # Next step would be test data -> end of episode
                 return False
 
@@ -469,11 +475,11 @@ class OpfEnv(gym.Env, abc.ABC):
         logging.info(f'Test Penalty: {penalties}')
         logging.info(f'Current actions: {self.get_current_actions()}')
 
-        opt_obj = self.get_optimal_reward()
+        opt_obj = self.baseline_reward()
 
         return opt_obj, reward
 
-    def get_optimal_reward(self):
+    def baseline_reward(self):
         """ Compute some baseline to compare training performance with. In this
         case, use the optimal possible reward, which can be computed with the
         optimal power flow. """

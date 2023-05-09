@@ -461,6 +461,16 @@ def build_net(simbench_network_name, gen_scaling=1.0, load_scaling=2.0,
         df = profiles[type_act]
         df.drop(columns=df.columns[df.min() == df.max()], inplace=True)
 
+    # Add estimation of min/max data for external grids
+    load_gen_diff = profiles[('load', 'p_mw')].sum(
+        axis=1) - profiles[('sgen', 'p_mw')].sum(axis=1)
+    net.ext_grid['max_max_p_mw'] = load_gen_diff.max()
+    net.ext_grid['min_min_p_mw'] = load_gen_diff.min()
+    # Generators should normally not increase q imbalances further
+    load_q_mvar = profiles[('load', 'q_mvar')].sum(axis=1)
+    net.ext_grid['max_max_q_mvar'] = load_q_mvar.max()
+    net.ext_grid['min_min_q_mvar'] = load_q_mvar.min()
+
     return net, profiles
 
 
