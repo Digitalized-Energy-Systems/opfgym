@@ -18,27 +18,16 @@ from mlopf.objectives import min_pp_costs
 warnings.simplefilter('once')
 
 
-# Use one week every two months as test data (about 11.5% of the data)
-one_week = 7 * 24 * 4
-TEST_DATA = np.append(
-    np.arange(one_week),
-    [np.arange(9 * one_week, 10 * one_week),
-     np.arange(18 * one_week, 19 * one_week),
-     np.arange(27 * one_week, 28 * one_week),
-     np.arange(36 * one_week, 37 * one_week),
-     np.arange(45 * one_week, 46 * one_week)]
-)
-
-
 class OpfEnv(gym.Env, abc.ABC):
     def __init__(self,
                  train_test_split=True,
+                 test_share=0.2,
                  vector_reward=False,
                  single_step=True,
                  autocorrect_prio='p_mw',
                  pf_for_obs=None,
-                 add_res_obs=False,
                  diff_reward=False,
+                 add_res_obs=False,
                  add_time_obs=False,
                  add_act_obs=False,
                  train_data='noisy_simbench',
@@ -101,10 +90,11 @@ class OpfEnv(gym.Env, abc.ABC):
 
         self.priority = autocorrect_prio
 
-        self.single_step = single_step  # TODO: Multi-step episodes not implemented yet
+        assert single_step, 'TODO: Multi-step episodes not implemented yet'
+        self.single_step = single_step
 
         # Full state of the system (available in training, but not in testing)
-        self.state = None  # TODO: Not implemented yet
+        self.state = None  # TODO: Not implemented yet. Required only for partially observable envs
 
         # Is a powerflow calculation required to get new observations in reset?
         self.pf_for_obs = pf_for_obs
@@ -118,6 +108,8 @@ class OpfEnv(gym.Env, abc.ABC):
         self.diff_reward = diff_reward
         if diff_reward:
             self.pf_for_obs = True
+
+        self.test_steps = define_test_steps(test_share)
 
     def reset(self, step=None, test=False):
         self.info = {}
@@ -221,15 +213,15 @@ class OpfEnv(gym.Env, abc.ABC):
         if step is None:
             total_n_steps = len(self.profiles[('load', 'q_mvar')])
             if test is True and self.train_test_split is True:
-                step = np.random.choice(TEST_DATA)
+                step = np.random.choice(test_steps)
             else:
                 while True:
                     step = random.randint(0, total_n_steps - 1)
-                    if self.train_test_split and step in TEST_DATA:
+                    if self.train_test_split and step in test_steps:
                         continue
                     break
         else:
-            if self.train_test_split and step in TEST_DATA:
+            if self.train_test_split and step in test_steps:
                 # Next step would be test data -> end of episode
                 return False
 
@@ -282,8 +274,7 @@ class OpfEnv(gym.Env, abc.ABC):
             # Something went seriously wrong! Find out what!
             # Maybe NAN in power setpoints?!
             # Maybe simply catch this with a strong negative reward?!
-            import pdb
-            pdb.set_trace()
+            raise pp.powerflow.LoadflowNotConverged()
 
         reward = self._calc_full_objective(self.net)
         if self.diff_reward and not test:
@@ -432,7 +423,7 @@ class OpfEnv(gym.Env, abc.ABC):
         return np.array(time_obs)
 
     def render(self, mode='human'):
-        pass  # TODO?
+        logging.warning(f'Rendering not implemented!')
 
     def get_current_actions(self):
         # Scaling not considered here yet
@@ -465,7 +456,6 @@ class OpfEnv(gym.Env, abc.ABC):
 
         # Perform (non-optimal) action
         self._apply_actions(action)
-        self._autocorrect_apparent_power(self.priority)
         success = self._run_pf()
 
         if not success:
@@ -479,11 +469,11 @@ class OpfEnv(gym.Env, abc.ABC):
         logging.info(f'Test Penalty: {penalties}')
         logging.info(f'Current actions: {self.get_current_actions()}')
 
-        opt_obj = self.baseline_reward()
+        opt_obj = self.get_optimal_reward()
 
         return opt_obj, reward
 
-    def baseline_reward(self):
+    def get_optimal_reward(self):
         """ Compute some baseline to compare training performance with. In this
         case, use the optimal possible reward, which can be computed with the
         optimal power flow. """
@@ -492,7 +482,7 @@ class OpfEnv(gym.Env, abc.ABC):
             return np.nan
         rewards = self._calc_objective(self.net)
         penalties, valids = self._calc_penalty()
-        logging.info(f'Base Penalty: {penalties}')
+        logging.info(f'Optimal Penalty: {penalties}')
         logging.info(f'Baseline actions: {self.get_current_actions()}')
 
         return sum(np.append(rewards, penalties))
@@ -578,3 +568,17 @@ def get_action_space(act_keys: list, seed: int):
         high = np.append(high, np.ones(len(idxs)))
 
     return gym.spaces.Box(low, high, seed=seed)
+
+
+def define_test_steps(test_share=0.2):
+    """ Return the indices of the simbench test data points """
+    assert test_share > 0.0, 'Please set train_test_split=False if no separate test data should be used'
+    # Use weekly blocks to make sure that all weekdays are equally represented
+    n_weeks = int(52 * test_share)
+    # Sample equidistant weeks from the whole year
+    week_idxs = np.linspace(0, 52, num=n_weeks, endpoint=False, dtype=int)
+
+    one_week = 7 * 24 * 4
+    return np.concatenate(
+        [np.arange(idx * one_week, (idx + 1) * one_week) for idx in week_idxs]
+    )
