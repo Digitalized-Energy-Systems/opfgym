@@ -24,6 +24,7 @@ class OpfEnv(gym.Env, abc.ABC):
                  test_share=0.2,
                  vector_reward=False,
                  single_step=True,
+                 steps_per_episode=1,
                  autocorrect_prio='p_mw',
                  pf_for_obs=None,
                  diff_reward=False,
@@ -70,7 +71,8 @@ class OpfEnv(gym.Env, abc.ABC):
                 ('res_line', 'loading_percent', self.net.line.index),
                 ('res_trafo', 'loading_percent', self.net.trafo.index),
                 ('res_ext_grid', 'p_mw', self.net.ext_grid.index),
-                ('res_ext_grid', 'q_mvar', self.net.ext_grid.index)])
+                ('res_ext_grid', 'q_mvar', self.net.ext_grid.index)
+            ])
 
         self.observation_space = get_obs_space(
             self.net, self.obs_keys, add_time_obs, seed)
@@ -98,6 +100,7 @@ class OpfEnv(gym.Env, abc.ABC):
 
         assert single_step, 'TODO: Multi-step episodes not implemented yet'
         self.single_step = single_step
+        self.steps_per_episode = steps_per_episode
 
         # Full state of the system (available in training, but not in testing)
         self.state = None  # TODO: Not implemented yet. Required only for partially observable envs
@@ -119,6 +122,8 @@ class OpfEnv(gym.Env, abc.ABC):
 
     def reset(self, step=None, test=False):
         self.info = {}
+        self.step_in_episode = 0
+
         self._sampling(step, test)
         if self.add_act_obs:
             # Use random actions as starting point
@@ -136,7 +141,7 @@ class OpfEnv(gym.Env, abc.ABC):
                     'Failed powerflow calculcation in reset. Try again!')
                 return self.reset()
 
-            self.prev_obj = self._calc_full_objective(self.net)
+            self.prev_obj = self.calc_full_objective(self.net)
 
         return self._get_obs(self.obs_keys, self.add_time_obs)
 
@@ -271,6 +276,7 @@ class OpfEnv(gym.Env, abc.ABC):
     def step(self, action, test=False):
         assert not np.isnan(action).any()
         self.info = {}
+        self.step_in_episode += 1
 
         self._apply_actions(action)
 
@@ -282,7 +288,7 @@ class OpfEnv(gym.Env, abc.ABC):
             # Maybe simply catch this with a strong negative reward?!
             raise pp.powerflow.LoadflowNotConverged()
 
-        reward = self._calc_full_objective(self.net)
+        reward = self.calc_full_objective(self.net)
         if self.diff_reward and not test:
             # Do not use the objective as reward, but their diff instead
             reward = reward - self.prev_obj
@@ -290,14 +296,17 @@ class OpfEnv(gym.Env, abc.ABC):
             reward = np.sign(reward) * np.log(np.abs(reward) + 1)
 
         if self.single_step:
-            done = True
+            # Do not step to another time-series point!
+            if self.step_in_episode >= self.steps_per_episode:
+                done = True
+            else:
+                done = False
         elif random.random() < 0.02:  # TODO! Better termination criterion
             self._sampling(step=self.current_step + 1, test=test)
             done = True  # TODO
-            self.info['TimeLimit.truncated'] = True
         else:
             done = not self._sampling(step=self.current_step + 1, test=test)
-            self.info['TimeLimit.truncated'] = True
+        self.info['TimeLimit.truncated'] = True
 
         obs = self._get_obs(self.obs_keys, self.add_time_obs)
         assert not np.isnan(obs).any()
@@ -367,13 +376,13 @@ class OpfEnv(gym.Env, abc.ABC):
             return False
         return True
 
-    def _calc_objective(self, net):
+    def calc_objective(self, net):
         """ Default: Compute reward/costs from poly costs. Works only if
         defined as pandapower OPF problem and only for poly costs! If that is
         not the case, this method needs to be overwritten! """
         return -min_pp_costs(net)
 
-    def _calc_penalty(self):
+    def calc_penalty(self):
         """ Constraint violations result in a penalty that can be subtracted
         from the reward.
         Standard penalties: voltage band, overload of lines & transformers. """
@@ -389,10 +398,10 @@ class OpfEnv(gym.Env, abc.ABC):
         penalties, valids = zip(*penalties_valids)
         return list(penalties), list(valids)
 
-    def _calc_full_objective(self, net):
+    def calc_full_objective(self, net):
         """ Calculate the objective and the penalties together. """
-        self.info['objectives'] = self._calc_objective(net)
-        self.info['penalties'], self.info['valids'] = self._calc_penalty()
+        self.info['objectives'] = self.calc_objective(net)
+        self.info['penalties'], self.info['valids'] = self.calc_penalty()
 
         rewards = np.append(self.info['objectives'], self.info['penalties'])
 
@@ -467,8 +476,8 @@ class OpfEnv(gym.Env, abc.ABC):
         if not success:
             return np.nan, np.nan
 
-        reward = sum(self._calc_objective(self.net))
-        penalties, valids = self._calc_penalty()
+        reward = sum(self.calc_objective(self.net))
+        penalties, valids = self.calc_penalty()
 
         # obj = sum(np.append(reward, penalties))
 
@@ -486,8 +495,8 @@ class OpfEnv(gym.Env, abc.ABC):
         success = self._optimal_power_flow()
         if not success:
             return np.nan
-        rewards = self._calc_objective(self.net)
-        penalties, valids = self._calc_penalty()
+        rewards = self.calc_objective(self.net)
+        penalties, valids = self.calc_penalty()
         logging.info(f'Optimal Penalty: {penalties}')
         logging.info(f'Baseline actions: {self.get_current_actions()}')
 
