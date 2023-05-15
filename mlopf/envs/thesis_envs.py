@@ -224,9 +224,9 @@ class QMarketEnv(opf_env.OpfEnv):
         self.net.sgen['min_q_mvar'] = -q_max
         self.net.sgen['max_q_mvar'] = q_max
 
-    def _calc_objective(self, net):
+    def calc_objective(self, net):
         """ Define what to do in vector_reward-case. """
-        objs = super()._calc_objective(net)
+        objs = super().calc_objective(net)
         if self.vector_reward:
             # Structure: [sgen1_costs, sgen2_costs, ..., loss_costs]
             return np.append(objs[0:len(self.net.sgen)],
@@ -234,11 +234,11 @@ class QMarketEnv(opf_env.OpfEnv):
         else:
             return objs
 
-    def _calc_penalty(self):
+    def calc_penalty(self):
         """ Define what to do in vector_reward-case. """
         # Attention: This probably works only for the default system '1-LV-urban6--0-sw'
         # because only ext_grid q violations there and nothing else
-        penalties, valids = super()._calc_penalty()
+        penalties, valids = super().calc_penalty()
         if self.vector_reward:
             # Structure: [ext_grid_pen, other_pens]
             penalties = np.array((penalties[3], sum(penalties) - penalties[3]))
@@ -393,9 +393,9 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         self._sample_from_range(
             'poly_cost', 'cp1_eur_per_mw', self.net.poly_cost.index)
 
-    def _calc_objective(self, net):
+    def calc_objective(self, net):
         # /10000, because too high otherwise
-        return super()._calc_objective(net) / 10000
+        return super().calc_objective(net) / 10000
 
         # TODO: There seems to be a slight difference in RL and OPF objective!
         # -> "p_mw[p_mw < 0] = 0.0" is not considered for OPF?!
