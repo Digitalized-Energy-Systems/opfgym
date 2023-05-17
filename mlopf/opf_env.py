@@ -588,6 +588,11 @@ def get_action_space(act_keys: list, seed: int):
 def define_test_steps(test_share=0.2):
     """ Return the indices of the simbench test data points """
     assert test_share > 0.0, 'Please set train_test_split=False if no separate test data should be used'
+
+    if test_share == 1.0:
+        # Special case: Use the full simbench data set as test set
+        return np.arange(24*4*366)
+
     # Use weekly blocks to make sure that all weekdays are equally represented
     n_weeks = int(52 * test_share)
     # Sample equidistant weeks from the whole year
