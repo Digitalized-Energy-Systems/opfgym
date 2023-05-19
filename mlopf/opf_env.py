@@ -417,25 +417,10 @@ class OpfEnv(gym.Env, abc.ABC):
                 for unit_type, column, idxs in obs_keys]
 
         if add_time_obs:
-            obss = [self._get_time_observation()] + obss
+            time_obs = get_simbench_time_observation(
+                self.profiles, self.current_step)
+            obss = [time_obs] + obss
         return np.concatenate(obss)
-
-    def _get_time_observation(self):
-        """ Return current time in sinus/cosinus form.
-        Example daytime: (0.0, 1.0) = 00:00 and (1.0, 0.0) = 06:00. Idea from
-        https://ianlondon.github.io/blog/encoding-cyclical-features-24hour-time/
-        """
-        total_n_steps = len(self.profiles[('load', 'q_mvar')])
-        # number of steps per timeframe
-        dayly, weekly, yearly = (24 * 4, 7 * 24 * 4, total_n_steps)
-        time_obs = []
-        for timeframe in (dayly, weekly, yearly):
-            timestep = self.current_step % timeframe
-            cyclical_time = 2 * np.pi * timestep / timeframe
-            time_obs.append(np.sin(cyclical_time))
-            time_obs.append(np.cos(cyclical_time))
-
-        return np.array(time_obs)
 
     def render(self, mode='human'):
         logging.warning(f'Rendering not implemented!')
@@ -602,3 +587,20 @@ def define_test_steps(test_share=0.2):
     return np.concatenate(
         [np.arange(idx * one_week, (idx + 1) * one_week) for idx in week_idxs]
     )
+
+def get_simbench_time_observation(profiles: dict, current_step: int):
+    """ Return current time in sinus/cosinus form.
+    Example daytime: (0.0, 1.0) = 00:00 and (1.0, 0.0) = 06:00. Idea from
+    https://ianlondon.github.io/blog/encoding-cyclical-features-24hour-time/
+    """
+    total_n_steps = len(profiles[('load', 'q_mvar')])
+    # number of steps per timeframe
+    dayly, weekly, yearly = (24 * 4, 7 * 24 * 4, total_n_steps)
+    time_obs = []
+    for timeframe in (dayly, weekly, yearly):
+        timestep = current_step % timeframe
+        cyclical_time = 2 * np.pi * timestep / timeframe
+        time_obs.append(np.sin(cyclical_time))
+        time_obs.append(np.cos(cyclical_time))
+
+    return np.array(time_obs)
