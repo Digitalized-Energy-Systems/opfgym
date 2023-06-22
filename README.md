@@ -4,7 +4,8 @@ with reinforcement learning (RL) algorithms. All environments use the openai
 gym interface. (exception: `env.render()` not implemented)
 
 ### Installation
-Clone the repository and run `pip install -e .` within some kind of virtual env
+Clone the repository and run `pip install -e .` within some kind of virtual env.
+Tested for python 3.8 (newer version will probably not work).
 
 ### Environments
 Currently, three OPF environments with the openai gym environment are available:
