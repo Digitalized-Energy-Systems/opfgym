@@ -1,5 +1,3 @@
-import numpy as np
-import pandas as pd
 import pytest
 
 from mlopf.envs.thesis_envs import SimpleOpfEnv
@@ -17,32 +15,51 @@ def net():
 
 
 def test_voltage_violation(net):
-    info = {}
-    penalty, valid = penalties.voltage_violation(net, info)
+    valid, violation, percentage_violation, penalty = penalties.voltage_violation(
+        net)
     assert not valid
     assert penalty >= 0
-    assert 'violations_bus_vm_pu' in info
+    assert violation >= 0
 
 
 def test_line_overloading(net):
-    info = {}
-    penalty, valid = penalties.line_overload(net, info)
+    valid, violation, percentage_violation, penalty = penalties.line_overload(
+        net)
     assert not valid
     assert penalty >= 0
-    assert 'violations_line_loading_percent' in info
+    assert violation >= 0
 
 
 def test_trafo_overloading(net):
-    info = {}
-    penalty, valid = penalties.trafo_overload(net, info)
+    valid, violation, percentage_violation, penalty = penalties.trafo_overload(
+        net)
     assert not valid
     assert penalty >= 0
-    assert 'violations_trafo_loading_percent' in info
+    assert violation >= 0
 
 
 def test_ext_grid_overpower(net):
-    info = {}
-    penalty, valid = penalties.ext_grid_overpower(net, info, column='q_mvar')
+    valid, violation, percentage_violation, penalty = penalties.ext_grid_overpower(
+        net, column='q_mvar')
     assert not valid
     assert penalty >= 0
-    assert 'violations_ext_grid_q_mvar' in info
+    assert violation >= 0
+
+
+def test_compute_penalty():
+    violation = 10
+    n_violations = 2
+    penalty = penalties.compute_penalty(
+        violation, n_violations, linear_penalty=3)
+    assert penalty == -30
+
+    penalty = penalties.compute_penalty(
+        violation, n_violations, offset_penalty=1.5)
+    assert penalty == -3
+
+    penalty = penalties.compute_penalty(
+        violation, n_violations, offset_penalty=1.5, linear_penalty=2)
+    assert penalty == -23
+
+def test_compute_violation():
+    pass # TODO
