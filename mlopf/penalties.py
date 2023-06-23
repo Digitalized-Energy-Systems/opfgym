@@ -13,7 +13,7 @@ def compute_violation(net, unit_type: str, column: str, min_or_max: str):
     return absolute_violations.to_numpy(), percentage_violations.to_numpy(), invalids
 
 
-def compute_penalty(violation: float, invalids, linear_penalty=0,
+def compute_penalty(violation: float, n_violations: int, linear_penalty=0,
                     quadr_penalty=0, offset_penalty=0, sqrt_penalty=0):
     """ General function to compute linear, quadratic, anc offset penalties
     for constraint violations in pandapower nets """
@@ -23,7 +23,7 @@ def compute_penalty(violation: float, invalids, linear_penalty=0,
     penalty += violation**0.5 * sqrt_penalty
 
     # Penalize every violation with constant factor
-    penalty += len(invalids) * offset_penalty
+    penalty += n_violations * offset_penalty
 
     return -penalty
 
@@ -39,7 +39,7 @@ def voltage_violation(net, *args, **kwargs):
     violation = violations1.sum() + violations2.sum()
     percentage_violation = perc_violations1.sum() + perc_violations2.sum()
     invalids = np.logical_or(invalids1, invalids2)
-    penalty = compute_penalty(violation, invalids, *args, **kwargs)
+    penalty = compute_penalty(violation, len(invalids), *args, **kwargs)
 
     return ~invalids.any(), violation, percentage_violation, penalty
 
@@ -48,7 +48,7 @@ def line_overload(net, *args, **kwargs):
     """ Penalty for overloaded lines. Only max boundary required! """
     violation, perc_violation, invalids = compute_violation(
         net, 'line', 'loading_percent', 'max')
-    penalty = compute_penalty(sum(violation), invalids, *args, **kwargs)
+    penalty = compute_penalty(sum(violation), len(invalids), *args, **kwargs)
     return ~invalids.any(), sum(violation), sum(perc_violation), penalty
 
 
@@ -56,7 +56,7 @@ def trafo_overload(net, *args, **kwargs):
     """ Penalty for overloaded trafos. Only max boundary required! """
     violation, perc_violation, invalids = compute_violation(
         net, 'trafo', 'loading_percent', 'max')
-    penalty = compute_penalty(sum(violation), invalids, *args, **kwargs)
+    penalty = compute_penalty(sum(violation), len(invalids), *args, **kwargs)
     return ~invalids.any(), sum(violation), sum(perc_violation), penalty
 
 
@@ -71,6 +71,6 @@ def ext_grid_overpower(net, column='p_mw', *args, **kwargs):
     violation = violations1.sum() + violations2.sum()
     percentage_violation = perc_violations1.sum() + perc_violations2.sum()
     invalids = np.logical_or(invalids1, invalids2)
-    penalty = compute_penalty(violation, invalids, *args, **kwargs)
+    penalty = compute_penalty(violation, len(invalids), *args, **kwargs)
 
     return ~invalids.any(), violation, percentage_violation, penalty
