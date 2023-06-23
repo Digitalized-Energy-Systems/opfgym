@@ -28,6 +28,8 @@ class OpfEnv(gym.Env, abc.ABC):
                  autocorrect_prio='p_mw',
                  pf_for_obs=None,
                  diff_reward=False,
+                 reward_function='summation',
+                 reward_scaling=1,
                  remove_normal_obs=False,
                  add_res_obs=False,
                  add_time_obs=False,
@@ -78,13 +80,10 @@ class OpfEnv(gym.Env, abc.ABC):
             self.net, self.obs_keys, add_time_obs, seed)
         self.action_space = get_action_space(self.act_keys, seed)
 
+        self.reward_function = reward_function
         self.vector_reward = vector_reward
         self.squash_reward = squash_reward
-
-        if vector_reward is True:
-            # 3 penalties and one objective function
-            self.reward_space = gym.spaces.Box(
-                low=-np.ones(4) * np.inf, high=np.ones(4) * np.inf, seed=seed)
+        self.reward_scaling = reward_scaling
 
         # Default penalties are purely linear
         self.volt_pen = (volt_pen_kwargs if volt_pen_kwargs
@@ -141,7 +140,7 @@ class OpfEnv(gym.Env, abc.ABC):
                     'Failed powerflow calculcation in reset. Try again!')
                 return self.reset()
 
-            self.prev_obj = self.calc_full_objective(self.net)
+            self.prev_reward = self.calc_reward()
 
         return self._get_obs(self.obs_keys, self.add_time_obs)
 
@@ -288,12 +287,7 @@ class OpfEnv(gym.Env, abc.ABC):
             # Maybe simply catch this with a strong negative reward?!
             raise pp.powerflow.LoadflowNotConverged()
 
-        reward = self.calc_full_objective(self.net)
-        if self.diff_reward and not test:
-            # Do not use the objective as reward, but their diff instead
-            reward = reward - self.prev_obj
-        if self.squash_reward and not test:
-            reward = np.sign(reward) * np.log(np.abs(reward) + 1)
+        reward = self.calc_reward(test) * self.reward_scaling
 
         if self.single_step:
             # Do not step to another time-series point!
@@ -382,35 +376,69 @@ class OpfEnv(gym.Env, abc.ABC):
         not the case, this method needs to be overwritten! """
         return -min_pp_costs(net)
 
-    def calc_penalty(self):
+    def calc_violations(self):
         """ Constraint violations result in a penalty that can be subtracted
         from the reward.
         Standard penalties: voltage band, overload of lines & transformers. """
 
-        penalties_valids = [
-            voltage_violation(self.net, self.info, **self.volt_pen),
-            line_overload(self.net, self.info, **self.line_pen),
-            trafo_overload(self.net, self.info, **self.trafo_pen),
-            ext_grid_overpower(self.net, self.info,
-                               'q_mvar', **self.ext_grid_pen),
-            ext_grid_overpower(self.net, self.info, 'p_mw', **self.ext_grid_pen)]
+        valids_violations_penalties = [
+            voltage_violation(self.net, **self.volt_pen),
+            line_overload(self.net, **self.line_pen),
+            trafo_overload(self.net, **self.trafo_pen),
+            ext_grid_overpower(self.net, 'q_mvar', **self.ext_grid_pen),
+            ext_grid_overpower(self.net, 'p_mw', **self.ext_grid_pen)]
 
-        penalties, valids = zip(*penalties_valids)
-        return list(penalties), list(valids)
+        valids, viol, perc_viol, penalties = zip(*valids_violations_penalties)
 
-    def calc_full_objective(self, net):
-        """ Calculate the objective and the penalties together. """
-        self.info['objectives'] = self.calc_objective(net)
-        self.info['penalties'], self.info['valids'] = self.calc_penalty()
+        self.info['valids'] = np.array(valids)
+        self.info['violations'] = np.array(viol)
+        self.info['percentage_violations'] = np.array(perc_viol)
+        self.info['penalties'] = np.array(penalties)
 
-        rewards = np.append(self.info['objectives'], self.info['penalties'])
+        return np.array(valids), np.array(viol), np.array(perc_viol), np.array(penalties)
+
+    def calc_reward(self, test=False):
+        """ Combine objective function and the penalties together. """
+        objectives = self.calc_objective(self.net)
+        valids, violations, percentage_violations, penalties = self.calc_violations(
+        )
+
+        # TODO: re-structure this whole reward calculation?!
+        if self.reward_function == 'summation':
+            # Idea: Add penalty to objective function
+            pass
+        elif self.reward_function == 'replacement':
+            # Idea: Only give objective as reward, if solution valid
+            if not valids.all():
+                objectives[:] = 0.0
+            else:
+                objectives += 10.0 / len(objectives)
+
+        elif self.reward_function == 'multiplication':
+            # Multiply constraint violation with objective function as penalty
+            penalties = -abs(sum(objectives)) * \
+                (~valids + percentage_violations)
+            self.info['penalties'] = penalties
+        else:
+            raise NotImplementedError('This reward definition does not exist!')
+
+        full_obj = np.append(objectives, penalties)
 
         if not self.vector_reward:
-            # Return scalar reward
-            return sum(rewards)
+            # Use scalar
+            reward = sum(full_obj)
         else:
             # Reward as a numpy array
-            return rewards
+            reward = full_obj
+
+        if self.diff_reward and not test:
+            # Do not use the objective as reward, but their diff instead
+            reward -= self.prev_obj
+
+        if self.squash_reward and not test:
+            reward = np.sign(reward) * np.log(np.abs(reward) + 1)
+
+        return reward
 
     def _get_obs(self, obs_keys, add_time_obs):
         obss = [(self.net[unit_type][column].loc[idxs].to_numpy())
@@ -461,17 +489,15 @@ class OpfEnv(gym.Env, abc.ABC):
         if not success:
             return np.nan, np.nan
 
-        reward = sum(self.calc_objective(self.net))
-        penalties, valids = self.calc_penalty()
+        obj = sum(self.calc_objective(self.net))
+        _, violations, _, _ = self.calc_violations()
 
-        # obj = sum(np.append(reward, penalties))
-
-        logging.info(f'Test Penalty: {penalties}')
+        logging.info(f'Test violations: {violations}')
         logging.info(f'Current actions: {self.get_current_actions()}')
 
         opt_obj = self.baseline_reward()
 
-        return opt_obj, reward
+        return opt_obj, obj
 
     def baseline_reward(self):
         """ Compute some baseline to compare training performance with. In this
@@ -481,8 +507,8 @@ class OpfEnv(gym.Env, abc.ABC):
         if not success:
             return np.nan
         rewards = self.calc_objective(self.net)
-        penalties, valids = self.calc_penalty()
-        logging.info(f'Optimal Penalty: {penalties}')
+        valids, violations, percentage_violations, penalties = self.calc_violations()
+        logging.info(f'Optimal violations: {violations}')
         logging.info(f'Baseline actions: {self.get_current_actions()}')
 
         return sum(np.append(rewards, penalties))
@@ -576,7 +602,7 @@ def define_test_steps(test_share=0.2):
 
     if test_share == 1.0:
         # Special case: Use the full simbench data set as test set
-        return np.arange(24*4*366)
+        return np.arange(24 * 4 * 366)
 
     # Use weekly blocks to make sure that all weekdays are equally represented
     n_weeks = int(52 * test_share)
@@ -587,6 +613,7 @@ def define_test_steps(test_share=0.2):
     return np.concatenate(
         [np.arange(idx * one_week, (idx + 1) * one_week) for idx in week_idxs]
     )
+
 
 def get_simbench_time_observation(profiles: dict, current_step: int):
     """ Return current time in sinus/cosinus form.

@@ -52,7 +52,7 @@ class SimpleOpfEnv(opf_env.OpfEnv):
 
         self.cos_phi = cos_phi
         self.max_q_exchange = max_q_exchange
-        self.net = self._build_net(
+        self.net = self._define_opf(
             simbench_network_name, gen_scaling=gen_scaling,
             load_scaling=load_scaling, *args, **kwargs)
 
@@ -76,7 +76,7 @@ class SimpleOpfEnv(opf_env.OpfEnv):
             self.reward_space = gym.spaces.Box(
                 low=-np.ones(6) * np.inf, high=np.ones(6) * np.inf, seed=seed)
 
-    def _build_net(self, simbench_network_name, *args, **kwargs):
+    def _define_opf(self, simbench_network_name, *args, **kwargs):
         net, self.profiles = build_simbench_net(
             simbench_network_name, *args, **kwargs)
 
@@ -137,7 +137,7 @@ class QMarketEnv(opf_env.OpfEnv):
 
         self.cos_phi = cos_phi
         self.max_q_exchange = max_q_exchange
-        self.net = self._build_net(
+        self.net = self._define_opf(
             simbench_network_name, gen_scaling=gen_scaling,
             load_scaling=load_scaling, *args, **kwargs)
 
@@ -157,7 +157,7 @@ class QMarketEnv(opf_env.OpfEnv):
         self.act_keys = [('sgen', 'q_mvar', self.net['sgen'].index)]
 
         if 'ext_grid_pen_kwargs' not in kwargs:
-            kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 250}
+            kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 500}
         super().__init__(seed=seed, *args, **kwargs)
 
         if self.vector_reward is True:
@@ -166,7 +166,7 @@ class QMarketEnv(opf_env.OpfEnv):
             self.reward_space = gym.spaces.Box(
                 low=-np.ones(n_objs) * np.inf, high=np.ones(n_objs) * np.inf, seed=seed)
 
-    def _build_net(self, simbench_network_name, *args, **kwargs):
+    def _define_opf(self, simbench_network_name, *args, **kwargs):
         net, self.profiles = build_simbench_net(
             simbench_network_name, *args, **kwargs)
 
@@ -194,6 +194,7 @@ class QMarketEnv(opf_env.OpfEnv):
                                 cp1_eur_per_mw=self.loss_costs,
                                 cq2_eur_per_mvar2=0)
 
+        # Load costs are fixed anyway. Added only for completeness.
         for idx in net['load'].index:
             pp.create_poly_cost(net, idx, 'load',
                                 cp1_eur_per_mw=-self.loss_costs)
@@ -269,7 +270,7 @@ class EcoDispatchEnv(opf_env.OpfEnv):
 
     def __init__(self, simbench_network_name='1-HV-urban--0-sw', min_power=0,
                  n_agents=None, gen_scaling=1.0, load_scaling=1.5, max_price=600,
-                 seed=None, *args, **kwargs):
+                 seed=None, reward_scaling=1 / 10000, *args, **kwargs):
         # Economic dispatch normally done in EHV (too big! use HV instead!)
         # EHV option: '1-EHV-mixed--0-sw' (340 generators!!!)
         # HV options: '1-HV-urban--0-sw' and '1-HV-mixed--0-sw'
@@ -283,7 +284,7 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         self.max_price = max_price
         # compare: https://en.wikipedia.org/wiki/Cost_of_electricity_by_source
 
-        self.net = self._build_net(
+        self.net = self._define_opf(
             simbench_network_name, min_power, n_agents, gen_scaling=gen_scaling,
             load_scaling=load_scaling, *args, **kwargs)
 
@@ -306,12 +307,13 @@ class EcoDispatchEnv(opf_env.OpfEnv):
 
         # Set default values
         if 'line_pen_kwargs' not in kwargs:
-            kwargs['line_pen_kwargs'] = {'linear_penalty': 10}
+            kwargs['line_pen_kwargs'] = {'linear_penalty': 100000}
         if 'trafo_pen_kwargs' not in kwargs:
-            kwargs['trafo_pen_kwargs'] = {'linear_penalty': 10}
+            kwargs['trafo_pen_kwargs'] = {'linear_penalty': 100000}
         if 'ext_grid_pen_kwargs' not in kwargs:
-            kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 1}
-        super().__init__(seed=seed, *args, **kwargs)
+            kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 10000}
+        super().__init__(seed=seed, reward_scaling=reward_scaling,
+                         *args, **kwargs)
 
         if self.vector_reward is True:
             # 5 penalties and `n_participants` objective functions
@@ -322,7 +324,7 @@ class EcoDispatchEnv(opf_env.OpfEnv):
                 high=np.ones(n_objs) * np.inf,
                 seed=seed)
 
-    def _build_net(self, simbench_network_name, min_power, n_agents, *args, **kwargs):
+    def _define_opf(self, simbench_network_name, min_power, n_agents, *args, **kwargs):
         net, self.profiles = build_simbench_net(
             simbench_network_name, *args, **kwargs)
         # Set voltage setpoints a bit higher than 1.0 to consider voltage drop?
@@ -396,13 +398,9 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         self._sample_from_range(
             'poly_cost', 'cp1_eur_per_mw', self.net.poly_cost.index)
 
-    def calc_objective(self, net):
-        # /10000, because too high otherwise
-        return super().calc_objective(net) / 10000
-
+    # def calc_objective(self, net):
         # TODO: There seems to be a slight difference in RL and OPF objective!
         # -> "p_mw[p_mw < 0] = 0.0" is not considered for OPF?!
-
         """ Minimize costs for active power in the system. """
         # p_mw = net.res_ext_grid['p_mw'].to_numpy().copy()
         # p_mw[p_mw < 0] = 0.0
