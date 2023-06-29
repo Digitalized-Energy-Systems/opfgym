@@ -570,16 +570,15 @@ def get_obs_space(net, obs_keys: list, add_time_obs: bool, seed: int,
             if 'min' in column or 'max' in column:
                 # Constraints need to remain scaled
                 raise AttributeError
-            for _ in range(last_n_obs):
-                l /= net[unit_type].scaling.loc[idxs].to_numpy()
-                h /= net[unit_type].scaling.loc[idxs].to_numpy()
+            l /= net[unit_type].scaling.loc[idxs].to_numpy()
+            h /= net[unit_type].scaling.loc[idxs].to_numpy()
         except AttributeError:
             logging.info(
                 f'Scaling for {unit_type} not defined: assume scaling=1')
 
         if bus_wise_obs and unit_type == 'load':
             # Aggregate loads bus-wise. Currently only for loads!
-            buses = set(net[unit_type].bus)
+            buses = sorted(set(net[unit_type].bus))
             l = [sum(l[net[unit_type].bus == bus]) for bus in buses]
             h = [sum(h[net[unit_type].bus == bus]) for bus in buses]
 
@@ -649,4 +648,4 @@ def get_bus_aggregated_obs(net, unit_type, column, idxs):
     """ Aggregate power values that are connected to the same bus to reduce
     state space. """
     df = net[unit_type].iloc[idxs]
-    return np.array([sum(df[column].loc[df.bus == bus]) for bus in set(df.bus)])
+    return df.groupby(['bus'])[column].sum().to_numpy()
