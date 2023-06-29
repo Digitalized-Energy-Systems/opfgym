@@ -27,6 +27,7 @@ class OpfEnv(gym.Env, abc.ABC):
                  steps_per_episode=1,
                  autocorrect_prio='p_mw',
                  pf_for_obs=None,
+                 bus_wise_obs=False,
                  diff_reward=False,
                  reward_function='summation',
                  reward_scaling=1,
@@ -76,8 +77,10 @@ class OpfEnv(gym.Env, abc.ABC):
                 ('res_ext_grid', 'q_mvar', self.net.ext_grid.index)
             ])
 
+        self.bus_wise_obs = bus_wise_obs
         self.observation_space = get_obs_space(
-            self.net, self.obs_keys, add_time_obs, seed)
+            self.net, self.obs_keys, add_time_obs, seed,
+            bus_wise_obs=bus_wise_obs)
         self.action_space = get_action_space(self.act_keys, seed)
 
         self.reward_function = reward_function
@@ -442,6 +445,8 @@ class OpfEnv(gym.Env, abc.ABC):
 
     def _get_obs(self, obs_keys, add_time_obs):
         obss = [(self.net[unit_type][column].loc[idxs].to_numpy())
+                if (unit_type != 'load' or not self.bus_wise_obs)
+                else get_bus_aggregated_obs(self.net, 'load', column, idxs)
                 for unit_type, column, idxs in obs_keys]
 
         if add_time_obs:
@@ -524,7 +529,7 @@ class OpfEnv(gym.Env, abc.ABC):
 
 
 def get_obs_space(net, obs_keys: list, add_time_obs: bool, seed: int,
-                  last_n_obs: int=1):
+                  last_n_obs: int=1, bus_wise_obs=False):
     """ Get observation space from the constraints of the power network. """
     lows, highs = [], []
 
@@ -566,14 +571,21 @@ def get_obs_space(net, obs_keys: list, add_time_obs: bool, seed: int,
                 # Constraints need to remain scaled
                 raise AttributeError
             for _ in range(last_n_obs):
-                lows.append(l / net[unit_type].scaling.loc[idxs].to_numpy())
-                highs.append(h / net[unit_type].scaling.loc[idxs].to_numpy())
+                l /= net[unit_type].scaling.loc[idxs].to_numpy()
+                h /= net[unit_type].scaling.loc[idxs].to_numpy()
         except AttributeError:
             logging.info(
                 f'Scaling for {unit_type} not defined: assume scaling=1')
-            for _ in range(last_n_obs):
-                lows.append(l)
-                highs.append(h)
+
+        if bus_wise_obs and unit_type == 'load':
+            # Aggregate loads bus-wise. Currently only for loads!
+            buses = set(net[unit_type].bus)
+            l = [sum(l[net[unit_type].bus == bus]) for bus in buses]
+            h = [sum(h[net[unit_type].bus == bus]) for bus in buses]
+
+        for _ in range(last_n_obs):
+            lows.append(l)
+            highs.append(h)
 
     assert not sum(pd.isna(l).any() for l in lows)
     assert not sum(pd.isna(h).any() for h in highs)
@@ -631,3 +643,10 @@ def get_simbench_time_observation(profiles: dict, current_step: int):
         time_obs.append(np.cos(cyclical_time))
 
     return np.array(time_obs)
+
+
+def get_bus_aggregated_obs(net, unit_type, column, idxs):
+    """ Aggregate power values that are connected to the same bus to reduce
+    state space. """
+    df = net[unit_type].iloc[idxs]
+    return np.array([sum(df[column].loc[df.bus == bus]) for bus in set(df.bus)])
