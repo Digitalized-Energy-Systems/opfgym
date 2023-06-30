@@ -223,8 +223,8 @@ class OpfEnv(gym.Env, abc.ABC):
         Works only for simbench systems!
         """
 
+        total_n_steps = len(self.profiles[('load', 'q_mvar')])
         if step is None:
-            total_n_steps = len(self.profiles[('load', 'q_mvar')])
             if test is True and self.train_test_split is True:
                 step = np.random.choice(self.test_steps)
             else:
@@ -234,13 +234,7 @@ class OpfEnv(gym.Env, abc.ABC):
                         continue
                     break
         else:
-            if self.train_test_split and step in self.test_steps:
-                # Next step would be test data -> end of episode
-                return False
-
-            if step > len(self.profiles[('load', 'q_mvar')]) - 1:
-                # End of time series data
-                return False
+            assert step < total_n_steps
 
         self.current_step = step
 
@@ -459,50 +453,12 @@ class OpfEnv(gym.Env, abc.ABC):
         logging.warning(f'Rendering not implemented!')
 
     def get_current_actions(self):
-        # Scaling not considered here yet
+        # Attention: These are not necessarily the actions of the RL agent
+        # because some re-scaling might have happened!
         action = [(self.net[f'res_{unit_type}'][column].loc[idxs]
                    / self.net[unit_type][f'max_max_{column}'].loc[idxs])
                   for unit_type, column, idxs in self.act_keys]
         return np.concatenate(action)
-
-    # def test_step(self, action):
-    #     """ TODO Use some custom data from different distribution here. For
-    #     example some subset of the simbench data that is not used in training """
-    #     obs, reward, done, info = self.step(action)
-
-    #     # TODO: Automatically compare with OPF here?
-
-    #     print('Test Penalty: ', info['penalties'])
-    #     print('Current actions: ', self.get_current_actions())
-    #     return obs, reward, done, info
-
-    #     # Don't consider the penalty, to compare how good objective was learned?
-    #     # if self.vector_reward:
-    #     #     # Only return objective reward, not penalty reward
-    #     #     return obs, reward[0], done, info
-    #     # else:
-    #     #     # Remove previously added penalty
-    #     #     return obs, reward - sum(info['penalties']), done, info
-
-    def compute_error(self, action):
-        """ Return error compared to optimal state of the system. """
-
-        # Perform (non-optimal) action
-        self._apply_actions(action)
-        success = self._run_pf()
-
-        if not success:
-            return np.nan, np.nan
-
-        obj = sum(self.calc_objective(self.net))
-        _, violations, _, _ = self.calc_violations()
-
-        logging.info(f'Test violations: {violations}')
-        logging.info(f'Current actions: {self.get_current_actions()}')
-
-        opt_obj = self.baseline_reward()
-
-        return opt_obj, obj
 
     def baseline_reward(self):
         """ Compute some baseline to compare training performance with. In this
@@ -518,10 +474,9 @@ class OpfEnv(gym.Env, abc.ABC):
 
         return sum(np.append(rewards, penalties))
 
-    def _optimal_power_flow(self):
+    def _optimal_power_flow(self, **kwargs):
         try:
-            # TODO: Make sure that this does not change the actual grid, but only a copy of it
-            pp.runopp(self.net)
+            pp.runopp(self.net, **kwargs)
         except pp.optimal_powerflow.OPFNotConverged:
             logging.warning('OPF not converged!!!')
             return False
