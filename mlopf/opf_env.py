@@ -86,6 +86,8 @@ class OpfEnv(gym.Env, abc.ABC):
         self.reward_function = reward_function
         self.vector_reward = vector_reward
         self.squash_reward = squash_reward
+        if reward_scaling == 'auto':
+            reward_scaling = get_automatic_reward_scaling(self.net)
         self.reward_scaling = reward_scaling
 
         # Default penalties are purely linear
@@ -604,3 +606,31 @@ def get_bus_aggregated_obs(net, unit_type, column, idxs):
     state space. """
     df = net[unit_type].iloc[idxs]
     return df.groupby(['bus'])[column].sum().to_numpy()
+
+
+def get_automatic_reward_scaling(net):
+    cost_df = net.poly_cost
+
+    active_power_mask = np.zeros(len(cost_df), dtype=bool)
+    reactive_power_mask = np.zeros(len(cost_df), dtype=bool)
+    for column in cost_df.columns:
+        if 'mw' in column and 'max_' in column:
+            active_power_mask = np.logical_or(
+                active_power_mask, cost_df[column] != 0)
+        if 'mvar' in column and 'max_' in column:
+            reactive_power_mask = np.logical_or(
+                reactive_power_mask, cost_df[column] != 0)
+
+    scaling_factor = 0
+    for unit_type in ('gen', 'sgen', 'ext_grid', 'storage'):
+        unit_type_mask = cost_df.et == unit_type
+        mask = np.logical_and(active_power_mask, unit_type_mask)
+        if mask.any():
+            scaling_factor += net[unit_type].loc[cost_df[mask]
+                                                 .element].max_max_p_mw.abs().sum()
+        mask = np.logical_and(reactive_power_mask, unit_type_mask)
+        if mask.any():
+            scaling_factor += net[unit_type].loc[cost_df[mask]
+                                                 .element].max_max_q_mvar.abs().sum()
+
+    return 1 / scaling_factor / 10
