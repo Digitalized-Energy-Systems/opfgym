@@ -151,7 +151,7 @@ class QMarketEnv(opf_env.OpfEnv):
                 ('sgen', 'p_mw', self.net['sgen'].index),
                 ('load', 'p_mw', self.net['load'].index),
                 ('load', 'q_mvar', self.net['load'].index),
-                ('poly_cost', 'cq2_eur_per_mvar2', self.net.poly_cost.index)]
+                ('poly_cost', 'cq2_eur_per_mvar2', np.arange(len(self.net.sgen) + len(self.net.ext_grid)))]
 
         # ... and control all sgens' reactive power values
         self.act_keys = [('sgen', 'q_mvar', self.net['sgen'].index)]
