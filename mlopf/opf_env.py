@@ -35,7 +35,7 @@ class OpfEnv(gym.Env, abc.ABC):
                  add_res_obs=False,
                  add_time_obs=False,
                  add_act_obs=False,
-                 train_data='noisy_simbench',
+                 train_data='simbench',
                  test_data='simbench',
                  sampling_kwargs=None,
                  volt_pen_kwargs=None,
@@ -432,7 +432,7 @@ class OpfEnv(gym.Env, abc.ABC):
 
         if self.diff_reward and not test:
             # Do not use the objective as reward, but their diff instead
-            reward -= self.prev_obj
+            reward -= self.prev_reward
 
         if self.squash_reward and not test:
             reward = np.sign(reward) * np.log(np.abs(reward) + 1)
