@@ -286,7 +286,7 @@ class OpfEnv(gym.Env, abc.ABC):
             # Maybe simply catch this with a strong negative reward?!
             raise pp.powerflow.LoadflowNotConverged()
 
-        reward = self.calc_reward(test) * self.reward_scaling
+        reward = self.calc_reward(test)
 
         if self.diff_reward:
             # Do not use the objective as reward, but their diff instead
@@ -437,7 +437,7 @@ class OpfEnv(gym.Env, abc.ABC):
         if self.squash_reward and not test:
             reward = np.sign(reward) * np.log(np.abs(reward) + 1)
 
-        return reward
+        return reward * self.reward_scaling
 
     def _get_obs(self, obs_keys, add_time_obs):
         obss = [(self.net[unit_type][column].loc[idxs].to_numpy())
