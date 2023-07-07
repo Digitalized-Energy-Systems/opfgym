@@ -288,6 +288,10 @@ class OpfEnv(gym.Env, abc.ABC):
 
         reward = self.calc_reward(test) * self.reward_scaling
 
+        if self.diff_reward:
+            # Do not use the objective as reward, but their diff instead
+            reward -= self.prev_reward
+
         if self.single_step:
             # Do not step to another time-series point!
             if self.step_in_episode >= self.steps_per_episode:
@@ -429,10 +433,6 @@ class OpfEnv(gym.Env, abc.ABC):
         else:
             # Reward as a numpy array
             reward = full_obj
-
-        if self.diff_reward and not test:
-            # Do not use the objective as reward, but their diff instead
-            reward -= self.prev_reward
 
         if self.squash_reward and not test:
             reward = np.sign(reward) * np.log(np.abs(reward) + 1)
