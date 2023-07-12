@@ -270,7 +270,7 @@ class EcoDispatchEnv(opf_env.OpfEnv):
 
     def __init__(self, simbench_network_name='1-HV-urban--0-sw', min_power=0,
                  n_agents=None, gen_scaling=1.0, load_scaling=1.5, max_price=600,
-                 seed=None, reward_scaling=1 / 10000, *args, **kwargs):
+                 seed=None, *args, **kwargs):
         # Economic dispatch normally done in EHV (too big! use HV instead!)
         # EHV option: '1-EHV-mixed--0-sw' (340 generators!!!)
         # HV options: '1-HV-urban--0-sw' and '1-HV-mixed--0-sw'
@@ -312,8 +312,7 @@ class EcoDispatchEnv(opf_env.OpfEnv):
             kwargs['trafo_pen_kwargs'] = {'linear_penalty': 100000}
         if 'ext_grid_pen_kwargs' not in kwargs:
             kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 10000}
-        super().__init__(seed=seed, reward_scaling=reward_scaling,
-                         *args, **kwargs)
+        super().__init__(seed=seed, *args, **kwargs)
 
         if self.vector_reward is True:
             # 5 penalties and `n_participants` objective functions
