@@ -55,8 +55,14 @@ class OpfEnv(gym.Env, abc.ABC):
 
         if remove_normal_obs:
             # Completely overwrite the observation definition
-            self.obs_keys = []
             assert add_res_obs or add_time_obs or add_act_obs
+            # Make sure to only remove redundant data and not e.g. price data
+            remove_idxs = []
+            for idx, (unit_type, column, _) in enumerate(self.obs_keys):
+                if unit_type in ('load', 'sgen', 'gen') and column in ('p_mw', 'q_mvar'):
+                    remove_idxs.append(idx)
+            self.obs_keys = [value for index, value in enumerate(self.obs_keys)
+                             if index not in remove_idxs]
 
         self.add_act_obs = add_act_obs
         if add_act_obs:

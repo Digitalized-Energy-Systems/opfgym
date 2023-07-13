@@ -143,15 +143,11 @@ class QMarketEnv(opf_env.OpfEnv):
 
         # Define the RL problem
         # See all load power values, sgen active power, and sgen prices...
-        if min_obs:
-            self.obs_keys = [
-                ('poly_cost', 'cq2_eur_per_mvar2', self.net.poly_cost.index)]
-        else:
-            self.obs_keys = [
-                ('sgen', 'p_mw', self.net['sgen'].index),
-                ('load', 'p_mw', self.net['load'].index),
-                ('load', 'q_mvar', self.net['load'].index),
-                ('poly_cost', 'cq2_eur_per_mvar2', np.arange(len(self.net.sgen) + len(self.net.ext_grid)))]
+        self.obs_keys = [
+            ('sgen', 'p_mw', self.net['sgen'].index),
+            ('load', 'p_mw', self.net['load'].index),
+            ('load', 'q_mvar', self.net['load'].index),
+            ('poly_cost', 'cq2_eur_per_mvar2', np.arange(len(self.net.sgen) + len(self.net.ext_grid)))]
 
         # ... and control all sgens' reactive power values
         self.act_keys = [('sgen', 'q_mvar', self.net['sgen'].index)]
