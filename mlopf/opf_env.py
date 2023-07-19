@@ -474,12 +474,12 @@ class OpfEnv(gym.Env, abc.ABC):
         success = self._optimal_power_flow()
         if not success:
             return np.nan
-        rewards = self.calc_objective(self.net)
+        objectives = self.calc_objective(self.net)
         valids, violations, percentage_violations, penalties = self.calc_violations()
         logging.info(f'Optimal violations: {violations}')
         logging.info(f'Baseline actions: {self.get_current_actions()}')
 
-        return sum(np.append(rewards, penalties))
+        return sum(objectives)
 
     def _optimal_power_flow(self, **kwargs):
         try:
