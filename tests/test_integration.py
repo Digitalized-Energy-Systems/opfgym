@@ -7,11 +7,14 @@ from mlopf.envs.thesis_envs import SimpleOpfEnv, QMarketEnv, EcoDispatchEnv
 
 def test_simple_opf_integration():
     dummy_env = SimpleOpfEnv()
-    dummy_env.reset()
+    obs, info = dummy_env.reset()
+    reward = 0
+    done = False
+
     for _ in range(3):
         act = dummy_env.action_space.sample()
-        obs, reward, done, info = dummy_env.step(act)
-        dummy_env.reset()
+        obs, reward, done, _, info = dummy_env.step(act)
+        obs, info = dummy_env.reset()
 
     assert isinstance(obs, np.ndarray)
     assert isinstance(reward, float)
@@ -21,11 +24,14 @@ def test_simple_opf_integration():
 
 def test_qmarket_integration():
     dummy_env = QMarketEnv()
-    dummy_env.reset()
+    obs, info = dummy_env.reset()
+    reward = 0
+    done = False
+
     for _ in range(3):
         act = dummy_env.action_space.sample()
-        obs, reward, done, info = dummy_env.step(act)
-        dummy_env.reset()
+        obs, reward, done, _, info = dummy_env.step(act)
+        obs, info = dummy_env.reset()
 
     assert isinstance(obs, np.ndarray)
     assert isinstance(reward, float)
@@ -35,11 +41,14 @@ def test_qmarket_integration():
 
 def test_eco_dispatch_integration():
     dummy_env = EcoDispatchEnv()
-    dummy_env.reset()
+    obs, info = dummy_env.reset()
+    reward = 0
+    done = False
+
     for _ in range(3):
         act = dummy_env.action_space.sample()
-        obs, reward, done, info = dummy_env.step(act)
-        dummy_env.reset()
+        obs, reward, done, _, info = dummy_env.step(act)
+        obs, info = dummy_env.reset()
 
     assert isinstance(obs, np.ndarray)
     assert isinstance(reward, float)

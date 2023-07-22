@@ -1,5 +1,6 @@
 import pytest
 import simbench as sb
+from pandas import DataFrame
 
 import mlopf.build_simbench_net as build_simbench
 
@@ -10,14 +11,13 @@ def net():
 
 
 def test_system_constraint_setting(net):
-    build_simbench.set_system_constraints(
-        net, voltage_band=0.1, max_loading=95)
+    build_simbench.set_system_constraints(net, voltage_band=0.1, max_loading=95)
     assert (net.bus.max_vm_pu == 1.1).all()
     assert (net.bus.min_vm_pu == 0.9).all()
     assert (net.line.max_loading_percent == 95).all()
     assert (net.trafo.max_loading_percent == 95).all()
 
-    build_simbench.set_system_constraints(net, max_loading=120)
+    build_simbench.set_system_constraints(net, voltage_band=0.0, max_loading=120)
     assert (net.line.max_loading_percent == 120).all()
     assert (net.trafo.max_loading_percent == 120).all()
     # Voltage constraints should remain unchanged!
@@ -36,12 +36,14 @@ def test_scaling_setting(net):
 
 @pytest.fixture
 def net_profile():
-    """ Create a large simbench system plus profile data. """
+    """
+    Create a large simbench system plus profile data.
+    """
+
     net = sb.get_simbench_net('1-MV-comm--1-sw')
 
     assert not sb.profiles_are_missing(net)
-    profiles = sb.get_absolute_values(
-        net, profiles_instead_of_study_cases=True)
+    profiles = sb.get_absolute_values(net, profiles_instead_of_study_cases=True)
     return net, profiles
 
 
@@ -53,12 +55,13 @@ def test_simbench_profile_repair(net_profile):
 
     # Some generators should be removed (otherwise test badly designed)
     assert len(net.sgen.index) < len_sgen
-
     assert profiles[('sgen', 'p_mw')].min().min() >= 0.0
 
     for type_act in profiles.keys():
-        assert (profiles[type_act].max(
-            axis=0) != profiles[type_act].min(axis=0)).all()
+        df1: DataFrame = profiles[type_act].max(axis=0)
+        df2: DataFrame = profiles[type_act].min(axis=0)
+        series: DataFrame = df1 != df2
+        assert series.all()
 
 
 def test_unit_constraint_setting(net_profile):
