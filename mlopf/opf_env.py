@@ -169,8 +169,6 @@ class OpfEnv(gym.Env, abc.ABC):
             self._sample_uniform()
         elif data_distr == 'normal_around_mean':
             self._sample_normal(*args, **kwargs)
-        elif data_distr == 'noisy_baseline':
-            raise NotImplementedError
 
     def _sample_uniform(self, sample_keys=None):
         """ Standard pre-implemented method to set power system to a new random
@@ -483,7 +481,8 @@ class OpfEnv(gym.Env, abc.ABC):
 
     def _optimal_power_flow(self, **kwargs):
         try:
-            pp.runopp(self.net, **kwargs)
+            pp.runopp(self.net, calculate_voltage_angles=False,
+                      numba=False, **kwargs)
         except pp.optimal_powerflow.OPFNotConverged:
             logging.warning('OPF not converged!!!')
             return False
