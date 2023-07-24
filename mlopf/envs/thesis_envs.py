@@ -7,7 +7,7 @@ the pandapower OPF to calculate the performance of the DRL agents.
 """
 from typing import Dict, Tuple
 
-import gym
+import gymnasium
 import numpy as np
 import pandapower as pp
 from pandapower import pandapowerNet
@@ -72,7 +72,7 @@ class SimpleOpfEnv(opf_env.OpfEnv):
 
         if self.vector_reward:
             # 5 penalties and one objective function
-            self.reward_space = gym.spaces.Box(low=-np.ones(6) * np.inf, high=np.ones(6) * np.inf, seed=seed)
+            self.reward_space = gymnasium.spaces.Box(low=-np.ones(6) * np.inf, high=np.ones(6) * np.inf, seed=seed)
 
     def _define_opf(self, simbench_network_name, *args, **kwargs) -> Tuple[pandapowerNet, Dict[tuple[str, str], DataFrame | Series]]:
         net, profiles = build_simbench_net(simbench_network_name, *args, **kwargs)
@@ -151,7 +151,7 @@ class QMarketEnv(opf_env.OpfEnv):
         if self.vector_reward is True:
             # 2 penalties and `n_sgen+1` objective functions
             n_objs = 2 + len(self.net.sgen) + 1
-            self.reward_space = gym.spaces.Box(low=-np.ones(n_objs) * np.inf, high=np.ones(n_objs) * np.inf, seed=seed)
+            self.reward_space = gymnasium.spaces.Box(low=-np.ones(n_objs) * np.inf, high=np.ones(n_objs) * np.inf, seed=seed)
 
     def _define_opf(self, simbench_network_name: str, *args, **kwargs) -> Tuple[pandapowerNet, Dict[tuple[str, str], DataFrame | Series]]:
         net, profiles = build_simbench_net(simbench_network_name, *args, **kwargs)
@@ -297,7 +297,7 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         if self.vector_reward is True:
             # 5 penalties and `n_participants` objective functions
             n_objs = 5 + len(self.net.sgen) + len(self.net.ext_grid) + len(self.net.gen)
-            self.reward_space = gym.spaces.Box(low=-np.ones(n_objs) * np.inf, high=np.ones(n_objs) * np.inf, seed=seed)
+            self.reward_space = gymnasium.spaces.Box(low=-np.ones(n_objs) * np.inf, high=np.ones(n_objs) * np.inf, seed=seed)
 
     def _define_opf(self, simbench_network_name: str, min_power, n_agents, *args, **kwargs) -> Tuple[pandapowerNet, Dict[tuple[str, str], DataFrame | Series]]:
         net, profiles = build_simbench_net(simbench_network_name, *args, **kwargs)
