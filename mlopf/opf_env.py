@@ -195,9 +195,6 @@ class OpfEnv(gymnasium.Env, ABC):
         elif data_distr == 'normal_around_mean':
             return self._sample_normal(*args, **kwargs)
 
-        elif data_distr == 'noisy_baseline':
-            raise NotImplementedError("noisy_baseline is not implemented yet.")
-
         else:
             raise ValueError("No valid data distribution was provided.")
 
@@ -521,16 +518,16 @@ class OpfEnv(gymnasium.Env, ABC):
         if not self._optimal_power_flow():
             return np.nan
 
-        rewards = self.calc_objective(self.net)
-        valids, violations, percentage_violations, penalties = self.calc_violations()
+        objectives: np.ndarray = self.calc_objective(self.net)
+        _, violations, _, _ = self.calc_violations()
         logging.info(f'Optimal violations: {violations}')
         logging.info(f'Baseline actions: {self.get_current_actions()}')
 
-        return sum(np.append(rewards, penalties))
+        return objectives.sum()
 
     def _optimal_power_flow(self, **kwargs) -> bool:
         try:
-            pp.runopp(self.net, **kwargs)
+            pp.runopp(self.net, calculate_voltage_angles=False, numba=False, **kwargs)
             return True
 
         except pp.optimal_powerflow.OPFNotConverged:

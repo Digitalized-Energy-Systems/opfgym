@@ -5,7 +5,7 @@ All these envs can also be solved with
 the pandapower OPF to calculate the performance of the DRL agents.
 
 """
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Any
 
 import gymnasium
 import numpy as np
@@ -218,19 +218,22 @@ class QMarketEnv(opf_env.OpfEnv):
         else:
             return objs
 
-    def clac_violation(self) -> Tuple[np.ndarray, np.ndarray]:
+    def clac_violation(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
         Define what to do in vector_reward-case.
         """
         # Attention: This probably works only for the default system '1-LV-urban6--0-sw'
         # because only ext_grid q violations there and nothing else
-        valids, _, _, penalties = super().calc_violations()
+        valids, violations, perc_violations, penalties = super().calc_violations()
         if self.vector_reward:
             # Structure: [ext_grid_pen, other_pens]
             penalties = np.array((penalties[3], sum(penalties) - penalties[3]))
+            penalties = np.array((penalties[3], sum(penalties) - penalties[3]))
+            violations = np.array((violations[3], sum(violations) - violations[3]))
+            perc_violations = np.array((perc_violations[3], sum(perc_violations) - perc_violations[3]))
             valids = np.append(valids[3], np.append(valids[0:3], valids[4:]).all())
 
-        return penalties, valids
+        return valids, violations, perc_violations, penalties
 
 
 class EcoDispatchEnv(opf_env.OpfEnv):
@@ -249,7 +252,8 @@ class EcoDispatchEnv(opf_env.OpfEnv):
                  active power exchange with external grid
     """
 
-    def __init__(self, simbench_network_name='1-HV-urban--0-sw', min_power=0, n_agents=None, gen_scaling=1.0, load_scaling=1.5, max_price=600, seed=None, *args, **kwargs):
+    def __init__(self, simbench_network_name: str = '1-HV-urban--0-sw', min_power: int | float = 0, n_agents: Any | None = None, gen_scaling: float = 1.0,
+                 load_scaling: float = 1.5, max_price: int = 600, seed: int | None = None, *args, **kwargs):
         # Economic dispatch normally done in EHV (too big! use HV instead!)
         # EHV option: '1-EHV-mixed--0-sw' (340 generators!!!)
         # HV options: '1-HV-urban--0-sw' and '1-HV-mixed--0-sw'

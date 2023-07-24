@@ -1,4 +1,6 @@
-""" Done with https://towardsdatascience.com/create-your-custom-python-package-that-you-can-pip-install-from-your-git-repository-f90465867893"""
+"""
+Done with https://towardsdatascience.com/create-your-custom-python-package-that-you-can-pip-install-from-your-git-repository-f90465867893
+"""
 
 from setuptools import setup, find_packages
 
@@ -17,13 +19,15 @@ setup(
     url='https://gitlab.com/thomaswolgast/mlopf',
     license='MIT',
     install_requires=[
-        'numpy==1.18.3',
-        'scipy==1.4.1',
-        'numba',
-        'pandas==1.3.5',
+        'numpy==1.23.5',
+        'scipy',
+        'numba==0.56.4',
+        'pandas',
         'matplotlib',
-        'pandapower==2.2.2',
-        'simbench==1.2.0',
-        'gym',
+        'pandapower==2.13.1',
+        'simbench==1.4.0',
+        'gymnasium',
+        'pytest',
+        'pettingzoo',
     ],
 )
