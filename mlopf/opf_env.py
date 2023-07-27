@@ -31,6 +31,7 @@ class OpfEnv(gym.Env, abc.ABC):
                  diff_reward=False,
                  reward_function='summation',
                  reward_scaling=1,
+                 squash_reward=False,
                  remove_normal_obs=False,
                  add_res_obs=False,
                  add_time_obs=False,
@@ -42,7 +43,7 @@ class OpfEnv(gym.Env, abc.ABC):
                  line_pen_kwargs=None,
                  trafo_pen_kwargs=None,
                  ext_grid_pen_kwargs=None,
-                 seed=None, squash_reward=False):
+                 seed=None):
 
         # Should be always True. Maybe only allow False for paper investigation
         self.train_test_split = train_test_split
@@ -481,8 +482,7 @@ class OpfEnv(gym.Env, abc.ABC):
 
     def _optimal_power_flow(self, **kwargs):
         try:
-            pp.runopp(self.net, calculate_voltage_angles=False,
-                      numba=False, **kwargs)
+            pp.runopp(self.net, calculate_voltage_angles=False, **kwargs)
         except pp.optimal_powerflow.OPFNotConverged:
             logging.warning('OPF not converged!!!')
             return False
