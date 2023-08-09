@@ -299,8 +299,13 @@ class OpfEnv(gym.Env, abc.ABC):
 
         if self.single_step:
             # Do not step to another time-series point!
-            if self.step_in_episode >= self.steps_per_episode:
+            if self.steps_per_episode == 1:
+                # 1-step environment! Not truncated!
                 done = True
+            elif self.step_in_episode >= self.steps_per_episode:
+                done = True
+                # Env gets interrupted independent (!) of agent action
+                self.info['TimeLimit.truncated'] = True
             else:
                 done = False
         elif random.random() < 0.02:  # TODO! Better termination criterion
@@ -308,7 +313,6 @@ class OpfEnv(gym.Env, abc.ABC):
             done = True  # TODO
         else:
             done = not self._sampling(step=self.current_step + 1, test=test)
-        self.info['TimeLimit.truncated'] = True
 
         obs = self._get_obs(self.obs_keys, self.add_time_obs)
         assert not np.isnan(obs).any()
