@@ -4,52 +4,156 @@ import time
 import drl.experiment
 import numpy as np
 
+# TODO: Add acts to eval/MAPE
 
-def main(path, test_steps=100, **kwargs):
-    if path[-1] != '/':
-        path += '/'
 
-    with open(path + '/meta-data.txt') as f:
-        lines = f.readlines()
-    env_name = lines[1].split(' ')[1][:-1]
-    algo = lines[2][15:][:-1]
-    hyperparams = drl.experiment.str_to_dict(lines[6][23:][:-1])
-    env_hyperparams = drl.experiment.str_to_dict(lines[7][25:][:-1])
+def eval_experiment_folder(path, test_steps_int=50, seed=10, **kwargs):
 
-    env = drl.experiment.create_environment(env_name, env_hyperparams)
+    rewards_dict = defaultdict(list)
+    acts_dict = defaultdict(list)
+    valids_dict = defaultdict(list)
+    violations_dict = defaultdict(list)
+    names = []
+    print('Get agent performances')
+    run_paths = os.listdir(path)
+    for idx, run_path in enumerate(run_paths):
+        print('')
+        full_path = path + run_path
+        print(full_path)
+        agent, env, name = get_agent_data(full_path)
+        names.append(name)
 
-    agent_class = drl.experiment.get_agent_class(algo)
-    agent = agent_class(
-        env, name='test_agent', seed=42, path=path, **hyperparams)
-    agent.load_model()
+        rewards, acts, valids, violations = get_agent_performance(
+            agent, env, test_steps_int, seed)
+        rewards_dict[name].append(np.array(rewards))
+        acts_dict[name].append(np.array(acts))
+        valids_dict[name].append(np.array(valids))
+        violations_dict[name].append(np.array(violations))
 
+    print('Get baseline performance')
+    base_rewards, base_acts = get_baseline_performance(
+        env, test_steps_int, seed)
+    base_rewards = np.array(base_rewards)
+    base_acts = np.array(base_acts)
+
+    print('Get metrics \n')
+    for name in valids_dict.keys():
+        print('Experiment: ', name)
+        print('On the exact same samples: (valid for everyone)')
+        performance_comparison(
+            name, valids_dict, rewards_dict[name], violations_dict[name],
+            base_rewards, True)
+        print('\nOn samples that are valid for the respective experiment: ')
+        performance_comparison(
+            name, valids_dict, rewards_dict[name], violations_dict[name],
+            base_rewards, False)
+        print('')
+
+
+# TODO
+def eval_one_agent(path, test_steps=100, **kwargs):
+
+    agent, env, name = get_agent_data(path)
     # evaluate_nstep(agent, env, test_steps)
     measure_speedup(agent, env, test_steps)
 
 
-def evaluate_nstep(agent, env, test_steps, iterations=5):
-    """ Evaluate performance on n-step environment (special case!) """
+def get_agent_data(path):
+    from drl.util.load_agent import load_agent
+    agent = load_agent(path)
 
-    regrets = np.zeros((test_steps, iterations))
-    apes = np.zeros((test_steps, iterations))
-    valids = np.ones((test_steps, iterations))
-    for step in range(test_steps):
-        obs = agent.env.reset(test=True)
-        opt_obj = agent.env.baseline_reward()
-        opt_act = agent.env.get_current_actions()
-        for n in range(iterations):
+    return agent, agent.env, agent.name
+
+
+def get_agent_performance(agent, env, test_steps_int, seed=None, criterion='last'):
+    if seed:
+        random.seed(seed)
+        np.random.seed(seed=seed)
+    test_steps = random.sample(list(env.test_steps), test_steps_int)
+
+    rewards = []
+    acts = []
+    valids = []
+    violations = []
+    for step in test_steps:
+        obs = env.reset(step=step, test=True)
+        done = False
+        best_obj = -np.inf
+        while not done:
             act = agent.test_act(agent.scale_obs(obs))
-            obs, reward, done, info = agent.env.step(act)
-            obj = sum(agent.env.calc_objective(env.net))
-            regrets[step, n] = opt_obj - obj
-            apes[step, n] = abs(regrets[step, n] / opt_obj)
-            if not np.all(info['valids']):
-                valids[step, n] = 0
+            obs, reward, done, info = env.step(act)
 
-    print('mean regret: ', np.mean(regrets, axis=0))
-    print('std regret: ', np.std(regrets, axis=0))
-    print('MAPE: ', np.mean(apes, axis=0) * 100, '%')
-    print('valid share: ', np.mean(valids, axis=0))
+            obj = sum(env.calc_objective(env.net))
+            if criterion == 'last' or (obj > best_obj and criterion == 'best'):
+                # TODO: Unclear if I should use the best or the last one for eval?
+                best_obj = obj
+                best_act = act
+                best_valid = info['valids'].all()
+                best_viol = info['violations'].sum()
+
+        rewards.append(best_obj)
+        acts.append(best_act)
+        valids.append(best_valid)
+        violations.append(best_viol)
+
+    return rewards, acts, valids, violations
+
+
+def get_baseline_performance(env, test_steps_int, seed=None):
+    if seed:
+        random.seed(seed)
+        np.random.seed(seed=seed)
+    test_steps = random.sample(list(env.test_steps), test_steps_int)
+
+    rewards = []
+    acts = []
+    for step in test_steps:
+        env.reset(step=step, test=True)
+        reward = env.baseline_reward()
+        # TODO Attention: Don't forget the scaling here!
+        act = env.get_current_actions()
+
+        rewards.append(reward)
+        acts.append(act)
+
+    return rewards, acts
+
+
+def performance_comparison(name, valids_dict: dict, rewardss: list,
+                           violationss: list, baseline: list,
+                           shared_mask: False):
+    """ Make sure to compute error metrics like MAPE on equal basis by
+    comparing only data points with equal constraint satisfaction. """
+
+    validss = [np.logical_and.reduce(v) for v in valids_dict.values()]
+    shared_valids_mask = np.logical_and.reduce(validss)
+
+    regrets = []
+    mapes = []
+    mpes = []
+    rmses = []
+    shares = []
+    mean_violations = []
+
+    for idx in range(len(rewardss)):
+        mask = shared_valids_mask if shared_mask else valids_dict[name][idx]
+        errors = (baseline - rewardss[idx])[mask]
+        regrets.append(np.mean(errors))
+        mapes.append(np.mean(abs(errors / baseline[mask])) * 100)
+        mpes.append(np.mean(errors / abs(baseline[mask])) * 100)
+        rmses.append(np.mean(errors**2)**0.5)
+        shares.append(np.mean(mask))
+        mean_violations.append(np.mean(violationss[idx][~mask]))
+
+    print('Mean Regret: ', round(np.mean(regrets), 4))
+    print('MAPE: ', round(np.mean(mapes), 4), '%')
+    print('MPE: ', round(np.mean(mpes), 4), '%')
+    print('RMSE: ', round(np.mean(rmses), 4))
+    print('Valid share: ', round(np.mean(shares), 4))
+    print('Mean violation (of invalid samples): ',
+          round(np.mean(mean_violations), 6))
+
+    # TODO: Store result in `path`
 
 
 def measure_speedup(agent, env, test_steps, path=None):
@@ -113,5 +217,5 @@ def measure_speedup(agent, env, test_steps, path=None):
 
 
 if __name__ == '__main__':
-    path = 'market_design_paper/data/DGX/20230530_qmarket_base/2023-05-30T15.34.54.369_QMarketEnv_Ddpg1Step_0/'
-    main(path)
+    path = 'HPC/drlopf_experiments/data/final_experiments/20230802_qmarket_nstep/'
+    eval_experiment_folder(path)
