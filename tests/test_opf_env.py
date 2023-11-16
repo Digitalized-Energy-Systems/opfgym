@@ -6,7 +6,7 @@ from mlopf.envs.thesis_envs import SimpleOpfEnv
 import mlopf.opf_env as opf_env
 
 
-dummy_env = SimpleOpfEnv()
+dummy_env = SimpleOpfEnv(add_res_obs=True)
 
 
 def test_obs_space_def():
@@ -66,3 +66,17 @@ def test_test_share_def():
     # Edge case: No test data -> should not be done with test_share
     with pytest.raises(AssertionError):
         opf_env.define_test_steps(test_share=0.0)
+
+
+def test_graph_obs():
+
+    dummy_env.reset()
+    net = dummy_env.net
+    obs_keys = dummy_env.obs_keys
+    graph_obs = opf_env.get_homo_graph_obs(net, obs_keys, add_time_obs=False)
+
+    assert graph_obs.num_nodes == len(net.bus)
+    assert graph_obs.num_edges == 2 * (
+        len(net.line) + len(net.trafo) + len(net.trafo3w))
+    assert graph_obs.validate()
+    assert graph_obs.is_undirected()

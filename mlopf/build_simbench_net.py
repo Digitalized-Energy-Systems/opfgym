@@ -1,3 +1,5 @@
+import numpy as np
+import pandapower.toolbox as pt
 import simbench as sb
 
 
@@ -17,6 +19,9 @@ def build_simbench_net(simbench_network_name, gen_scaling=1.0, load_scaling=2.0,
 
     repair_simbench_profiles(net, profiles)
     set_constraints_from_profiles(net, profiles)
+
+    # Make sure there are not jumps in the bus indices
+    pt.create_continuous_bus_index(net)
 
     return net, profiles
 

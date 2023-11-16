@@ -7,9 +7,12 @@ import warnings
 import gym
 import numpy as np
 import pandapower as pp
+import pandapower.plotting as plt
 import pandas as pd
 import scipy
 from scipy import stats
+import torch
+from torch_geometric.data import Data
 
 from mlopf.penalties import (voltage_violation, line_overload,
                              trafo_overload, ext_grid_overpower)
@@ -43,6 +46,7 @@ class OpfEnv(gym.Env, abc.ABC):
                  line_pen_kwargs=None,
                  trafo_pen_kwargs=None,
                  ext_grid_pen_kwargs=None,
+                 graph_obs=False,
                  seed=None):
 
         # Should be always True. Maybe only allow False for paper investigation
@@ -68,7 +72,7 @@ class OpfEnv(gym.Env, abc.ABC):
         self.add_act_obs = add_act_obs
         if add_act_obs:
             # The agent can observe its previous actions
-            self.obs_keys.extend(self.act_keys)
+            self.obs_keys.extend(self.act_keys)  # global data for the graph
             # Does not make sense without observing results from previous act
             add_res_obs = True
 
@@ -76,14 +80,15 @@ class OpfEnv(gym.Env, abc.ABC):
         # Add observations that require previous pf calculation
         if add_res_obs:
             self.obs_keys.extend([
-                ('res_bus', 'vm_pu', self.net.bus.index),
-                ('res_line', 'loading_percent', self.net.line.index),
-                ('res_trafo', 'loading_percent', self.net.trafo.index),
-                ('res_ext_grid', 'p_mw', self.net.ext_grid.index),
-                ('res_ext_grid', 'q_mvar', self.net.ext_grid.index)
+                ('res_bus', 'vm_pu', self.net.bus.index),  # node data, homo
+                ('res_line', 'loading_percent', self.net.line.index),  # branch data, homo 
+                ('res_trafo', 'loading_percent', self.net.trafo.index),  # branch data, homo 
+                ('res_ext_grid', 'p_mw', self.net.ext_grid.index),  # node data, hetero 
+                ('res_ext_grid', 'q_mvar', self.net.ext_grid.index)  # node data, hetero
             ])
 
         self.bus_wise_obs = bus_wise_obs
+        self.graph_obs = graph_obs
         self.observation_space = get_obs_space(
             self.net, self.obs_keys, add_time_obs, seed,
             bus_wise_obs=bus_wise_obs)
@@ -130,6 +135,16 @@ class OpfEnv(gym.Env, abc.ABC):
 
         self.test_steps = define_test_steps(test_share)
 
+        # Add bus data to poly cost data frame
+        self.net.poly_cost['bus'] = np.zeros(len(self.net.poly_cost), dtype=int)
+        for idx in self.net.poly_cost.index:
+            self.net.poly_cost['bus'][idx] = int(self.net[self.net.poly_cost.at[idx, 'et']].bus[self.net.poly_cost.at[idx, 'element']])
+
+        if self.graph_obs:
+            data = self.reset()
+            self.n_node_features = data.x.shape[1]
+
+
     def reset(self, step=None, test=False):
         self.info = {}
         self.step_in_episode = 0
@@ -139,7 +154,6 @@ class OpfEnv(gym.Env, abc.ABC):
         if self.pf_for_obs is True:
             if self.add_act_obs:
                 # Use random actions as starting point
-                # TODO: Maybe better to combine this with multi-step?!
                 act = self.action_space.sample()
             else:
                 # Reset all actions to default values
@@ -315,7 +329,6 @@ class OpfEnv(gym.Env, abc.ABC):
             done = not self._sampling(step=self.current_step + 1, test=test)
 
         obs = self._get_obs(self.obs_keys, self.add_time_obs)
-        assert not np.isnan(obs).any()
 
         return obs, reward, done, self.info
 
@@ -424,10 +437,12 @@ class OpfEnv(gym.Env, abc.ABC):
             if not valids.all():
                 objectives[:] = 0.0
             else:
+                # TODO: Replace magic number with heuristic!
                 objectives += 10.0 / len(objectives)
 
         elif self.reward_function == 'multiplication':
             # Multiply constraint violation with objective function as penalty
+            # This way, penalty is in the same order of magnitude as reward
             penalties = -abs(sum(objectives)) * \
                 (~valids + percentage_violations)
             self.info['penalties'] = penalties
@@ -449,6 +464,9 @@ class OpfEnv(gym.Env, abc.ABC):
         return reward * self.reward_scaling
 
     def _get_obs(self, obs_keys, add_time_obs):
+        if self.graph_obs:
+            return get_homo_graph_obs(self.net, obs_keys, add_time_obs)
+
         obss = [(self.net[unit_type][column].loc[idxs].to_numpy())
                 if (unit_type != 'load' or not self.bus_wise_obs)
                 else get_bus_aggregated_obs(self.net, 'load', column, idxs)
@@ -458,14 +476,18 @@ class OpfEnv(gym.Env, abc.ABC):
             time_obs = get_simbench_time_observation(
                 self.profiles, self.current_step)
             obss = [time_obs] + obss
-        return np.concatenate(obss)
+
+        obss = np.concatenate(obss)
+        assert not np.isnan(obss).any()
+        
+        return obss
 
     def render(self, mode='human'):
-        logging.warning(f'Rendering not implemented!')
+        plt.simple_plot(self.net)
 
     def get_current_actions(self):
         # Attention: These are not necessarily the actions of the RL agent
-        # because some re-scaling might have happened!
+        # because some re-scaling or clipping might have happened!
         action = [(self.net[f'res_{unit_type}'][column].loc[idxs]
                    / self.net[unit_type][f'max_max_{column}'].loc[idxs])
                   for unit_type, column, idxs in self.act_keys]
@@ -610,11 +632,17 @@ def get_simbench_time_observation(profiles: dict, current_step: int):
     return np.array(time_obs)
 
 
-def get_bus_aggregated_obs(net, unit_type, column, idxs):
+def get_bus_aggregated_obs(net, unit_type, column, idxs, zero_data=False):
     """ Aggregate power values that are connected to the same bus to reduce
     state space. """
     df = net[unit_type].iloc[idxs]
-    return df.groupby(['bus'])[column].sum().to_numpy()
+    bus_data = net[unit_type[4:] if 'res' in unit_type else unit_type].bus
+    data = df.groupby(by=bus_data)[column].sum()
+    if zero_data:
+        all_data = pd.Series(np.zeros(len(net.bus)), index=net.bus.index)
+        all_data[data.index] = data
+        return all_data.to_numpy()
+    return data.to_numpy()
 
 
 def get_automatic_reward_scaling(net):
@@ -643,3 +671,57 @@ def get_automatic_reward_scaling(net):
                                                  .element].max_max_q_mvar.abs().sum()
 
     return 1 / scaling_factor / 10
+
+
+def get_homo_graph_obs(net, obs_keys, add_time_obs=False):
+    """ Create homogenous observation data for pytorch geometric and GNNs """
+
+    assert add_time_obs is False, 'Time obs in graph data not Implemented yet'
+   
+    n_nodes = len(net.bus)
+    n_edges = len(net.line) + len(net.trafo) + len(net.trafo3w)
+
+    n_node_attr = 0
+    for unit_type, column, idxs in obs_keys:
+        if unit_type in ('res_bus', 'load', 'sgen', 'poly_cost', 'res_ext_grid'):
+            n_node_attr += 1
+
+    node_attr = np.zeros((n_nodes, n_node_attr))
+    node_counter = 0
+    edge_attr = None
+    for unit_type, column, idxs in obs_keys:
+        # Add node attributes for the graph
+        if unit_type in ('res_bus', 'load', 'sgen', 'poly_cost', 'res_ext_grid'):
+            if unit_type == 'res_bus':
+                node_attr[:, node_counter] = net.res_bus[column].to_numpy()
+            elif unit_type in ('load', 'sgen', 'res_ext_grid', 'poly_cost'):
+                # Warning: For cost data, a homogenous graph does not make sense!
+                # However: Will work as long as there is only one unit per bus
+                node_attr[:, node_counter] = get_bus_aggregated_obs(
+                    net, unit_type, column, idxs, zero_data=True) 
+            node_counter += 1
+        # Add edge attributes for the graph
+        if unit_type in ('res_line', 'res_trafo', 'res_trafo3w'):
+            edge_attr = np.concatenate((net['res_line'][column].to_numpy(), 
+                                        net['res_trafo'][column].to_numpy(), 
+                                        net['res_trafo3w'][column].to_numpy()), 
+                                        axis=0)   
+            edge_attr = np.reshape(edge_attr, (len(edge_attr), 1))
+
+    # Get graph connectivity data
+    line_connections = net.line[['from_bus', 'to_bus']].to_numpy()
+    trafo_connections = net.trafo[['hv_bus', 'lv_bus']].to_numpy()
+    edge_index = np.concatenate((line_connections, trafo_connections), axis=0)
+    edge_index = np.reshape(edge_index, (2, n_edges))
+
+    # Convert to undirected graph data 
+    edge_index = np.concatenate((edge_index, edge_index[::-1,:]), axis=1)
+    if edge_attr is not None:
+        edge_attr = np.concatenate((edge_attr, edge_attr), axis=0)
+
+    # Convert to pytorch tensor data
+    node_attr = torch.tensor(node_attr, dtype=torch.float)
+    edge_index = torch.tensor(edge_index, dtype=torch.long)
+    edge_attr = torch.tensor(edge_attr, dtype=torch.float)
+
+    return Data(x=node_attr, edge_index=edge_index, edge_attr=edge_attr)
