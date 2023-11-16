@@ -129,17 +129,20 @@ class OpfEnv(gym.Env, abc.ABC):
 
         self.test_steps = define_test_steps(test_share)
 
-        if self.reward_function == 'replacement':
-            # Get a rough estimation of the later required worst-case objective
-            self.min_obj = 0.0
-            for _ in range(100):
+        # Get rough estimation of the objective function to compute penalties later
+        if self.reward_function in ('replacement', 'multiplication'):
+            objs = []
+            for _ in range(500):
                 self.reset()
-                self.step(self.action_space.sample())
-                obj = self.calc_objective(self.net)
-                self.min_obj = np.minimum(obj, self.min_obj)
-                print(sum(self.min_obj))
+                self._apply_actions(self.action_space.sample())
+                self._run_pf()
+                objs.append(self.calc_objective(self.net))
+                
+            self.min_obj = np.array(objs).min(axis=0)
             # Add some buffer to make sure we really have a worst-case
-            self.min_obj -= 0.2 * abs(self.min_obj)
+            self.min_obj -= 0.5 * abs(self.min_obj)
+            # Compute the mean absolute objective to compute penalty later
+            self.mean_abs_obj = np.abs(np.sum(objs, axis=1)).mean()
 
     def reset(self, step=None, test=False):
         self.info = {}
@@ -443,7 +446,8 @@ class OpfEnv(gym.Env, abc.ABC):
             # But ensure that the reward is always higher if valid compared to invalid 
         elif self.reward_function == 'multiplication':
             # Multiply constraint violation with objective function as penalty
-            penalties = -abs(sum(objectives)) * \
+            # TODO Problem: Does the agent have an incentive to reduce abs(sum(objectives)) this way???
+            penalties = -self.mean_abs_obj * \
                 (~valids + percentage_violations)
             self.info['penalties'] = penalties
         else:
