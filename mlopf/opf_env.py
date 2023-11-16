@@ -436,6 +436,7 @@ class OpfEnv(gym.Env, abc.ABC):
                 # This way, even the worst-case results in zero reward
                 objectives += abs(self.min_obj)
         elif self.reward_function == 'replacement_plus_summation':
+            pass
             # TODO Idea: can these two be combined?!
             # If valid: Use objective as reward
             # If invalid: Use penalties as reward + objective to make sure agent learns both at the same time (and not first only penalties and then only objective))
