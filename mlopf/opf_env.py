@@ -133,7 +133,7 @@ class OpfEnv(gym.Env, abc.ABC):
         if self.reward_function in ('replacement', 'multiplication'):
             objs = []
             for _ in range(500):
-                self.reset()
+                self._sampling()
                 self._apply_actions(self.action_space.sample())
                 self._run_pf()
                 objs.append(self.calc_objective(self.net))
