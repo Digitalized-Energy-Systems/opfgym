@@ -129,6 +129,18 @@ class OpfEnv(gym.Env, abc.ABC):
 
         self.test_steps = define_test_steps(test_share)
 
+        if self.reward_function == 'replacement':
+            # Get a rough estimation of the later required worst-case objective
+            self.min_obj = 0.0
+            for _ in range(100):
+                self.reset()
+                self.step(self.action_space.sample())
+                obj = self.calc_objective(self.net)
+                self.min_obj = np.minimum(obj, self.min_obj)
+                print(sum(self.min_obj))
+            # Add some buffer to make sure we really have a worst-case
+            self.min_obj -= 0.2 * abs(self.min_obj)
+
     def reset(self, step=None, test=False):
         self.info = {}
         self.step_in_episode = 0
@@ -413,15 +425,21 @@ class OpfEnv(gym.Env, abc.ABC):
 
         # TODO: re-structure this whole reward calculation?!
         if self.reward_function == 'summation':
-            # Idea: Add penalty to objective function
+            # Idea: Add penalty to objective function (no change required)
             pass
         elif self.reward_function == 'replacement':
             # Idea: Only give objective as reward, if solution valid
             if not valids.all():
                 objectives[:] = 0.0
             else:
-                objectives += 10.0 / len(objectives)
-
+                # Make sure that the objective is always positive
+                # This way, even the worst-case results in zero reward
+                objectives += abs(self.min_obj)
+        elif self.reward_function == 'replacement_plus_summation':
+            # TODO Idea: can these two be combined?!
+            # If valid: Use objective as reward
+            # If invalid: Use penalties as reward + objective to make sure agent learns both at the same time (and not first only penalties and then only objective))
+            # But ensure that the reward is always higher if valid compared to invalid 
         elif self.reward_function == 'multiplication':
             # Multiply constraint violation with objective function as penalty
             penalties = -abs(sum(objectives)) * \
@@ -474,12 +492,12 @@ class OpfEnv(gym.Env, abc.ABC):
         success = self._optimal_power_flow()
         if not success:
             return np.nan
-        rewards = self.calc_objective(self.net)
+        objecives = self.calc_objective(self.net)
         valids, violations, percentage_violations, penalties = self.calc_violations()
         logging.info(f'Optimal violations: {violations}')
         logging.info(f'Baseline actions: {self.get_current_actions()}')
 
-        return sum(np.append(rewards, penalties))
+        return sum(np.append(objecives, penalties))
 
     def _optimal_power_flow(self, **kwargs):
         try:
