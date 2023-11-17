@@ -1,5 +1,6 @@
 
 import abc
+import copy
 import logging
 import random
 import warnings
@@ -328,7 +329,7 @@ class OpfEnv(gym.Env, abc.ABC):
         obs = self._get_obs(self.obs_keys, self.add_time_obs)
         assert not np.isnan(obs).any()
 
-        return obs, reward, done, self.info
+        return obs, reward, done, copy.deepcopy(self.info)
 
     def _apply_actions(self, action, autocorrect=False):
         """ Apply agent actions to the power system at hand. """
@@ -386,7 +387,8 @@ class OpfEnv(gym.Env, abc.ABC):
         try:
             pp.runpp(self.net,
                      voltage_depend_loads=False,
-                     enforce_q_lims=True)
+                     enforce_q_lims=True,
+                     calculate_voltage_angles=False)
 
         except pp.powerflow.LoadflowNotConverged:
             logging.warning('Powerflow not converged!!!')

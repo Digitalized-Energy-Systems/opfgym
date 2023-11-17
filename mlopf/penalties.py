@@ -8,7 +8,7 @@ def compute_violation(net, unit_type: str, column: str, min_or_max: str):
 
     invalids = values > boundary if min_or_max == 'max' else values < boundary
     absolute_violations = (values - boundary)[invalids].abs()
-    percentage_violations = (absolute_violations / boundary[invalids]).abs()
+    percentage_violations = (absolute_violations / boundary[invalids]).abs() * 100
 
     return absolute_violations.to_numpy(), percentage_violations.to_numpy(), invalids
 
