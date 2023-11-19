@@ -448,9 +448,7 @@ class OpfEnv(gym.Env, abc.ABC):
             # But ensure that the reward is always higher if valid compared to invalid 
         elif self.reward_function == 'multiplication':
             # Multiply constraint violation with objective function as penalty
-            # TODO Problem: Does the agent have an incentive to reduce abs(sum(objectives)) this way???
-            penalties = -self.mean_abs_obj * \
-                (~valids + percentage_violations)
+            penalties = -self.mean_abs_obj * (~valids + percentage_violations)
             self.info['penalties'] = penalties
         else:
             raise NotImplementedError('This reward definition does not exist!')
@@ -499,12 +497,12 @@ class OpfEnv(gym.Env, abc.ABC):
         success = self._optimal_power_flow()
         if not success:
             return np.nan
-        objecives = self.calc_objective(self.net)
+        objectives = self.calc_objective(self.net)
         valids, violations, percentage_violations, penalties = self.calc_violations()
         logging.info(f'Optimal violations: {violations}')
         logging.info(f'Baseline actions: {self.get_current_actions()}')
 
-        return sum(np.append(objecives, penalties))
+        return sum(np.append(objectives, penalties))
 
     def _optimal_power_flow(self, **kwargs):
         try:
