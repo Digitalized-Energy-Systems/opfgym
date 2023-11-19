@@ -509,6 +509,12 @@ class OpfEnv(gym.Env, abc.ABC):
         valids, violations, percentage_violations, penalties = self.calc_violations()
         logging.info(f'Optimal violations: {violations}')
         logging.info(f'Baseline actions: {self.get_current_actions()}')
+        if sum(penalties) > 0:
+            logging.warning(f'There are baseline penalties: {penalties}'
+                            f' with violations: {violations}'
+                            '(should normally not happen! Check if this is some'
+                            'special case with soft constraints!)'
+            
 
         return sum(np.append(objectives, penalties))
 
