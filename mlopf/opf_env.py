@@ -166,8 +166,8 @@ class OpfEnv(gym.Env, abc.ABC):
                     'Failed powerflow calculcation in reset. Try again!')
                 return self.reset()
 
-            self.prev_reward = self.calc_reward()
             self.prev_obj = self.calc_objective(self.net)
+            self.prev_reward = self.calc_reward()
 
         return self._get_obs(self.obs_keys, self.add_time_obs)
 
