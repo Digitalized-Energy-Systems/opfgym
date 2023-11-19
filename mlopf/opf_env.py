@@ -151,7 +151,7 @@ class OpfEnv(gym.Env, abc.ABC):
 
         self._sampling(step, test)
         if self.add_act_obs:
-            # Use random actions as starting point
+            # Use random actions as starting point so that agent learns to handle that
             # TODO: Maybe better to combine this with multi-step?!
             act = self.action_space.sample()
         else:
@@ -167,6 +167,7 @@ class OpfEnv(gym.Env, abc.ABC):
                 return self.reset()
 
             self.prev_reward = self.calc_reward()
+            self.prev_obj = self.calc_objective(self.net)
 
         return self._get_obs(self.obs_keys, self.add_time_obs)
 
@@ -439,7 +440,10 @@ class OpfEnv(gym.Env, abc.ABC):
             else:
                 # Make sure that the objective is always positive
                 # This way, even the worst-case results in zero reward
-                objectives += abs(self.min_obj)
+                if self.pf_for_obs:
+                    objectives += 10 * abs(self.prev_obj)
+                else:
+                    objectives += abs(self.min_obj)
         elif self.reward_function == 'replacement_plus_summation':
             pass
             # TODO Idea: can these two be combined?!
@@ -448,7 +452,11 @@ class OpfEnv(gym.Env, abc.ABC):
             # But ensure that the reward is always higher if valid compared to invalid 
         elif self.reward_function == 'multiplication':
             # Multiply constraint violation with objective function as penalty
-            penalties = -self.mean_abs_obj * (~valids + percentage_violations)
+            if self.pf_for_obs:
+                # Use objective value from some baseline action
+                penalties = -self.prev_obj * (~valids + percentage_violations)
+            else:
+                penalties = -self.mean_abs_obj * (~valids + percentage_violations)
             self.info['penalties'] = penalties
         else:
             raise NotImplementedError('This reward definition does not exist!')
