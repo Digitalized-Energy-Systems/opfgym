@@ -454,7 +454,7 @@ class OpfEnv(gym.Env, abc.ABC):
             # Multiply constraint violation with objective function as penalty
             if self.pf_for_obs:
                 # Use objective value from some baseline action
-                penalties = -self.prev_obj * (~valids + percentage_violations)
+                penalties = -abs(sum(self.prev_obj)) * (~valids + percentage_violations)
             else:
                 penalties = -self.mean_abs_obj * (~valids + percentage_violations)
             self.info['penalties'] = penalties
