@@ -432,7 +432,9 @@ class OpfEnv(gym.Env, abc.ABC):
         # TODO: re-structure this whole reward calculation?!
         if self.reward_function == 'summation':
             # Idea: Add penalty to objective function (no change required)
-            pass
+            if self.pf_for_obs:
+                # Autoscale penalty to objective function
+                penalties *= abs(sum(self.prev_obj))
         elif self.reward_function == 'replacement':
             # Idea: Only give objective as reward, if solution valid
             if not valids.all():
@@ -443,7 +445,7 @@ class OpfEnv(gym.Env, abc.ABC):
                 if self.pf_for_obs:
                     objectives += 10 * abs(self.prev_obj)
                 else:
-                    objectives += abs(self.min_obj)
+                    objectives += abs(self.min_obj) / len(objectives)
         elif self.reward_function == 'replacement_plus_summation':
             pass
             # TODO Idea: can these two be combined?!
