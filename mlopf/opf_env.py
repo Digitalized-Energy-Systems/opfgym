@@ -513,7 +513,7 @@ class OpfEnv(gym.Env, abc.ABC):
             logging.warning(f'There are baseline penalties: {penalties}'
                             f' with violations: {violations}'
                             '(should normally not happen! Check if this is some'
-                            'special case with soft constraints!)'
+                            'special case with soft constraints!')
             
 
         return sum(np.append(objectives, penalties))
