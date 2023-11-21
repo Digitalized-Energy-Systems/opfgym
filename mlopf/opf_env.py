@@ -133,7 +133,7 @@ class OpfEnv(gym.Env, abc.ABC):
         self.test_steps = define_test_steps(test_share)
 
         # Get rough estimation of the objective function to compute penalties later
-        if self.reward_function in ('replacement', 'multiplication'):
+        if self.reward_function in ('replacement', 'multiplication', 'replacement_plus_summation'):
             objs = []
             for _ in range(500):
                 self._sampling()
