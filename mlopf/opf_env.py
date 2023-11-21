@@ -43,6 +43,7 @@ class OpfEnv(gym.Env, abc.ABC):
                  line_pen_kwargs=None,
                  trafo_pen_kwargs=None,
                  ext_grid_pen_kwargs=None,
+                 autoscale_penalty=False,
                  seed=None, squash_reward=False):
 
         # Should be always True. Maybe only allow False for paper investigation
@@ -105,7 +106,8 @@ class OpfEnv(gym.Env, abc.ABC):
                           else {'linear_penalty': 2})
         self.ext_grid_pen = (ext_grid_pen_kwargs if ext_grid_pen_kwargs
                              else {'linear_penalty': 100})
-
+        self.autoscale_penalty = autoscale_penalty
+        
         self.priority = autocorrect_prio
 
         assert single_step, 'TODO: Multi-step episodes not implemented yet'
@@ -432,9 +434,7 @@ class OpfEnv(gym.Env, abc.ABC):
         # TODO: re-structure this whole reward calculation?!
         if self.reward_function == 'summation':
             # Idea: Add penalty to objective function (no change required)
-            if self.pf_for_obs:
-                # Autoscale penalty to objective function
-                penalties *= abs(sum(self.prev_obj))
+            pass
         elif self.reward_function == 'replacement':
             # Idea: Only give objective as reward, if solution valid
             if not valids.all():
@@ -442,26 +442,24 @@ class OpfEnv(gym.Env, abc.ABC):
             else:
                 # Make sure that the objective is always positive
                 # This way, even the worst-case results in zero reward
-                if self.pf_for_obs:
-                    objectives += 10 * abs(self.prev_obj)
-                else:
-                    objectives += abs(self.min_obj) / len(objectives)
+                objectives += abs(self.min_obj) / len(objectives)
         elif self.reward_function == 'replacement_plus_summation':
-            pass
             # TODO Idea: can these two be combined?!
             # If valid: Use objective as reward
             # If invalid: Use penalties as reward + objective to make sure agent learns both at the same time (and not first only penalties and then only objective))
             # But ensure that the reward is always higher if valid compared to invalid 
-        elif self.reward_function == 'multiplication':
+            if valids.all():
+                objectives += abs(self.min_obj) / len(objectives)
+        elif self.reward_function == 'relative':
             # Multiply constraint violation with objective function as penalty
-            if self.pf_for_obs:
-                # Use objective value from some baseline action
-                penalties = -abs(sum(self.prev_obj)) * (~valids + percentage_violations)
-            else:
-                penalties = -self.mean_abs_obj * (~valids + percentage_violations)
+            penalties = -(~valids + percentage_violations)
             self.info['penalties'] = penalties
         else:
             raise NotImplementedError('This reward definition does not exist!')
+
+        if self.autoscale_penalty:
+            penalties *= abs(sum(objectives))
+            self.info['penalties'] = penalties
 
         full_obj = np.append(objectives, penalties)
 
