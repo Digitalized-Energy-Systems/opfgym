@@ -454,6 +454,12 @@ class OpfEnv(gym.Env, abc.ABC):
             # Multiply constraint violation with objective function as penalty
             penalties = -(~valids + percentage_violations)
             self.info['penalties'] = penalties
+            # TODO: Problem: Does not really work if constraint=0 because inf penalty
+        elif self.reward_function == "flat":
+            if not valids.all():
+                # Make sure the penalty is always bigger than the objective
+                penalties = 2 * -abs(sum(objectives))
+                self.info['penalties'] = penalties
         else:
             raise NotImplementedError('This reward definition does not exist!')
 
