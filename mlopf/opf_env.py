@@ -44,6 +44,7 @@ class OpfEnv(gym.Env, abc.ABC):
                  trafo_pen_kwargs=None,
                  ext_grid_pen_kwargs=None,
                  autoscale_penalty=False,
+                 min_penalty=None,
                  seed=None, squash_reward=False):
 
         # Should be always True. Maybe only allow False for paper investigation
@@ -107,6 +108,7 @@ class OpfEnv(gym.Env, abc.ABC):
         self.ext_grid_pen = (ext_grid_pen_kwargs if ext_grid_pen_kwargs
                              else {'linear_penalty': 100})
         self.autoscale_penalty = autoscale_penalty
+        self.min_penalty = min_penalty
         
         self.priority = autocorrect_prio
 
@@ -460,11 +462,22 @@ class OpfEnv(gym.Env, abc.ABC):
                 # Make sure the penalty is always bigger than the objective
                 penalties = 2 * -abs(sum(objectives))
                 self.info['penalties'] = penalties
+        elif self.reward_function == 'auto':
+            # Use squash reward
+            # Use high summation penalty
+            # Use autoscale
+            # Use small (non-squased) offset penalty to prevent mini
+            pass
         else:
             raise NotImplementedError('This reward definition does not exist!')
 
         if self.autoscale_penalty:
-            penalties *= abs(sum(objectives))
+            # Scale the penalty with the objective function
+            if self.min_penalty:
+                # The min_penalty prevents the penalty to become ~0.0
+                penalties *= max(abs(sum(objectives)), self.min_penalty)
+            else:
+                penalties *= abs(sum(objectives))
             self.info['penalties'] = penalties
 
         full_obj = np.append(objectives, penalties)
@@ -478,6 +491,9 @@ class OpfEnv(gym.Env, abc.ABC):
 
         if self.squash_reward and not test:
             reward = np.sign(reward) * np.log(np.abs(reward) + 1)
+            if self.min_penalty and not valids.all():
+                # Prevent that the penalty gets completely squashed
+                reward -= self.min_penalty
 
         return reward * self.reward_scaling
 
