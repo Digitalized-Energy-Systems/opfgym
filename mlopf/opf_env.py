@@ -144,10 +144,12 @@ class OpfEnv(gym.Env, abc.ABC):
                 objs.append(self.calc_objective(self.net))
                 
             self.min_obj = np.array(objs).min(axis=0)
+            print('min obj: ', sum(self.min_obj))
             # Add some buffer to make sure we really have a worst-case
             self.min_obj -= 0.5 * abs(self.min_obj)
             # Compute the mean absolute objective to compute penalty later
             self.mean_abs_obj = np.abs(np.sum(objs, axis=1)).mean()
+            print('mean obj: ', self.mean_abs_obj)
 
     def reset(self, step=None, test=False):
         self.info = {}
@@ -444,7 +446,8 @@ class OpfEnv(gym.Env, abc.ABC):
             else:
                 # Make sure that the objective is always positive
                 # This way, even the worst-case results in zero reward
-                objectives += abs(self.min_obj)
+                # objectives += abs(self.min_obj)
+                objectives += self.mean_abs_obj / len(objectives)
         elif self.reward_function == 'replacement_plus_summation':
             # TODO Idea: can these two be combined?!
             # If valid: Use objective as reward
@@ -475,6 +478,7 @@ class OpfEnv(gym.Env, abc.ABC):
             # Scale the penalty with the objective function
             if self.min_penalty:
                 # The min_penalty prevents the penalty to become ~0.0
+                # TODO: Maybe a simple sqrt is better?!
                 penalties *= max(abs(sum(objectives)), self.min_penalty)
             else:
                 penalties *= abs(sum(objectives))
