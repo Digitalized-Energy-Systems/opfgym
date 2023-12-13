@@ -45,6 +45,7 @@ class OpfEnv(gym.Env, abc.ABC):
                  ext_grid_pen_kwargs=None,
                  autoscale_penalty=False,
                  min_penalty=None,
+                 penalty_weight=0.5,
                  seed=None, squash_reward=False):
 
         # Should be always True. Maybe only allow False for paper investigation
@@ -94,8 +95,8 @@ class OpfEnv(gym.Env, abc.ABC):
         self.reward_function = reward_function
         self.vector_reward = vector_reward
         self.squash_reward = squash_reward
-        if reward_scaling == 'auto':
-            reward_scaling = get_automatic_reward_scaling(self.net)
+        # if reward_scaling == 'auto':
+        #     reward_scaling = get_automatic_reward_scaling(self.net)
         self.reward_scaling = reward_scaling
 
         # Default penalties are purely linear
@@ -134,22 +135,40 @@ class OpfEnv(gym.Env, abc.ABC):
 
         self.test_steps = define_test_steps(test_share)
 
+        self.penalty_weight = penalty_weight
         # Get rough estimation of the objective function to compute penalties later
-        if self.reward_function in ('replacement', 'multiplication', 'replacement_plus_summation'):
+        if self.reward_function in ('replacement', 'multiplication', 'replacement_plus_summation') or self.reward_scaling in ('minmax', 'normalization'):
             objs = []
+            pens = []
             for _ in range(500):
                 self._sampling()
                 self._apply_actions(self.action_space.sample())
                 self._run_pf()
                 objs.append(self.calc_objective(self.net))
+                pens.append(self.calc_violations()[3])
                 
-            self.min_obj = np.array(objs).min(axis=0)
-            print('min obj: ', sum(self.min_obj))
+            self.min_obj = np.array(objs).sum(axis=1).min()
+            self.max_obj = np.array(objs).sum(axis=1).max()
+            self.min_pen = np.array(pens).sum(axis=1).min()
+            self.max_pen = np.array(pens).sum(axis=1).max()
             # Add some buffer to make sure we really have a worst-case
-            self.min_obj -= 0.5 * abs(self.min_obj)
+            # self.min_obj -= 0.5 * abs(self.min_obj)
             # Compute the mean absolute objective to compute penalty later
+            self.mean_obj = np.sum(objs, axis=1).mean()
+            self.mean_pen = np.sum(pens, axis=1).mean()
             self.mean_abs_obj = np.abs(np.sum(objs, axis=1)).mean()
-            print('mean obj: ', self.mean_abs_obj)
+            self.mean_abs_pen = np.abs(np.sum(pens, axis=1)).mean()
+            self.obj_std = np.std(np.sum(objs, axis=1))
+            self.pen_std = np.std(np.sum(pens, axis=1))
+
+            print(f'Min objective: {self.min_obj}')
+            print(f'Max objective: {self.max_obj}')
+            print(f'Min penalty: {self.min_pen}')
+            print(f'Max penalty: {self.max_pen}')
+            print(f'Mean objective: {self.mean_obj}')
+            print(f'Mean penalty: {self.mean_pen}')
+            print(f'Std objective: {self.obj_std}')
+            print(f'Std penalty: {self.pen_std}')
 
     def reset(self, step=None, test=False):
         self.info = {}
@@ -331,7 +350,7 @@ class OpfEnv(gym.Env, abc.ABC):
             done = True  # TODO
         else:
             done = not self._sampling(step=self.current_step + 1, test=test)
-        self.info['TimeLimit.truncated'] = True
+        self.info['TimeLimit.truncated'] = True # TODO: Is this correct?!
 
         obs = self._get_obs(self.obs_keys, self.add_time_obs)
         assert not np.isnan(obs).any()
@@ -422,18 +441,18 @@ class OpfEnv(gym.Env, abc.ABC):
 
         valids, viol, perc_viol, penalties = zip(*valids_violations_penalties)
 
-        self.info['valids'] = np.array(valids)
-        self.info['violations'] = np.array(viol)
-        self.info['percentage_violations'] = np.array(perc_viol)
-        self.info['penalties'] = np.array(penalties)
-
         return np.array(valids), np.array(viol), np.array(perc_viol), np.array(penalties)
 
     def calc_reward(self, test=False):
         """ Combine objective function and the penalties together. """
         objectives = self.calc_objective(self.net)
-        valids, violations, percentage_violations, penalties = self.calc_violations(
-        )
+        self.info['objectives'] = objectives
+        valids, viol, percentage_viol, penalties = self.calc_violations()
+
+        self.info['valids'] = np.array(valids)
+        self.info['violations'] = np.array(viol)
+        self.info['percentage_violations'] = np.array(percentage_viol)
+        self.info['penalties'] = np.array(penalties)
 
         # TODO: re-structure this whole reward calculation?!
         if self.reward_function == 'summation':
@@ -448,16 +467,16 @@ class OpfEnv(gym.Env, abc.ABC):
                 # This way, even the worst-case results in zero reward
                 # objectives += abs(self.min_obj)
                 objectives += self.mean_abs_obj / len(objectives)
-        elif self.reward_function == 'replacement_plus_summation':
-            # TODO Idea: can these two be combined?!
-            # If valid: Use objective as reward
-            # If invalid: Use penalties as reward + objective to make sure agent learns both at the same time (and not first only penalties and then only objective))
-            # But ensure that the reward is always higher if valid compared to invalid 
-            if valids.all():
-                objectives += abs(self.min_obj)
+        # elif self.reward_function == 'replacement_plus_summation':
+        #     # TODO Idea: can these two be combined?!
+        #     # If valid: Use objective as reward
+        #     # If invalid: Use penalties as reward + objective to make sure agent learns both at the same time (and not first only penalties and then only objective))
+        #     # But ensure that the reward is always higher if valid compared to invalid 
+        #     if valids.all():
+        #         objectives += abs(self.min_obj)
         elif self.reward_function == 'relative':
             # Multiply constraint violation with objective function as penalty
-            penalties = -(~valids + percentage_violations)
+            penalties = -(~valids + percentage_viol)
             self.info['penalties'] = penalties
             # TODO: Problem: Does not really work if constraint=0 because inf penalty
         elif self.reward_function == "flat":
@@ -465,14 +484,26 @@ class OpfEnv(gym.Env, abc.ABC):
                 # Make sure the penalty is always bigger than the objective
                 penalties = 2 * -abs(sum(objectives))
                 self.info['penalties'] = penalties
-        elif self.reward_function == 'auto':
-            # Use squash reward
-            # Use high summation penalty
-            # Use autoscale
-            # Use small (non-squased) offset penalty to prevent mini
-            pass
         else:
             raise NotImplementedError('This reward definition does not exist!')
+
+        # full_obj = np.append(objectives, penalties)
+        
+        obj = sum(objectives)
+        pen = sum(penalties)
+        if self.reward_scaling == 'minmax':
+            # Scale reward to [-1, 1]
+            obj = (obj - self.min_obj) / (self.max_obj - self.min_obj) * 2 - 1 
+            pen = (pen - self.min_pen) / (self.max_pen - self.min_pen) * 2 - 1
+            reward = obj * (1 - self.penalty_weight) + pen * self.penalty_weight
+        elif self.reward_scaling == 'normalization':
+            # Scale reward so that the mean reward is zero and the std is 1
+            obj = (obj - self.mean_obj) / self.obj_std
+            pen = (pen - self.mean_pen) / self.pen_std
+        else:
+            # Scale reward with some user-defined factor
+            obj = obj * self.reward_scaling
+            pen = pen * self.reward_scaling
 
         if self.autoscale_penalty:
             # Scale the penalty with the objective function
@@ -484,14 +515,14 @@ class OpfEnv(gym.Env, abc.ABC):
                 penalties *= abs(sum(objectives))
             self.info['penalties'] = penalties
 
-        full_obj = np.append(objectives, penalties)
+        # if not self.vector_reward:
+        #     # Use scalar reward 
+        #     reward = sum(full_obj)
+        # else:
+        #     # Reward as a numpy array
+        #     reward = full_obj
 
-        if not self.vector_reward:
-            # Use scalar
-            reward = sum(full_obj)
-        else:
-            # Reward as a numpy array
-            reward = full_obj
+        reward = obj * (1 - self.penalty_weight) + pen * self.penalty_weight
 
         if self.squash_reward and not test:
             reward = np.sign(reward) * np.log(np.abs(reward) + 1)
@@ -499,7 +530,7 @@ class OpfEnv(gym.Env, abc.ABC):
                 # Prevent that the penalty gets completely squashed
                 reward -= self.min_penalty
 
-        return reward * self.reward_scaling
+        return reward
 
     def _get_obs(self, obs_keys, add_time_obs):
         obss = [(self.net[unit_type][column].loc[idxs].to_numpy())
@@ -676,29 +707,29 @@ def get_bus_aggregated_obs(net, unit_type, column, idxs):
     return df.groupby(['bus'])[column].sum().to_numpy()
 
 
-def get_automatic_reward_scaling(net):
-    cost_df = net.poly_cost
+# def get_automatic_reward_scaling(net):
+#     cost_df = net.poly_cost
 
-    active_power_mask = np.zeros(len(cost_df), dtype=bool)
-    reactive_power_mask = np.zeros(len(cost_df), dtype=bool)
-    for column in cost_df.columns:
-        if 'mw' in column and 'max_' in column:
-            active_power_mask = np.logical_or(
-                active_power_mask, cost_df[column] != 0)
-        if 'mvar' in column and 'max_' in column:
-            reactive_power_mask = np.logical_or(
-                reactive_power_mask, cost_df[column] != 0)
+#     active_power_mask = np.zeros(len(cost_df), dtype=bool)
+#     reactive_power_mask = np.zeros(len(cost_df), dtype=bool)
+#     for column in cost_df.columns:
+#         if 'mw' in column and 'max_' in column:
+#             active_power_mask = np.logical_or(
+#                 active_power_mask, cost_df[column] != 0)
+#         if 'mvar' in column and 'max_' in column:
+#             reactive_power_mask = np.logical_or(
+#                 reactive_power_mask, cost_df[column] != 0)
 
-    scaling_factor = 0
-    for unit_type in ('gen', 'sgen', 'ext_grid', 'storage'):
-        unit_type_mask = cost_df.et == unit_type
-        mask = np.logical_and(active_power_mask, unit_type_mask)
-        if mask.any():
-            scaling_factor += net[unit_type].loc[cost_df[mask]
-                                                 .element].max_max_p_mw.abs().sum()
-        mask = np.logical_and(reactive_power_mask, unit_type_mask)
-        if mask.any():
-            scaling_factor += net[unit_type].loc[cost_df[mask]
-                                                 .element].max_max_q_mvar.abs().sum()
+#     scaling_factor = 0
+#     for unit_type in ('gen', 'sgen', 'ext_grid', 'storage'):
+#         unit_type_mask = cost_df.et == unit_type
+#         mask = np.logical_and(active_power_mask, unit_type_mask)
+#         if mask.any():
+#             scaling_factor += net[unit_type].loc[cost_df[mask]
+#                                                  .element].max_max_p_mw.abs().sum()
+#         mask = np.logical_and(reactive_power_mask, unit_type_mask)
+#         if mask.any():
+#             scaling_factor += net[unit_type].loc[cost_df[mask]
+#                                                  .element].max_max_q_mvar.abs().sum()
 
-    return 1 / scaling_factor / 10
+#     return 1 / scaling_factor / 10
