@@ -143,7 +143,7 @@ class OpfEnv(gym.Env, abc.ABC):
             pass
         elif self.reward_function == 'replacement' and 'mean_abs_obj' in self.__dict__.keys():
             pass
-        elif self.reward_function in ('replacement', 'multiplication', 'replacement_plus_summation') or self.reward_scaling in ('minmax', 'normalization'):
+        elif self.reward_function in ('replacement', 'replacementA', 'multiplication', 'replacement_plus_summation') or self.reward_scaling in ('minmax', 'normalization'):
             objs = []
             pens = []
             for _ in range(500):
