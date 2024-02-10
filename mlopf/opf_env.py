@@ -5,7 +5,7 @@ import logging
 import random
 import warnings
 
-import gym
+import gymnasium as gym
 import numpy as np
 import pandapower as pp
 import pandas as pd
@@ -46,7 +46,11 @@ class OpfEnv(gym.Env, abc.ABC):
                  autoscale_penalty=False,
                  min_penalty=None,
                  penalty_weight=0.5,
-                 seed=None, squash_reward=False):
+                 squash_reward=False,
+                 seed=None, 
+                 eval=False):
+        
+        self.eval = eval
 
         # Should be always True. Maybe only allow False for paper investigation
         self.train_test_split = train_test_split
@@ -176,7 +180,8 @@ class OpfEnv(gym.Env, abc.ABC):
             print(f'Std objective: {self.obj_std}')
             print(f'Std penalty: {self.pen_std}')
 
-    def reset(self, step=None, test=False):
+    def reset(self, step=None, test=False, seed=None, **options):
+        super().reset(seed=seed)
         self.info = {}
         self.step_in_episode = 0
 
@@ -200,7 +205,7 @@ class OpfEnv(gym.Env, abc.ABC):
             self.prev_obj = self.calc_objective(self.net)
             self.prev_reward = self.calc_reward()
 
-        return self._get_obs(self.obs_keys, self.add_time_obs)
+        return self._get_obs(self.obs_keys, self.add_time_obs), copy.deepcopy(self.info)
 
     def _sampling(self, step, test, *args, **kwargs):
         """ Default method: Set random and noisy simbench state. """
@@ -347,21 +352,25 @@ class OpfEnv(gym.Env, abc.ABC):
 
         if self.single_step:
             # Do not step to another time-series point!
-            if self.step_in_episode >= self.steps_per_episode:
-                done = True
+            if self.steps_per_episode == 1:
+                terminated = True
+                truncated = False
+            elif self.step_in_episode >= self.steps_per_episode:
+                terminated = False
+                truncated = True
             else:
-                done = False
+                terminated = False
+                truncated = False
         elif random.random() < 0.02:  # TODO! Better termination criterion
             self._sampling(step=self.current_step + 1, test=test)
-            done = True  # TODO
+            terminated = True  # TODO
         else:
-            done = not self._sampling(step=self.current_step + 1, test=test)
-        self.info['TimeLimit.truncated'] = True # TODO: Is this correct?!
+            terminated = not self._sampling(step=self.current_step + 1, test=test)
 
         obs = self._get_obs(self.obs_keys, self.add_time_obs)
         assert not np.isnan(obs).any()
 
-        return obs, reward, done, copy.deepcopy(self.info)
+        return obs, reward, terminated, truncated, copy.deepcopy(self.info)
 
     def _apply_actions(self, action, autocorrect=False):
         """ Apply agent actions to the power system at hand. """
@@ -556,8 +565,8 @@ class OpfEnv(gym.Env, abc.ABC):
             obss = [time_obs] + obss
         return np.concatenate(obss)
 
-    def render(self, mode='human'):
-        logging.warning(f'Rendering not implemented!')
+    def render(self):
+        logging.warning(f'Rendering not supported!')
 
     def get_current_actions(self):
         # Attention: These are not necessarily the actions of the RL agent
@@ -567,11 +576,11 @@ class OpfEnv(gym.Env, abc.ABC):
                   for unit_type, column, idxs in self.act_keys]
         return np.concatenate(action)
 
-    def baseline_reward(self):
+    def baseline_reward(self, **kwargs):
         """ Compute some baseline to compare training performance with. In this
         case, use the optimal possible reward, which can be computed with the
         optimal power flow. """
-        success = self._optimal_power_flow()
+        success = self._optimal_power_flow(**kwargs)
         if not success:
             return np.nan
         objectives = self.calc_objective(self.net)

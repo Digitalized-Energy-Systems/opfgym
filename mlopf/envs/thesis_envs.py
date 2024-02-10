@@ -113,11 +113,9 @@ class SimpleOpfEnv(opf_env.OpfEnv):
 
 class QMarketEnv(opf_env.OpfEnv):
     """
-    Reactive power market environment (base case): The grid operator procures
-    reactive power from generators to minimize losses within its system. There
-    are also variants of this env where the market participants learn to bid on
-    the market or where grid operator and market participants learn at the same
-    time.
+    Voltage control / Reactive power market environment: The grid operator 
+    procures reactive power from generators to minimize losses within its 
+    system. 
 
     Actuators: Reactive power of all gens
 
