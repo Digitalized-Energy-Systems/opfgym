@@ -141,7 +141,13 @@ class OpfEnv(gym.Env, abc.ABC):
 
         self.penalty_weight = penalty_weight
         # Get rough estimation of the objective function to compute penalties later
-        if self.reward_function in ('replacement', 'multiplication', 'replacement_plus_summation') or self.reward_scaling in ('minmax', 'normalization'):
+        if self.reward_scaling == 'minmax' and 'min_obj' in self.__dict__.keys():
+            pass
+        elif self.reward_scaling == 'normalization' and 'mean_obj' in self.__dict__.keys():
+            pass
+        elif self.reward_function == 'replacement' and 'mean_abs_obj' in self.__dict__.keys():
+            pass
+        elif self.reward_function in ('replacement', 'replacementA', 'multiplication', 'replacement_plus_summation') or self.reward_scaling in ('minmax', 'normalization'):
             objs = []
             pens = []
             for _ in range(500):
@@ -474,8 +480,14 @@ class OpfEnv(gym.Env, abc.ABC):
             else:
                 # Make sure that the objective is always positive
                 # This way, even the worst-case results in zero reward
-                # objectives += abs(self.min_obj)
                 objectives += self.mean_abs_obj / len(objectives)
+        elif self.reward_function == 'replacementA':
+            # Idea: Only give objective as reward, if solution valid
+            if not valids.all():
+                objectives[:] = 0.0
+            else:
+                # Use the worst case objective instead here 
+                objectives += abs(self.min_obj) / len(objectives)
         # elif self.reward_function == 'replacement_plus_summation':
         #     # TODO Idea: can these two be combined?!
         #     # If valid: Use objective as reward
