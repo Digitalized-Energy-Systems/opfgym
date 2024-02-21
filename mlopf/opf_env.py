@@ -47,10 +47,7 @@ class OpfEnv(gym.Env, abc.ABC):
                  min_penalty=None,
                  penalty_weight=0.5,
                  squash_reward=False,
-                 seed=None, 
-                 eval=False):
-        
-        self.eval = eval
+                 seed=None):
 
         # Should be always True. Maybe only allow False for paper investigation
         self.train_test_split = train_test_split
@@ -180,12 +177,14 @@ class OpfEnv(gym.Env, abc.ABC):
             print(f'Std objective: {self.obj_std}')
             print(f'Std penalty: {self.pen_std}')
 
-    def reset(self, step=None, test=False, seed=None, **options):
+    def reset(self, step=None, test=False, seed=None, options={'new_action': True}):
         super().reset(seed=seed)
         self.info = {}
         self.step_in_episode = 0
 
-        self._sampling(step, test)
+        self.apply_action = options.get('new_action', True) if options else True
+        self._sampling(step, test, self.apply_action)
+        
         if self.add_act_obs:
             # Use random actions as starting point so that agent learns to handle that
             # TODO: Maybe better to combine this with multi-step?!
@@ -207,25 +206,26 @@ class OpfEnv(gym.Env, abc.ABC):
 
         return self._get_obs(self.obs_keys, self.add_time_obs), copy.deepcopy(self.info)
 
-    def _sampling(self, step, test, *args, **kwargs):
-        """ Default method: Set random and noisy simbench state. """
+    def _sampling(self, step, test, sample_new, *args, **kwargs):
         data_distr = self.test_data if test is True else self.train_data
         kwargs.update(self.sampling_kwargs)
 
         # Maybe also allow different kinds of noise and similar! with `**sampling_params`?
         if data_distr == 'noisy_simbench' or 'noise_factor' in kwargs.keys():
-            self._set_simbench_state(step, test, *args, **kwargs)
+            if sample_new:
+                self._set_simbench_state(step, test, *args, **kwargs)
         elif data_distr == 'simbench':
-            self._set_simbench_state(
-                step, test, noise_factor=0.0, *args, **kwargs)
+            if sample_new:
+                self._set_simbench_state(
+                    step, test, noise_factor=0.0, *args, **kwargs)
         elif data_distr == 'full_uniform':
-            self._sample_uniform()
+            self._sample_uniform(sample_new=sample_new)
         elif data_distr == 'normal_around_mean':
-            self._sample_normal(*args, **kwargs)
+            self._sample_normal(sample_new=sample_new, *args, **kwargs)
         elif data_distr == 'noisy_baseline':
             raise NotImplementedError
 
-    def _sample_uniform(self, sample_keys=None):
+    def _sample_uniform(self, sample_keys=None, sample_new=True):
         """ Standard pre-implemented method to set power system to a new random
         state from uniform sampling. Uses the observation space as basis.
         Requirement: For every observations there must be "min_{obs}" and
@@ -255,7 +255,7 @@ class OpfEnv(gym.Env, abc.ABC):
         except AttributeError:
             self.net[unit_type][column].loc[idxs] = r
 
-    def _sample_normal(self, std=0.3, truncated=False):
+    def _sample_normal(self, std=0.3, truncated=False, sample_new=True):
         """ Sample data around mean values from simbench data. """
         for unit_type, column, idxs in self.obs_keys:
             if 'res_' not in unit_type and 'poly_cost' not in unit_type:
@@ -329,20 +329,20 @@ class OpfEnv(gym.Env, abc.ABC):
 
         return True
 
-    def step(self, action, test=False):
+    def step(self, action, test=False, *args, **kwargs):
         assert not np.isnan(action).any()
         self.info = {}
         self.step_in_episode += 1
 
-        self._apply_actions(action)
+        if self.apply_action:
+            self._apply_actions(action)
+            success = self._run_pf()
 
-        success = self._run_pf()
-
-        if not success:
-            # Something went seriously wrong! Find out what!
-            # Maybe NAN in power setpoints?!
-            # Maybe simply catch this with a strong negative reward?!
-            raise pp.powerflow.LoadflowNotConverged()
+            if not success:
+                # Something went seriously wrong! Find out what!
+                # Maybe NAN in power setpoints?!
+                # Maybe simply catch this with a strong negative reward?!
+                raise pp.powerflow.LoadflowNotConverged()
 
         reward = self.calc_reward(test)
 
