@@ -17,13 +17,13 @@ setup(
     url='https://gitlab.com/thomaswolgast/mlopf',
     license='MIT',
     install_requires=[
-        'numpy==1.23.5',
+        'numpy==1.22.4',
         'scipy==1.10.1',
         'numba==0.56.4',
-        'pandas==2.0.3',
+        'pandas==1.3.5',
         'matplotlib',
         'pandapower==2.13.1',
         'simbench==1.4.0',
-        'gym',
+        'gymnasium==0.29.0',
     ],
 )

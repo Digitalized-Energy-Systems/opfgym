@@ -113,11 +113,9 @@ class SimpleOpfEnv(opf_env.OpfEnv):
 
 class QMarketEnv(opf_env.OpfEnv):
     """
-    Reactive power market environment (base case): The grid operator procures
-    reactive power from generators to minimize losses within its system. There
-    are also variants of this env where the market participants learn to bid on
-    the market or where grid operator and market participants learn at the same
-    time.
+    Voltage control / Reactive power market environment: The grid operator 
+    procures reactive power from generators to minimize losses within its 
+    system. 
 
     Actuators: Reactive power of all gens
 
@@ -347,8 +345,8 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         net.sgen['controllable'] = True
         net.gen['controllable'] = True
 
-        # Ignore reactive power completely
-        cos_phi = 1.0
+        # TODO: Currently Ignore reactive power completely (otherwise pp OPF fails)
+        cos_phi = 1.0  # This should be a variable in the future?
         for unit_type in ('gen', 'sgen'):
             net[unit_type]['max_s_mva'] = net[unit_type]['max_max_p_mw'] / cos_phi
             net[unit_type]['max_max_q_mvar'] = (
@@ -356,7 +354,6 @@ class EcoDispatchEnv(opf_env.OpfEnv):
                 - net[unit_type]['max_max_p_mw']**2)**0.5
             net[unit_type]['max_q_mvar'] = net[unit_type]['max_max_q_mvar']
             net[unit_type]['min_q_mvar'] = -net[unit_type]['max_max_q_mvar']
-            # TODO: Here, probably a better solution is required
 
         # TODO: Omit this feature short-term
         self.sgen_idxs = net.sgen.index

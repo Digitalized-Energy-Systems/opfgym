@@ -8,7 +8,8 @@ def compute_violation(net, unit_type: str, column: str, min_or_max: str):
 
     invalids = values > boundary if min_or_max == 'max' else values < boundary
     absolute_violations = (values - boundary)[invalids].abs()
-    percentage_violations = (absolute_violations / boundary[invalids]).abs()
+    # TODO: This fails for boundary == 0 -> use alternative reference values?!
+    percentage_violations = (absolute_violations / boundary[invalids]).abs() * 100
 
     return absolute_violations.to_numpy(), percentage_violations.to_numpy(), invalids
 
@@ -39,7 +40,7 @@ def voltage_violation(net, *args, **kwargs):
     violation = violations1.sum() + violations2.sum()
     percentage_violation = perc_violations1.sum() + perc_violations2.sum()
     invalids = np.logical_or(invalids1, invalids2)
-    penalty = compute_penalty(violation, len(invalids), *args, **kwargs)
+    penalty = compute_penalty(violation, sum(invalids), *args, **kwargs)
 
     return ~invalids.any(), violation, percentage_violation, penalty
 
@@ -48,7 +49,7 @@ def line_overload(net, *args, **kwargs):
     """ Penalty for overloaded lines. Only max boundary required! """
     violation, perc_violation, invalids = compute_violation(
         net, 'line', 'loading_percent', 'max')
-    penalty = compute_penalty(sum(violation), len(invalids), *args, **kwargs)
+    penalty = compute_penalty(sum(violation), sum(invalids), *args, **kwargs)
     return ~invalids.any(), sum(violation), sum(perc_violation), penalty
 
 
@@ -56,7 +57,7 @@ def trafo_overload(net, *args, **kwargs):
     """ Penalty for overloaded trafos. Only max boundary required! """
     violation, perc_violation, invalids = compute_violation(
         net, 'trafo', 'loading_percent', 'max')
-    penalty = compute_penalty(sum(violation), len(invalids), *args, **kwargs)
+    penalty = compute_penalty(sum(violation), sum(invalids), *args, **kwargs)
     return ~invalids.any(), sum(violation), sum(perc_violation), penalty
 
 
@@ -71,6 +72,6 @@ def ext_grid_overpower(net, column='p_mw', *args, **kwargs):
     violation = violations1.sum() + violations2.sum()
     percentage_violation = perc_violations1.sum() + perc_violations2.sum()
     invalids = np.logical_or(invalids1, invalids2)
-    penalty = compute_penalty(violation, len(invalids), *args, **kwargs)
-
+    penalty = compute_penalty(violation, sum(invalids), *args, **kwargs)
+    
     return ~invalids.any(), violation, percentage_violation, penalty

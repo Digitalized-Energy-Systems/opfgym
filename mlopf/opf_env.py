@@ -1,10 +1,11 @@
 
 import abc
+import copy
 import logging
 import random
 import warnings
 
-import gym
+import gymnasium as gym
 import numpy as np
 import pandapower as pp
 import pandas as pd
@@ -43,7 +44,13 @@ class OpfEnv(gym.Env, abc.ABC):
                  line_pen_kwargs=None,
                  trafo_pen_kwargs=None,
                  ext_grid_pen_kwargs=None,
-                 seed=None):
+                 autoscale_penalty=False,
+                 min_penalty=None,
+                 penalty_weight=0.5,
+                 seed=None, 
+                 eval=False):
+        
+        self.eval = eval
 
         # Should be always True. Maybe only allow False for paper investigation
         self.train_test_split = train_test_split
@@ -92,8 +99,8 @@ class OpfEnv(gym.Env, abc.ABC):
         self.reward_function = reward_function
         self.vector_reward = vector_reward
         self.squash_reward = squash_reward
-        if reward_scaling == 'auto':
-            reward_scaling = get_automatic_reward_scaling(self.net)
+        # if reward_scaling == 'auto':
+        #     reward_scaling = get_automatic_reward_scaling(self.net)
         self.reward_scaling = reward_scaling
 
         # Default penalties are purely linear
@@ -105,7 +112,9 @@ class OpfEnv(gym.Env, abc.ABC):
                           else {'linear_penalty': 2})
         self.ext_grid_pen = (ext_grid_pen_kwargs if ext_grid_pen_kwargs
                              else {'linear_penalty': 100})
-
+        self.autoscale_penalty = autoscale_penalty
+        self.min_penalty = min_penalty
+        
         self.priority = autocorrect_prio
 
         assert single_step, 'TODO: Multi-step episodes not implemented yet'
@@ -130,11 +139,61 @@ class OpfEnv(gym.Env, abc.ABC):
 
         self.test_steps = define_test_steps(test_share)
 
-    def reset(self, step=None, test=False):
+        self.penalty_weight = penalty_weight
+        # Get rough estimation of the objective function to compute penalties later
+        if self.reward_scaling == 'minmax' and 'min_obj' in self.__dict__.keys():
+            pass
+        elif self.reward_scaling == 'normalization' and 'mean_obj' in self.__dict__.keys():
+            pass
+        elif self.reward_function == 'replacement' and 'mean_abs_obj' in self.__dict__.keys():
+            pass
+        elif self.reward_function in ('replacement', 'replacementA', 'multiplication', 'replacement_plus_summation') or self.reward_scaling in ('minmax', 'normalization'):
+            objs = []
+            pens = []
+            for _ in range(500):
+                self._sampling()
+                self._apply_actions(self.action_space.sample())
+                self._run_pf()
+                objs.append(self.calc_objective(self.net))
+                pens.append(self.calc_violations()[3])
+                
+            self.min_obj = np.array(objs).sum(axis=1).min()
+            self.max_obj = np.array(objs).sum(axis=1).max()
+            self.min_pen = np.array(pens).sum(axis=1).min()
+            self.max_pen = np.array(pens).sum(axis=1).max()
+            # Add some buffer to make sure we really have a worst-case
+            # self.min_obj -= 0.5 * abs(self.min_obj)
+            # Compute the mean absolute objective to compute penalty later
+            self.mean_obj = np.sum(objs, axis=1).mean()
+            self.mean_pen = np.sum(pens, axis=1).mean()
+            self.mean_abs_obj = np.abs(np.sum(objs, axis=1)).mean()
+            self.mean_abs_pen = np.abs(np.sum(pens, axis=1)).mean()
+            self.obj_std = np.std(np.sum(objs, axis=1))
+            self.pen_std = np.std(np.sum(pens, axis=1))
+
+            print(f'Min objective: {self.min_obj}')
+            print(f'Max objective: {self.max_obj}')
+            print(f'Min penalty: {self.min_pen}')
+            print(f'Max penalty: {self.max_pen}')
+            print(f'Mean objective: {self.mean_obj}')
+            print(f'Mean penalty: {self.mean_pen}')
+            print(f'Std objective: {self.obj_std}')
+            print(f'Std penalty: {self.pen_std}')
+
+    def reset(self, step=None, test=False, seed=None, **options):
+        super().reset(seed=seed)
         self.info = {}
         self.step_in_episode = 0
 
         self._sampling(step, test)
+        if self.add_act_obs:
+            # Use random actions as starting point so that agent learns to handle that
+            # TODO: Maybe better to combine this with multi-step?!
+            act = self.action_space.sample()
+        else:
+            # Reset all actions to default values
+            act = (self.action_space.low + self.action_space.high) / 2
+        self._apply_actions(act)
 
         if self.pf_for_obs is True:
             if self.add_act_obs:
@@ -152,9 +211,10 @@ class OpfEnv(gym.Env, abc.ABC):
                     'Failed powerflow calculcation in reset. Try again!')
                 return self.reset()
 
+            self.prev_obj = self.calc_objective(self.net)
             self.prev_reward = self.calc_reward()
 
-        return self._get_obs(self.obs_keys, self.add_time_obs)
+        return self._get_obs(self.obs_keys, self.add_time_obs), copy.deepcopy(self.info)
 
     def _sampling(self, step, test, *args, **kwargs):
         """ Default method: Set random and noisy simbench state. """
@@ -300,24 +360,24 @@ class OpfEnv(gym.Env, abc.ABC):
         if self.single_step:
             # Do not step to another time-series point!
             if self.steps_per_episode == 1:
-                # 1-step environment! Not truncated!
-                done = True
+                terminated = True
+                truncated = False
             elif self.step_in_episode >= self.steps_per_episode:
-                done = True
-                # Env gets interrupted independent (!) of agent action
-                self.info['TimeLimit.truncated'] = True
+                terminated = False
+                truncated = True
             else:
-                done = False
+                terminated = False
+                truncated = False
         elif random.random() < 0.02:  # TODO! Better termination criterion
             self._sampling(step=self.current_step + 1, test=test)
-            done = True  # TODO
+            terminated = True  # TODO
         else:
-            done = not self._sampling(step=self.current_step + 1, test=test)
+            terminated = not self._sampling(step=self.current_step + 1, test=test)
 
         obs = self._get_obs(self.obs_keys, self.add_time_obs)
         assert not np.isnan(obs).any()
 
-        return obs, reward, done, self.info
+        return obs, reward, terminated, truncated, copy.deepcopy(self.info)
 
     def _apply_actions(self, action, autocorrect=False):
         """ Apply agent actions to the power system at hand. """
@@ -375,7 +435,8 @@ class OpfEnv(gym.Env, abc.ABC):
         try:
             pp.runpp(self.net,
                      voltage_depend_loads=False,
-                     enforce_q_lims=True)
+                     enforce_q_lims=True,
+                     calculate_voltage_angles=False)
 
         except pp.powerflow.LoadflowNotConverged:
             logging.warning('Powerflow not converged!!!')
@@ -402,51 +463,102 @@ class OpfEnv(gym.Env, abc.ABC):
 
         valids, viol, perc_viol, penalties = zip(*valids_violations_penalties)
 
-        self.info['valids'] = np.array(valids)
-        self.info['violations'] = np.array(viol)
-        self.info['percentage_violations'] = np.array(perc_viol)
-        self.info['penalties'] = np.array(penalties)
-
         return np.array(valids), np.array(viol), np.array(perc_viol), np.array(penalties)
 
     def calc_reward(self, test=False):
         """ Combine objective function and the penalties together. """
         objectives = self.calc_objective(self.net)
-        valids, violations, percentage_violations, penalties = self.calc_violations(
-        )
+        self.info['objectives'] = objectives
+        valids, viol, percentage_viol, penalties = self.calc_violations()
+
+        self.info['valids'] = np.array(valids)
+        self.info['violations'] = np.array(viol)
+        self.info['percentage_violations'] = np.array(percentage_viol)
+        self.info['penalties'] = np.array(penalties)
 
         # TODO: re-structure this whole reward calculation?!
         if self.reward_function == 'summation':
-            # Idea: Add penalty to objective function
+            # Idea: Add penalty to objective function (no change required)
             pass
         elif self.reward_function == 'replacement':
             # Idea: Only give objective as reward, if solution valid
             if not valids.all():
                 objectives[:] = 0.0
             else:
-                objectives += 10.0 / len(objectives)
-
-        elif self.reward_function == 'multiplication':
+                # Make sure that the objective is always positive
+                # This way, even the worst-case results in zero reward
+                objectives += self.mean_abs_obj / len(objectives)
+        elif self.reward_function == 'replacementA':
+            # Idea: Only give objective as reward, if solution valid
+            if not valids.all():
+                objectives[:] = 0.0
+            else:
+                # Use the worst case objective instead here 
+                objectives += abs(self.min_obj) / len(objectives)
+        # elif self.reward_function == 'replacement_plus_summation':
+        #     # TODO Idea: can these two be combined?!
+        #     # If valid: Use objective as reward
+        #     # If invalid: Use penalties as reward + objective to make sure agent learns both at the same time (and not first only penalties and then only objective))
+        #     # But ensure that the reward is always higher if valid compared to invalid 
+        #     if valids.all():
+        #         objectives += abs(self.min_obj)
+        elif self.reward_function == 'relative':
             # Multiply constraint violation with objective function as penalty
-            penalties = -abs(sum(objectives)) * \
-                (~valids + percentage_violations)
+            penalties = -(~valids + percentage_viol)
             self.info['penalties'] = penalties
+            # TODO: Problem: Does not really work if constraint=0 because inf penalty
+        elif self.reward_function == "flat":
+            if not valids.all():
+                # Make sure the penalty is always bigger than the objective
+                penalties = 2 * -abs(sum(objectives))
+                self.info['penalties'] = penalties
         else:
             raise NotImplementedError('This reward definition does not exist!')
 
-        full_obj = np.append(objectives, penalties)
-
-        if not self.vector_reward:
-            # Use scalar
-            reward = sum(full_obj)
+        # full_obj = np.append(objectives, penalties)
+        
+        obj = sum(objectives)
+        pen = sum(penalties)
+        if self.reward_scaling == 'minmax':
+            # Scale reward to [-1, 1]
+            obj = (obj - self.min_obj) / (self.max_obj - self.min_obj) * 2 - 1 
+            pen = (pen - self.min_pen) / (self.max_pen - self.min_pen) * 2 - 1
+            reward = obj * (1 - self.penalty_weight) + pen * self.penalty_weight
+        elif self.reward_scaling == 'normalization':
+            # Scale reward so that the mean reward is zero and the std is 1
+            obj = (obj - self.mean_obj) / self.obj_std
+            pen = (pen - self.mean_pen) / self.pen_std
         else:
-            # Reward as a numpy array
-            reward = full_obj
+            # Scale reward with some user-defined factor
+            obj = obj * self.reward_scaling
+            pen = pen * self.reward_scaling
+
+        if self.autoscale_penalty:
+            # Scale the penalty with the objective function
+            if self.min_penalty:
+                # The min_penalty prevents the penalty to become ~0.0
+                # TODO: Maybe a simple sqrt is better?!
+                penalties *= max(abs(sum(objectives)), self.min_penalty)
+            else:
+                penalties *= abs(sum(objectives))
+            self.info['penalties'] = penalties
+
+        # if not self.vector_reward:
+        #     # Use scalar reward 
+        #     reward = sum(full_obj)
+        # else:
+        #     # Reward as a numpy array
+        #     reward = full_obj
+
+        reward = obj * (1 - self.penalty_weight) + pen * self.penalty_weight
 
         if self.squash_reward and not test:
             reward = np.sign(reward) * np.log(np.abs(reward) + 1)
+            if self.min_penalty and not valids.all():
+                # Prevent that the penalty gets completely squashed
+                reward -= self.min_penalty
 
-        return reward * self.reward_scaling
+        return reward
 
     def _get_obs(self, obs_keys, add_time_obs):
         obss = [(self.net[unit_type][column].loc[idxs].to_numpy())
@@ -460,8 +572,8 @@ class OpfEnv(gym.Env, abc.ABC):
             obss = [time_obs] + obss
         return np.concatenate(obss)
 
-    def render(self, mode='human'):
-        logging.warning(f'Rendering not implemented!')
+    def render(self):
+        logging.warning(f'Rendering not supported!')
 
     def get_current_actions(self):
         # Attention: These are not necessarily the actions of the RL agent
@@ -471,19 +583,25 @@ class OpfEnv(gym.Env, abc.ABC):
                   for unit_type, column, idxs in self.act_keys]
         return np.concatenate(action)
 
-    def baseline_reward(self):
+    def baseline_reward(self, **kwargs):
         """ Compute some baseline to compare training performance with. In this
         case, use the optimal possible reward, which can be computed with the
         optimal power flow. """
-        success = self._optimal_power_flow()
+        success = self._optimal_power_flow(**kwargs)
         if not success:
             return np.nan
         objectives = self.calc_objective(self.net)
         valids, violations, percentage_violations, penalties = self.calc_violations()
         logging.info(f'Optimal violations: {violations}')
         logging.info(f'Baseline actions: {self.get_current_actions()}')
+        if sum(penalties) > 0:
+            logging.warning(f'There are baseline penalties: {penalties}'
+                            f' with violations: {violations}'
+                            '(should normally not happen! Check if this is some'
+                            'special case with soft constraints!')
+            
 
-        return sum(objectives)
+        return sum(np.append(objectives, penalties))
 
     def _optimal_power_flow(self, **kwargs):
         try:
@@ -617,29 +735,29 @@ def get_bus_aggregated_obs(net, unit_type, column, idxs):
     return df.groupby(['bus'])[column].sum().to_numpy()
 
 
-def get_automatic_reward_scaling(net):
-    cost_df = net.poly_cost
+# def get_automatic_reward_scaling(net):
+#     cost_df = net.poly_cost
 
-    active_power_mask = np.zeros(len(cost_df), dtype=bool)
-    reactive_power_mask = np.zeros(len(cost_df), dtype=bool)
-    for column in cost_df.columns:
-        if 'mw' in column and 'max_' in column:
-            active_power_mask = np.logical_or(
-                active_power_mask, cost_df[column] != 0)
-        if 'mvar' in column and 'max_' in column:
-            reactive_power_mask = np.logical_or(
-                reactive_power_mask, cost_df[column] != 0)
+#     active_power_mask = np.zeros(len(cost_df), dtype=bool)
+#     reactive_power_mask = np.zeros(len(cost_df), dtype=bool)
+#     for column in cost_df.columns:
+#         if 'mw' in column and 'max_' in column:
+#             active_power_mask = np.logical_or(
+#                 active_power_mask, cost_df[column] != 0)
+#         if 'mvar' in column and 'max_' in column:
+#             reactive_power_mask = np.logical_or(
+#                 reactive_power_mask, cost_df[column] != 0)
 
-    scaling_factor = 0
-    for unit_type in ('gen', 'sgen', 'ext_grid', 'storage'):
-        unit_type_mask = cost_df.et == unit_type
-        mask = np.logical_and(active_power_mask, unit_type_mask)
-        if mask.any():
-            scaling_factor += net[unit_type].loc[cost_df[mask]
-                                                 .element].max_max_p_mw.abs().sum()
-        mask = np.logical_and(reactive_power_mask, unit_type_mask)
-        if mask.any():
-            scaling_factor += net[unit_type].loc[cost_df[mask]
-                                                 .element].max_max_q_mvar.abs().sum()
+#     scaling_factor = 0
+#     for unit_type in ('gen', 'sgen', 'ext_grid', 'storage'):
+#         unit_type_mask = cost_df.et == unit_type
+#         mask = np.logical_and(active_power_mask, unit_type_mask)
+#         if mask.any():
+#             scaling_factor += net[unit_type].loc[cost_df[mask]
+#                                                  .element].max_max_p_mw.abs().sum()
+#         mask = np.logical_and(reactive_power_mask, unit_type_mask)
+#         if mask.any():
+#             scaling_factor += net[unit_type].loc[cost_df[mask]
+#                                                  .element].max_max_q_mvar.abs().sum()
 
-    return 1 / scaling_factor / 10
+#     return 1 / scaling_factor / 10

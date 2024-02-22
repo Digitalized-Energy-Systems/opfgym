@@ -13,7 +13,7 @@ import numpy as np
 # TODO: Add acts to eval/MAPE
 
 
-def eval_experiment_folder(path, test_steps_int=200, seed=10, **kwargs):
+def eval_experiment_folder(path, test_steps_int=10, seed=10, **kwargs):
 
     rewards_dict = defaultdict(list)
     acts_dict = defaultdict(list)
@@ -53,35 +53,11 @@ def eval_experiment_folder(path, test_steps_int=200, seed=10, **kwargs):
         print('')
 
 
-# TODO
-def eval_one_agent(path, test_steps=100, **kwargs):
-
-    agent, env, name = get_agent_data(path)
-    # evaluate_nstep(agent, env, test_steps)
-    measure_speedup(agent, env, test_steps)
-
-
 def get_agent_data(path):
-    if path[-1] != '/':
-        path += '/'
+    from drl.util.load_agent import load_agent
+    agent = load_agent(path)
 
-    with open(path + '/meta-data.txt') as f:
-        lines = f.readlines()
-    env_name = lines[1].split(' ')[1][:-1]
-    algo = lines[2][15:][:-1]
-    hyperparams = drl.experiment.str_to_dict(lines[6][23:][:-1])
-    env_hyperparams = drl.experiment.str_to_dict(lines[7][25:][:-1])
-
-    env = drl.experiment.create_environment(env_name, env_hyperparams)
-
-    agent_class = drl.experiment.get_agent_class(algo)
-    agent = agent_class(
-        env, name='test_agent', seed=42, path=path, **hyperparams)
-    agent.load_model()
-
-    name = algo + '_' + str(hyperparams) + '_' + str(env_hyperparams)
-
-    return agent, env, name
+    return agent, agent.env, agent.name
 
 
 def get_agent_performance(agent, env, test_steps_int, seed=None):
@@ -95,9 +71,9 @@ def get_agent_performance(agent, env, test_steps_int, seed=None):
     valids = []
     violations = []
     for step in test_steps:
-        obs = env.reset(step=step, test=True)
+        obs, info = env.reset(options={'step': step, 'test': True})
         act = agent.test_act(agent.scale_obs(obs))
-        obs, reward, done, info = env.step(act)
+        obs, reward, terminated, truncated, info = env.step(act)
 
         obj = sum(env.calc_objective(env.net))
         rewards.append(obj)
@@ -117,7 +93,7 @@ def get_baseline_performance(env, test_steps_int, seed=None):
     rewards = []
     acts = []
     for step in test_steps:
-        env.reset(step=step, test=True)
+        env.reset(options={'step': step, 'test': True})
         reward = env.baseline_reward()
         # TODO Attention: Don't forget the scaling here!
         act = env.get_current_actions()
@@ -163,30 +139,6 @@ def performance_comparison(name, validss: list, rewardss: list,
     # TODO: Store result in `path`
 
 
-def evaluate_nstep(agent, env, test_steps, iterations=5):
-    """ Evaluate performance on n-step environment (special case!) """
-
-    regrets = np.zeros((test_steps, iterations))
-    apes = np.zeros((test_steps, iterations))
-    valids = np.ones((test_steps, iterations))
-    for step in range(test_steps):
-        obs = agent.env.reset(test=True)
-        opt_obj = agent.env.baseline_reward()
-        opt_act = agent.env.get_current_actions()
-        for n in range(iterations):
-            act = agent.test_act(agent.scale_obs(obs))
-            obs, reward, done, info = agent.env.step(act)
-            obj = sum(agent.env.calc_objective(env.net))
-            regrets[step, n] = opt_obj - obj
-            apes[step, n] = abs(regrets[step, n] / opt_obj)
-            valids[step, n] = np.all(info['valids'])
-
-    print('mean regret: ', np.mean(regrets, axis=0))
-    print('std regret: ', np.std(regrets, axis=0))
-    print('MAPE: ', np.mean(apes, axis=0) * 100, '%')
-    print('valid share: ', np.mean(valids, axis=0))
-
-
 def measure_speedup(agent, env, test_steps, path=None):
     """ Compare computation times of conventional OPF with RL-OPF. """
     test_steps = random.sample(list(env.test_steps), test_steps)
@@ -197,21 +149,21 @@ def measure_speedup(agent, env, test_steps, path=None):
     print('Time measurement for the conventional OPF')
     start_time = time.time()
     for n in test_steps:
-        env.reset(step=n)
+        env.reset(options={'step': n})
         env._optimal_power_flow()
     opf_time = round(time.time() - start_time, 3)
 
     print('Time measurement for RL')
     start_time = time.time()
     for n in test_steps:
-        obs = env.reset(step=n)
+        obs, info = env.reset(options={'step': n})
         agent.test_act(obs)
     rl_time = round(time.time() - start_time, 3)
     rl_speedup = round(opf_time / rl_time, 3)
 
     print('Measurement for RL in batches')
     start_time = time.time()
-    obss = np.concatenate([env.reset(step=n).reshape(1, -1)
+    obss = np.concatenate([env.reset(options={'step': n}).reshape(1, -1)
                            for n in test_steps], axis=0)
     agent.test_act(obss)
     batch_time = round(time.time() - start_time, 3)
@@ -220,7 +172,7 @@ def measure_speedup(agent, env, test_steps, path=None):
     print('Time measurement for RL as warm start for conventional OPF \n')
     start_time = time.time()
     for n in test_steps:
-        obs = env.reset(step=n)
+        obs, info = env.reset(options={'step': n})
         act = agent.test_act(obs)
         env._apply_actions(act)
         env._optimal_power_flow(init='pf')
@@ -248,5 +200,5 @@ def measure_speedup(agent, env, test_steps, path=None):
 
 
 if __name__ == '__main__':
-    path = 'HPC/drlopf_experiments/data/final_experiments/20230712_qmarket_baseline/'
+    path = 'HPC/env_design/data/final_experiments/qmarket/20230712_qmarket_baseline/'
     eval_experiment_folder(path)
