@@ -196,15 +196,6 @@ class OpfEnv(gym.Env, abc.ABC):
         self._apply_actions(act)
 
         if self.pf_for_obs is True:
-            if self.add_act_obs:
-                # Use random actions as starting point
-                # TODO: Maybe better to combine this with multi-step?!
-                act = self.action_space.sample()
-            else:
-                # Reset all actions to default values
-                act = (self.action_space.low + self.action_space.high) / 2
-            self._apply_actions(act)
-
             success = self._run_pf()
             if not success:
                 logging.warning(
