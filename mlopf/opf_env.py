@@ -32,6 +32,7 @@ class OpfEnv(gym.Env, abc.ABC):
                  diff_reward=False,
                  reward_function='summation',
                  reward_scaling=1,
+                 squash_reward=False,
                  remove_normal_obs=False,
                  add_res_obs=False,
                  add_time_obs=False,
@@ -46,7 +47,6 @@ class OpfEnv(gym.Env, abc.ABC):
                  autoscale_penalty=False,
                  min_penalty=None,
                  penalty_weight=0.5,
-                 squash_reward=False,
                  seed=None):
 
         # Should be always True. Maybe only allow False for paper investigation
@@ -222,8 +222,6 @@ class OpfEnv(gym.Env, abc.ABC):
             self._sample_uniform(sample_new=sample_new)
         elif data_distr == 'normal_around_mean':
             self._sample_normal(sample_new=sample_new, *args, **kwargs)
-        elif data_distr == 'noisy_baseline':
-            raise NotImplementedError
 
     def _sample_uniform(self, sample_keys=None, sample_new=True):
         """ Standard pre-implemented method to set power system to a new random

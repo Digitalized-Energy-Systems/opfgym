@@ -24,6 +24,6 @@ setup(
         'matplotlib',
         'pandapower==2.13.1',
         'simbench==1.4.0',
-        'gymnasium=0.29.0',
+        'gymnasium==0.29.0',
     ],
 )
