@@ -583,13 +583,13 @@ class OpfEnv(gym.Env, abc.ABC):
                 else get_bus_aggregated_obs(self.net, 'load', column, idxs)
                 for unit_type, column, idxs in obs_keys]
 
+        if self.penalty_obs_space:
+            obss = [self.linear_penalties] + obss
+
         if add_time_obs:
             time_obs = get_simbench_time_observation(
                 self.profiles, self.current_step)
             obss = [time_obs] + obss
-
-        if self.penalty_obs_space:
-            obss = [self.linear_penalties] + obss
 
         return np.concatenate(obss)
 
