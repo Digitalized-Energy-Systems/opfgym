@@ -47,10 +47,9 @@ class OpfEnv(gym.Env, abc.ABC):
                  autoscale_penalty=False,
                  min_penalty=None,
                  penalty_weight=0.5,
-                 seed=None, 
-                 eval=False):
-        
-        self.eval = eval
+                 penalty_obs_range: tuple=None,
+                 test_penalty=None,
+                 seed=None):
 
         # Should be always True. Maybe only allow False for paper investigation
         self.train_test_split = train_test_split
@@ -61,6 +60,7 @@ class OpfEnv(gym.Env, abc.ABC):
         else:
             self.sampling_kwargs = {}
 
+        # Define the observation space
         if remove_normal_obs:
             # Completely overwrite the observation definition
             assert add_res_obs or add_time_obs or add_act_obs
@@ -90,17 +90,25 @@ class OpfEnv(gym.Env, abc.ABC):
                 ('res_ext_grid', 'q_mvar', self.net.ext_grid.index)
             ])
 
+        if penalty_obs_range:
+            n_penalties = 4 # TODO
+            self.penalty_obs_space = gym.spaces.Box(
+                low=np.ones(n_penalties) * penalty_obs_range[0], 
+                high=np.ones(n_penalties) * penalty_obs_range[1], 
+                seed=seed)
+            self.test_penalty = test_penalty
+        else:
+            self.penalty_obs_space = None
+
         self.bus_wise_obs = bus_wise_obs
         self.observation_space = get_obs_space(
-            self.net, self.obs_keys, add_time_obs, seed,
+            self.net, self.obs_keys, add_time_obs, self.penalty_obs_space, seed,
             bus_wise_obs=bus_wise_obs)
         self.action_space = get_action_space(self.act_keys, seed)
 
         self.reward_function = reward_function
         self.vector_reward = vector_reward
         self.squash_reward = squash_reward
-        # if reward_scaling == 'auto':
-        #     reward_scaling = get_automatic_reward_scaling(self.net)
         self.reward_scaling = reward_scaling
 
         # Default penalties are purely linear
@@ -180,12 +188,27 @@ class OpfEnv(gym.Env, abc.ABC):
             print(f'Std objective: {self.obj_std}')
             print(f'Std penalty: {self.pen_std}')
 
-    def reset(self, step=None, test=False, seed=None, **options):
-        super().reset(seed=seed)
+    def reset(self, step=None, test=False, seed=None, options=None):
+        super().reset(seed=seed, options=options)
         self.info = {}
         self.step_in_episode = 0
 
-        self._sampling(step, test)
+        if self.penalty_obs_space:
+            # TODO: penalty obs currently only work with linear penalties
+            if options.get('test', False) and self.test_penalty is not None:
+                self.linear_penalties = np.ones(
+                    len(self.penalty_obs_space.low)) * self.test_penalty
+            else:
+                self.linear_penalties = self.penalty_obs_space.sample()
+            self.volt_pen = {'linear_penalty': self.linear_penalties[0]}
+            self.line_pen = {'linear_penalty': self.linear_penalties[1]}
+            self.trafo_pen = {'linear_penalty': self.linear_penalties[2]}
+            self.ext_grid_pen = {'linear_penalty': self.linear_penalties[3]}
+            # TODO: How to deal with custom added penalties?!
+            
+        self.apply_action = options.get('new_action', True) if options else True
+        self._sampling(step, test, self.apply_action)
+        
         if self.add_act_obs:
             # Use random actions as starting point so that agent learns to handle that
             # TODO: Maybe better to combine this with multi-step?!
@@ -207,28 +230,30 @@ class OpfEnv(gym.Env, abc.ABC):
 
         return self._get_obs(self.obs_keys, self.add_time_obs), copy.deepcopy(self.info)
 
-    def _sampling(self, step, test, *args, **kwargs):
-        """ Default method: Set random and noisy simbench state. """
+    def _sampling(self, step, test, sample_new, *args, **kwargs):
         data_distr = self.test_data if test is True else self.train_data
         kwargs.update(self.sampling_kwargs)
 
         # Maybe also allow different kinds of noise and similar! with `**sampling_params`?
         if data_distr == 'noisy_simbench' or 'noise_factor' in kwargs.keys():
-            self._set_simbench_state(step, test, *args, **kwargs)
+            if sample_new:
+                self._set_simbench_state(step, test, *args, **kwargs)
         elif data_distr == 'simbench':
-            self._set_simbench_state(
-                step, test, noise_factor=0.0, *args, **kwargs)
+            if sample_new:
+                self._set_simbench_state(
+                    step, test, noise_factor=0.0, *args, **kwargs)
         elif data_distr == 'full_uniform':
-            self._sample_uniform()
+            self._sample_uniform(sample_new=sample_new)
         elif data_distr == 'normal_around_mean':
-            self._sample_normal(*args, **kwargs)
+            self._sample_normal(sample_new=sample_new, *args, **kwargs)
 
-    def _sample_uniform(self, sample_keys=None):
+    def _sample_uniform(self, sample_keys=None, sample_new=True):
         """ Standard pre-implemented method to set power system to a new random
         state from uniform sampling. Uses the observation space as basis.
         Requirement: For every observations there must be "min_{obs}" and
         "max_{obs}" given as range to sample from.
         """
+        assert sample_new, 'Currently only implemented for sample_new=True'
         if not sample_keys:
             sample_keys = self.obs_keys
         for unit_type, column, idxs in sample_keys:
@@ -253,8 +278,9 @@ class OpfEnv(gym.Env, abc.ABC):
         except AttributeError:
             self.net[unit_type][column].loc[idxs] = r
 
-    def _sample_normal(self, std=0.3, truncated=False):
+    def _sample_normal(self, std=0.3, truncated=False, sample_new=True):
         """ Sample data around mean values from simbench data. """
+        assert sample_new, 'Currently only implemented for sample_new=True'
         for unit_type, column, idxs in self.obs_keys:
             if 'res_' not in unit_type and 'poly_cost' not in unit_type:
                 df = self.net[unit_type].loc[idxs]
@@ -327,20 +353,20 @@ class OpfEnv(gym.Env, abc.ABC):
 
         return True
 
-    def step(self, action, test=False):
+    def step(self, action, test=False, *args, **kwargs):
         assert not np.isnan(action).any()
         self.info = {}
         self.step_in_episode += 1
 
-        self._apply_actions(action)
+        if self.apply_action:
+            self._apply_actions(action)
+            success = self._run_pf()
 
-        success = self._run_pf()
-
-        if not success:
-            # Something went seriously wrong! Find out what!
-            # Maybe NAN in power setpoints?!
-            # Maybe simply catch this with a strong negative reward?!
-            raise pp.powerflow.LoadflowNotConverged()
+            if not success:
+                # Something went seriously wrong! Find out what!
+                # Maybe NAN in power setpoints?!
+                # Maybe simply catch this with a strong negative reward?!
+                raise pp.powerflow.LoadflowNotConverged()
 
         reward = self.calc_reward(test)
 
@@ -557,10 +583,14 @@ class OpfEnv(gym.Env, abc.ABC):
                 else get_bus_aggregated_obs(self.net, 'load', column, idxs)
                 for unit_type, column, idxs in obs_keys]
 
+        if self.penalty_obs_space:
+            obss = [self.linear_penalties] + obss
+
         if add_time_obs:
             time_obs = get_simbench_time_observation(
                 self.profiles, self.current_step)
             obss = [time_obs] + obss
+
         return np.concatenate(obss)
 
     def render(self):
@@ -603,7 +633,8 @@ class OpfEnv(gym.Env, abc.ABC):
         return True
 
 
-def get_obs_space(net, obs_keys: list, add_time_obs: bool, seed: int,
+def get_obs_space(net, obs_keys: list, add_time_obs: bool, 
+                  penalty_obs_space: gym.Space, seed: int,
                   last_n_obs: int=1, bus_wise_obs=False):
     """ Get observation space from the constraints of the power network. """
     lows, highs = [], []
@@ -613,6 +644,11 @@ def get_obs_space(net, obs_keys: list, add_time_obs: bool, seed: int,
         # at the beginning of the observation!
         lows.append(-np.ones(6))
         highs.append(np.ones(6))
+
+    if penalty_obs_space:
+        # Add penalty observation space
+        lows.append(penalty_obs_space.low)
+        highs.append(penalty_obs_space.high)
 
     for unit_type, column, idxs in obs_keys:
         if 'res_' in unit_type:
@@ -724,31 +760,3 @@ def get_bus_aggregated_obs(net, unit_type, column, idxs):
     state space. """
     df = net[unit_type].iloc[idxs]
     return df.groupby(['bus'])[column].sum().to_numpy()
-
-
-# def get_automatic_reward_scaling(net):
-#     cost_df = net.poly_cost
-
-#     active_power_mask = np.zeros(len(cost_df), dtype=bool)
-#     reactive_power_mask = np.zeros(len(cost_df), dtype=bool)
-#     for column in cost_df.columns:
-#         if 'mw' in column and 'max_' in column:
-#             active_power_mask = np.logical_or(
-#                 active_power_mask, cost_df[column] != 0)
-#         if 'mvar' in column and 'max_' in column:
-#             reactive_power_mask = np.logical_or(
-#                 reactive_power_mask, cost_df[column] != 0)
-
-#     scaling_factor = 0
-#     for unit_type in ('gen', 'sgen', 'ext_grid', 'storage'):
-#         unit_type_mask = cost_df.et == unit_type
-#         mask = np.logical_and(active_power_mask, unit_type_mask)
-#         if mask.any():
-#             scaling_factor += net[unit_type].loc[cost_df[mask]
-#                                                  .element].max_max_p_mw.abs().sum()
-#         mask = np.logical_and(reactive_power_mask, unit_type_mask)
-#         if mask.any():
-#             scaling_factor += net[unit_type].loc[cost_df[mask]
-#                                                  .element].max_max_q_mvar.abs().sum()
-
-#     return 1 / scaling_factor / 10
