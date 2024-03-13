@@ -253,6 +253,7 @@ class OpfEnv(gym.Env, abc.ABC):
         Requirement: For every observations there must be "min_{obs}" and
         "max_{obs}" given as range to sample from.
         """
+        assert sample_new, 'Currently only implemented for sample_new=True'
         if not sample_keys:
             sample_keys = self.obs_keys
         for unit_type, column, idxs in sample_keys:
@@ -279,6 +280,7 @@ class OpfEnv(gym.Env, abc.ABC):
 
     def _sample_normal(self, std=0.3, truncated=False, sample_new=True):
         """ Sample data around mean values from simbench data. """
+        assert sample_new, 'Currently only implemented for sample_new=True'
         for unit_type, column, idxs in self.obs_keys:
             if 'res_' not in unit_type and 'poly_cost' not in unit_type:
                 df = self.net[unit_type].loc[idxs]
