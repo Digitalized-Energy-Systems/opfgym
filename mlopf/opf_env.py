@@ -193,6 +193,9 @@ class OpfEnv(gym.Env, abc.ABC):
         self.info = {}
         self.step_in_episode = 0
 
+        if not options:
+            options = {}
+
         if self.penalty_obs_space:
             # TODO: penalty obs currently only work with linear penalties
             if options.get('test', False) and self.test_penalty is not None:
