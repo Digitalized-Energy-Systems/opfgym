@@ -158,7 +158,7 @@ class OpfEnv(gym.Env, abc.ABC):
         elif self.reward_function in ('replacement', 'replacementA', 'multiplication', 'replacement_plus_summation') or self.reward_scaling in ('minmax', 'normalization'):
             objs = []
             pens = []
-            for _ in range(10):
+            for _ in range(1000):
                 self._sampling()
                 self._apply_actions(self.action_space.sample())
                 self._run_pf()
