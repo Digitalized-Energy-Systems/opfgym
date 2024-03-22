@@ -158,7 +158,7 @@ class OpfEnv(gym.Env, abc.ABC):
         elif self.reward_function in ('replacement', 'replacementA', 'multiplication', 'replacement_plus_summation') or self.reward_scaling in ('minmax', 'normalization'):
             objs = []
             pens = []
-            for _ in range(500):
+            for _ in range(10):
                 self._sampling()
                 self._apply_actions(self.action_space.sample())
                 self._run_pf()
@@ -196,9 +196,13 @@ class OpfEnv(gym.Env, abc.ABC):
         if not options:
             options = {}
 
+        test = options.get('test', False)
+        step = options.get('step', None)
+        self.apply_action = options.get('new_action', True)
+
         if self.penalty_obs_space:
             # TODO: penalty obs currently only work with linear penalties
-            if options.get('test', False) and self.test_penalty is not None:
+            if test and self.test_penalty is not None:
                 self.linear_penalties = np.ones(
                     len(self.penalty_obs_space.low)) * self.test_penalty
             else:
@@ -209,7 +213,6 @@ class OpfEnv(gym.Env, abc.ABC):
             self.ext_grid_pen = {'linear_penalty': self.linear_penalties[3]}
             # TODO: How to deal with custom added penalties?!
             
-        self.apply_action = options.get('new_action', True) if options else True
         self._sampling(step, test, self.apply_action)
         
         if self.add_act_obs:
@@ -233,7 +236,7 @@ class OpfEnv(gym.Env, abc.ABC):
 
         return self._get_obs(self.obs_keys, self.add_time_obs), copy.deepcopy(self.info)
 
-    def _sampling(self, step, test, sample_new, *args, **kwargs):
+    def _sampling(self, step=None, test=False, sample_new=True, *args, **kwargs):
         data_distr = self.test_data if test is True else self.train_data
         kwargs.update(self.sampling_kwargs)
 
@@ -262,7 +265,7 @@ class OpfEnv(gym.Env, abc.ABC):
         for unit_type, column, idxs in sample_keys:
             if 'res_' not in unit_type:
                 self._sample_from_range(unit_type, column, idxs)
-
+        
     def _sample_from_range(self, unit_type, column, idxs):
         df = self.net[unit_type]
         # Make sure to sample from biggest possible range

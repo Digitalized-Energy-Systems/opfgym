@@ -104,8 +104,8 @@ class SimpleOpfEnv(opf_env.OpfEnv):
 
         return net
 
-    def _sampling(self, step, test, sample_new, *args, **kwargs):
-        super()._sampling(step, test, sample_new, *args, **kwargs)
+    def _sampling(self, *args, **kwargs):
+        super()._sampling(*args, **kwargs)
 
         # Set constraints of current time step (also required for OPF)
         self.net.sgen['max_p_mw'] = self.net.sgen.p_mw * self.net.sgen.scaling
@@ -152,6 +152,7 @@ class QMarketEnv(opf_env.OpfEnv):
 
         if 'ext_grid_pen_kwargs' not in kwargs:
             kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 500}
+        
         super().__init__(seed=seed, *args, **kwargs)
 
         if self.vector_reward is True:
@@ -387,8 +388,8 @@ class EcoDispatchEnv(opf_env.OpfEnv):
 
         return net
 
-    def _sampling(self, step, test, sample_new, *args, **kwargs):
-        super()._sampling(step, test, sample_new, *args, **kwargs)
+    def _sampling(self, *args, **kwargs):
+        super()._sampling(*args, **kwargs)
 
         # Sample prices uniformly from min/max range for gens/sgens/ext_grids
         self._sample_from_range(
