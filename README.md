@@ -1,32 +1,29 @@
 ### General
 A set of benchmark environments to solve the Optimal Power Flow (OPF) problem
-with reinforcement learning (RL) algorithms. All environments use the openai
-gym interface. (exception: `env.render()` not implemented)
+with reinforcement learning (RL) algorithms. All environments use the gymnasium 
+interface. (exception: `env.render()` not implemented)
 
 ### Installation
 Clone the repository and run `pip install -e .` within some kind of virtual env.
 Tested for python 3.8 (newer version will probably not work).
 
 ### Environments
-Currently, three OPF environments with the openai gym environment are available:
+Currently, three OPF environments are available:
 
-####Standard OPF (SimpleOpfEnv)
-Run `from mlopf.envs.thesis_envs import SimpleOpfEnv` to import this env.
+#### Standard OPF (SimpleOpfEnv)
+Use `from mlopf.envs.thesis_envs import SimpleOpfEnv` to import this env.
 This env is the simplest one to learn. The objective is to maximize renewable
 generation subject to constraints.
 
 #### Reactive power market (QMarketEnv)
-Run `from mlopf.envs.thesis_envs import QMarketEnv` to import this env.
+Use `from mlopf.envs.thesis_envs import QMarketEnv` to import this env.
 This env had intermediate difficulty. The objective is the minimize costs and
 reactive power costs in a local reactive power market.
 
 #### Economic dispatch (EcoDispatchEnv)
-Run `from mlopf.envs.thesis_envs import EcoDispatchEnv` to import this env.
+Use `from mlopf.envs.thesis_envs import EcoDispatchEnv` to import this env.
 This is the most difficult environment. The goal is to perform an economic
 dispatch, i.e. to minimize active power costs subject to constraints.
-
-#### Multi-agent bidding in reactive power market (BiddingQMarketEnv)
-TODO
 
 ### OPF parameters
 All OPF environments are customizable. Parameters are:
@@ -36,7 +33,7 @@ All OPF environments are customizable. Parameters are:
 * `voltage_band`: Define the voltage band (default `0.05` for +-0.05pu)
 * `max_loading`: Define the maximum load of lines and trafos (default `80` for 80%)
 
-### Grid Notes
+### Simbench energy systems
 For every environment, different simbench/pandapower energy systems can be
 choosen. The difficulty of the learning problem depends mainly on the number of
 generators (~number of actuators) and the number of buses (~number of sensors
@@ -44,7 +41,7 @@ and ~complexity of the underlying function).
 
 To decide which system to use for experiments, here a quick list with the
 relevant information for each simbench system for quick access:
-(Insert 0,1,2 for current, future and far future system)
+(Insert 0,1,2 for current, future and far future system, see simbench documentation)
 
 | simbench_network_name   | n_buses   | n_ext_grid    | n_gen     | n_sgen        | n_loads   |
 |---|---|---|---|---|---|
@@ -62,7 +59,7 @@ relevant information for each simbench system for quick access:
 | 1-LV-semiurb5--<0,1,2>-sw | 111     | 1             | 0         | 9/14/15         | 104/118/129       |
 | 1-LV-urban6--<0,1,2>-sw | 59        | 1             | 0         | 5/7/12         | 111/112/135       |
 
-Asterisk: Generators with non-zero active power (reason for zero power unknown).
+Asterisk: Generators with non-zero active power. It is unknown why some generators exist with only zero power.
 They are automatically removed from the system.
 
 Attention: All constraints and other variables are tuned for the default
