@@ -372,9 +372,6 @@ class OpfEnv(gym.Env, abc.ABC):
                 # Something went seriously wrong! Find out what!
                 # Maybe NAN in power setpoints?!
                 # Maybe simply catch this with a strong negative reward?!
-                # success = self._run_pf(enforce_q_lims=False)
-                # # TODO: How to penalize this well?!
-                # if not success:
                 logging.critical(f'Powerflow not converged and reason unknown! Run diagnostic tool to at least find out what went wrong: {pp.diagnostic(self.net)}')
                 raise pp.powerflow.LoadflowNotConverged()
 
