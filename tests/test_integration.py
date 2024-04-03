@@ -10,12 +10,12 @@ def test_simple_opf_integration():
     dummy_env.reset()
     for _ in range(3):
         act = dummy_env.action_space.sample()
-        obs, reward, done, info = dummy_env.step(act)
+        obs, reward, terminated, truncated, info = dummy_env.step(act)
         dummy_env.reset()
 
     assert isinstance(obs, np.ndarray)
     assert isinstance(reward, float)
-    assert done
+    assert terminated
     assert isinstance(info, dict)
 
 
@@ -24,12 +24,12 @@ def test_qmarket_integration():
     dummy_env.reset()
     for _ in range(3):
         act = dummy_env.action_space.sample()
-        obs, reward, done, info = dummy_env.step(act)
+        obs, reward, terminated, truncated, info = dummy_env.step(act)
         dummy_env.reset()
 
     assert isinstance(obs, np.ndarray)
     assert isinstance(reward, float)
-    assert done
+    assert terminated
     assert isinstance(info, dict)
 
 
@@ -38,10 +38,10 @@ def test_eco_dispatch_integration():
     dummy_env.reset()
     for _ in range(3):
         act = dummy_env.action_space.sample()
-        obs, reward, done, info = dummy_env.step(act)
+        obs, reward, terminated, truncated, info = dummy_env.step(act)
         dummy_env.reset()
 
     assert isinstance(obs, np.ndarray)
     assert isinstance(reward, float)
-    assert done
+    assert terminated
     assert isinstance(info, dict)

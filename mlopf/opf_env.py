@@ -642,7 +642,7 @@ class OpfEnv(gym.Env, abc.ABC):
 
 
 def get_obs_space(net, obs_keys: list, add_time_obs: bool, 
-                  penalty_obs_space: gym.Space, seed: int,
+                  penalty_obs_space: gym.Space=None, seed: int=None,
                   last_n_obs: int=1, bus_wise_obs=False):
     """ Get observation space from the constraints of the power network. """
     lows, highs = [], []
