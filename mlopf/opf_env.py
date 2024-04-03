@@ -372,6 +372,10 @@ class OpfEnv(gym.Env, abc.ABC):
                 # Something went seriously wrong! Find out what!
                 # Maybe NAN in power setpoints?!
                 # Maybe simply catch this with a strong negative reward?!
+                # success = self._run_pf(enforce_q_lims=False)
+                # # TODO: How to penalize this well?!
+                # if not success:
+                logging.critical(f'Powerflow not converged and reason unknown! Run diagnostic tool to at least find out what went wrong: {pp.diagnostic(self.net)}')
                 raise pp.powerflow.LoadflowNotConverged()
 
         reward = self.calc_reward(test)
@@ -454,12 +458,13 @@ class OpfEnv(gym.Env, abc.ABC):
                 self.net[unit_type][not_prio] = np.sign(df[not_prio]) * \
                     np.minimum(df[not_prio].abs(), max_values)
 
-    def _run_pf(self):
+    def _run_pf(self, enforce_q_lims=True, calculate_voltage_angles=False, voltage_depend_loads=False, **kwargs):
         try:
             pp.runpp(self.net,
-                     voltage_depend_loads=False,
-                     enforce_q_lims=True,
-                     calculate_voltage_angles=False)
+                     voltage_depend_loads=voltage_depend_loads,
+                     enforce_q_lims=enforce_q_lims,
+                     calculate_voltage_angles=calculate_voltage_angles,
+                     **kwargs)
 
         except pp.powerflow.LoadflowNotConverged:
             logging.warning('Powerflow not converged!!!')
@@ -682,13 +687,13 @@ def get_obs_space(net, obs_keys: list, add_time_obs: bool,
             # Assumption: If [0.95, 1.05] voltage band, no voltage outside [0.875, 1.125] range
             l = l - diff * 0.75
             h = h + diff * 0.75
-
+            
         try:
             if 'min' in column or 'max' in column:
                 # Constraints need to remain scaled
                 raise AttributeError
-            l /= net[unit_type].scaling.loc[idxs].to_numpy()
-            h /= net[unit_type].scaling.loc[idxs].to_numpy()
+            l = l / net[unit_type].scaling.loc[idxs].to_numpy()
+            h = h / net[unit_type].scaling.loc[idxs].to_numpy()
         except AttributeError:
             logging.info(
                 f'Scaling for {unit_type} not defined: assume scaling=1')
