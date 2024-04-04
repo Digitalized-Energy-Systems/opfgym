@@ -49,7 +49,8 @@ class OpfEnv(gym.Env, abc.ABC):
                  penalty_weight=0.5,
                  penalty_obs_range: tuple=None,
                  test_penalty=None,
-                 seed=None):
+                 seed=None,
+                 *args, **kwargs):
 
         # Should be always True. Maybe only allow False for paper investigation
         self.train_test_split = train_test_split
@@ -488,6 +489,13 @@ class OpfEnv(gym.Env, abc.ABC):
 
         valids, viol, perc_viol, penalties = zip(*valids_violations_penalties)
 
+        if np.all(valids):
+            try:
+                assert_valid_state(self.net)
+            except AssertionError as e:
+                print(e)
+                import pdb; pdb.set_trace()
+
         return np.array(valids), np.array(viol), np.array(perc_viol), np.array(penalties)
 
     def calc_reward(self, test=False):
@@ -768,3 +776,11 @@ def get_bus_aggregated_obs(net, unit_type, column, idxs):
     state space. """
     df = net[unit_type].iloc[idxs]
     return df.groupby(['bus'])[column].sum().to_numpy()
+
+
+def assert_valid_state(net):
+    for unit_type in ('load', 'sgen', 'storage'):
+        assert not (-0.0000001 +  net[unit_type].p_mw * net[unit_type].scaling > net[unit_type].max_p_mw).any()
+        assert not (-0.0000001 + net[unit_type].q_mvar * net[unit_type].scaling > net[unit_type].max_q_mvar).any()
+        assert not (0.0000001 + net[unit_type].p_mw * net[unit_type].scaling < net[unit_type].min_p_mw).any()
+        assert not (0.0000001 + net[unit_type].q_mvar * net[unit_type].scaling < net[unit_type].min_q_mvar).any()

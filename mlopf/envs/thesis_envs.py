@@ -131,24 +131,34 @@ class QMarketEnv(opf_env.OpfEnv):
 
     def __init__(self, simbench_network_name='1-LV-urban6--0-sw',
                  gen_scaling=2.0, load_scaling=1.5, seed=None, min_obs=False,
-                 cos_phi=0.9, max_q_exchange=0.01, *args, **kwargs):
+                 cos_phi=0.9, max_q_exchange=0.01, market_based=True,
+                 *args, **kwargs):
 
         self.cos_phi = cos_phi
+        self.market_based = market_based
         self.max_q_exchange = max_q_exchange
         self.net = self._define_opf(
             simbench_network_name, gen_scaling=gen_scaling,
             load_scaling=load_scaling, *args, **kwargs)
 
         # Define the RL problem
-        # See all load power values, sgen active power, and sgen prices...
+        # See all load power values, sgen/storage active power, and sgen prices...
         self.obs_keys = [
-            ('sgen', 'p_mw', self.net['sgen'].index),
-            ('load', 'p_mw', self.net['load'].index),
-            ('load', 'q_mvar', self.net['load'].index),
-            ('poly_cost', 'cq2_eur_per_mvar2', np.arange(len(self.net.sgen) + len(self.net.ext_grid)))]
+            ('sgen', 'p_mw', self.net.sgen.index),
+            ('storage', 'p_mw', self.net.storage.index),
+            ('load', 'p_mw', self.net.load.index),
+            ('load', 'q_mvar', self.net.load.index)
+        ]
+
+        if market_based:
+            # Consider reactive power prices as well
+            self.obs_keys.append(
+                ('poly_cost', 'cq2_eur_per_mvar2', np.arange(len(self.net.sgen) + len(self.net.ext_grid) + len(self.net.storage)))
+            )
 
         # ... and control all sgens' reactive power values
-        self.act_keys = [('sgen', 'q_mvar', self.net['sgen'].index)]
+        self.act_keys = [('sgen', 'q_mvar', self.net.sgen.index),
+                         ('storage', 'q_mvar', self.net.storage.index)]
 
         if 'ext_grid_pen_kwargs' not in kwargs:
             kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 500}
@@ -156,6 +166,7 @@ class QMarketEnv(opf_env.OpfEnv):
         super().__init__(seed=seed, *args, **kwargs)
 
         if self.vector_reward is True:
+            # TODO: Update vector reward
             # 2 penalties and `n_sgen+1` objective functions
             n_objs = 2 + len(self.net.sgen) + 1
             self.reward_space = gym.spaces.Box(
@@ -168,9 +179,16 @@ class QMarketEnv(opf_env.OpfEnv):
         net.load['controllable'] = False
 
         net.sgen['controllable'] = True
+        # Assumption: Generators can provide more reactive than active power
         net.sgen['max_s_mva'] = net.sgen['max_max_p_mw'] / self.cos_phi
         net.sgen['max_max_q_mvar'] = net.sgen['max_s_mva']
         net.sgen['min_min_q_mvar'] = -net.sgen['max_s_mva']
+
+        net.storage['controllable'] = True
+        # Assumption reactive power range = active power range
+        net.storage['max_s_mva'] = net.storage['max_max_p_mw'].abs()
+        net.storage['max_max_q_mvar'] = net.storage['max_s_mva']
+        net.storage['min_min_q_mvar'] = -net.storage['max_s_mva']
 
         # TODO: Currently finetuned for simbench grid '1-LV-urban6--0-sw'
         net.ext_grid['max_q_mvar'] = self.max_q_exchange
@@ -188,7 +206,12 @@ class QMarketEnv(opf_env.OpfEnv):
             pp.create_poly_cost(net, idx, 'ext_grid',
                                 cp1_eur_per_mw=self.loss_costs,
                                 cq2_eur_per_mvar2=0)
-
+            
+        for idx in net['storage'].index:
+            pp.create_poly_cost(net, idx, 'storage',
+                                cp1_eur_per_mw=-self.loss_costs,
+                                cq2_eur_per_mvar2=0)
+            
         # Load costs are fixed anyway. Added only for completeness.
         for idx in net['load'].index:
             pp.create_poly_cost(net, idx, 'load',
@@ -206,21 +229,25 @@ class QMarketEnv(opf_env.OpfEnv):
     def _sampling(self, step, test, sample_new, *args, **kwargs):
         super()._sampling(step, test, sample_new, *args, **kwargs)
 
-        # Sample prices uniformly from min/max range
-        self._sample_from_range(
-            'poly_cost', 'cq2_eur_per_mvar2',
-            self.net.poly_cost[self.net.poly_cost.et == 'sgen'].index)
-        self._sample_from_range(
-            'poly_cost', 'cq2_eur_per_mvar2',
-            self.net.poly_cost[self.net.poly_cost.et == 'ext_grid'].index)
+        # Sample reactive power prices uniformly from min/max range
+        if self.market_based:
+            for unit_type in ('sgen', 'ext_grid', 'storage'):
+                self._sample_from_range(
+                'poly_cost', 'cq2_eur_per_mvar2',
+                self.net.poly_cost[self.net.poly_cost.et == unit_type].index)
 
-        # active power is not controllable (only relevant for actual OPF)
-        self.net.sgen['max_p_mw'] = self.net.sgen.p_mw * self.net.sgen.scaling
-        self.net.sgen['min_p_mw'] = 0.999999 * self.net.sgen.max_p_mw
+        # Active power is not controllable (only relevant for OPF baseline)
+        # Set active power boundaries to current active power values
+        for unit_type in ('sgen', 'storage'):
+            self.net[unit_type]['max_p_mw'] = self.net[unit_type].p_mw * self.net[unit_type].scaling + 1e-9
+            self.net[unit_type]['min_p_mw'] = self.net[unit_type].p_mw * self.net[unit_type].scaling - 1e-9
 
-        q_max = (self.net.sgen.max_s_mva**2 - self.net.sgen.max_p_mw**2)**0.5
-        self.net.sgen['min_q_mvar'] = -q_max
-        self.net.sgen['max_q_mvar'] = q_max
+        # Assumption: Generators provide all reactive power possible
+        for unit_type in ('sgen', 'storage'):
+            q_max = (self.net[unit_type].max_s_mva**2 - self.net[unit_type].max_p_mw**2)**0.5
+            self.net[unit_type]['min_q_mvar'] = -q_max
+            self.net[unit_type]['max_q_mvar'] = q_max
+
 
     def calc_objective(self, net):
         """ Define what to do in vector_reward-case. """
@@ -248,6 +275,21 @@ class QMarketEnv(opf_env.OpfEnv):
                 valids[0:3], valids[4:]).all())
 
         return valids, violations, perc_violations, penalties
+
+
+class VoltageControlEnv(QMarketEnv):
+    def __init__(self, simbench_network_name='1-LV-rural3--2-sw',
+                 load_scaling=1.8, gen_scaling=1.5, 
+                 cos_phi=0.95, max_q_exchange=0.01,
+                 market_based=False,
+                 *args, **kwargs):
+        super().__init__(simbench_network_name=simbench_network_name,
+                         load_scaling=load_scaling, 
+                         gen_scaling=gen_scaling,
+                         cos_phi=cos_phi,
+                         max_q_exchange=max_q_exchange, 
+                         market_based=market_based,
+                         *args, **kwargs)
 
 
 class EcoDispatchEnv(opf_env.OpfEnv):

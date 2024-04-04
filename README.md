@@ -3,6 +3,11 @@ A set of benchmark environments to solve the Optimal Power Flow (OPF) problem
 with reinforcement learning (RL) algorithms. All environments use the gymnasium 
 interface. (exception: `env.render()` not implemented)
 
+Warning: The whole repository is work in progress. Feel free to use the 
+environments as benchmarks for your research. However, the environments can be 
+expected to change slightly in the next months. The release of version 1.0 is 
+planned for about fall/winter 2024.   
+
 ### Installation
 Clone the repository and run `pip install -e .` within some kind of virtual env.
 Tested for python 3.8 (newer version will probably not work).
@@ -10,15 +15,24 @@ Tested for python 3.8 (newer version will probably not work).
 ### Environments
 Currently, three OPF environments are available:
 
-#### Standard OPF (SimpleOpfEnv)
+#### Simple OPF (SimpleOpfEnv)
 Use `from mlopf.envs.thesis_envs import SimpleOpfEnv` to import this env.
 This env is the simplest one to learn. The objective is to maximize renewable
 generation subject to constraints.
 
+#### Woltage control (QMarketEnv)
+Use `from mlopf.envs.thesis_envs import VoltageControlEnv` to import this env.
+The goal is to find optimal reactive power setpoints to minimize losses in the 
+system subject to constraints (mainly voltage level).
+This env has intermediate difficulty and focuses on constraint satisfaction. 
+
 #### Reactive power market (QMarketEnv)
 Use `from mlopf.envs.thesis_envs import QMarketEnv` to import this env.
-This env had intermediate difficulty. The objective is the minimize costs and
-reactive power costs in a local reactive power market.
+The reactive power market is an extension of the voltage control problem. 
+The objective is the minimize losses and reactive power costs in a local 
+reactive power market subject to constraints. 
+This env is more difficult regarding optimization because the agent has to find
+the cheapest reactive power sources on the market to achieve the same goal. 
 
 #### Economic dispatch (EcoDispatchEnv)
 Use `from mlopf.envs.thesis_envs import EcoDispatchEnv` to import this env.
@@ -32,6 +46,10 @@ All OPF environments are customizable. Parameters are:
 * `load_scaling`: Equivalent to `gen_scaling`
 * `voltage_band`: Define the voltage band (default `0.05` for +-0.05pu)
 * `max_loading`: Define the maximum load of lines and trafos (default `80` for 80%)
+* Work in progress (TODO)
+
+However, if you want your results to be comparable with other research, you 
+should stick to the default settings. 
 
 ### Simbench energy systems
 For every environment, different simbench/pandapower energy systems can be

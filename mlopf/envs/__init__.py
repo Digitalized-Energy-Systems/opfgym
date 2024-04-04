@@ -2,6 +2,8 @@
 
 from gym.envs.registration import register
 
+from mlopf.envs.thesis_envs import SimpleOpfEnv, QMarketEnv, EcoDispatchEnv, VoltageControlEnv
+
 register(
     id='SimpleOpfEnv-v0',
     entry_point='mlopf.envs.thesis_envs:SimpleOpfEnv',
