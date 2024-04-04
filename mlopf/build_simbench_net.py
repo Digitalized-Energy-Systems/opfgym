@@ -16,6 +16,7 @@ def build_simbench_net(simbench_network_name, gen_scaling=1.0, load_scaling=2.0,
         net, profiles_instead_of_study_cases=True)
 
     repair_simbench_profiles(net, profiles)
+    drop_gens_at_ext_grid(net)
     set_constraints_from_profiles(net, profiles)
 
     return net, profiles
@@ -39,11 +40,16 @@ def set_system_constraints(net, voltage_band=None, max_loading=None):
         net.trafo['max_loading_percent'] = max_loading
 
 
+def drop_gens_at_ext_grid(net):
+    """ According to pp.diagnostic(), gens should not be connected to the same 
+    buses as external grids. This function removes such gens automatically. """
+    for bus in net.ext_grid.bus:
+        net.gen.drop(net.gen[net.gen.bus == bus].index, inplace=True)
+
+
 def repair_simbench_profiles(net, profiles):
     """ The simbench data sometimes contains faulty data that needs to be
     repaired/thrown out. """
-
-    # TODO: Bad style: this function does two things: repair profiles and set some constraints
 
     # Fix strange error in simbench: Sometimes negative active power values
     profiles[('sgen', 'p_mw')][profiles[('sgen', 'p_mw')] < 0.0] = 0.0

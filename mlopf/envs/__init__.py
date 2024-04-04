@@ -3,6 +3,7 @@
 from gym.envs.registration import register
 
 from mlopf.envs.thesis_envs import SimpleOpfEnv, QMarketEnv, EcoDispatchEnv, VoltageControlEnv
+from mlopf.envs.redispatch import Redispatch
 
 register(
     id='SimpleOpfEnv-v0',
