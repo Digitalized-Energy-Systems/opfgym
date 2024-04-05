@@ -3,6 +3,8 @@
 from gym.envs.registration import register
 
 from mlopf.envs.thesis_envs import SimpleOpfEnv, QMarketEnv, EcoDispatchEnv, VoltageControlEnv
+from mlopf.envs.load_shedding import LoadShedding
+
 
 register(
     id='SimpleOpfEnv-v0',
