@@ -6,7 +6,7 @@ the pandapower OPF to calculate the performance of the DRL agents.
 
 """
 
-import gym
+import gymnasium as gym
 import numpy as np
 import pandapower as pp
 
@@ -65,7 +65,6 @@ class SimpleOpfEnv(opf_env.OpfEnv):
         # ... and control all sgens' active and reactive power values
         self.act_keys = [('sgen', 'p_mw', self.net['sgen'].index),
                          ('sgen', 'q_mvar', self.net['sgen'].index)]
-        n_gens = len(self.net['sgen'].index)
 
         if 'ext_grid_pen_kwargs' not in kwargs:
             kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 500}
