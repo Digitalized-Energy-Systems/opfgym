@@ -7,14 +7,15 @@ TODO: Maybe change this to demand response env (load can be increased as well)
 
 """
 
-import gymnasium as gym 
 import numpy as np
 import pandapower as pp
 
 from mlopf import opf_env
-from mlopf.objectives import min_p_loss, min_pp_costs
 from mlopf.build_simbench_net import build_simbench_net
 
+
+# TODO: Problem: Sadly pandapower cannot deal with coupled active/reactive power,
+# which would be necassary for this environment. Current solution: Only active power shedding...
 
 class LoadShedding(opf_env.OpfEnv):
     """
@@ -47,7 +48,7 @@ class LoadShedding(opf_env.OpfEnv):
                          ('load', 'q_mvar', self.net.load.index),
                          ('poly_cost', 'cp1_eur_per_mw', self.net.poly_cost.index)]
 
-        # ... and control all sgens' active and reactive power values
+        # Control active power of loads and storages
         self.act_keys = [('load', 'p_mw', self.net.load.index),
                          ('storage', 'p_mw', self.net.storage.index)]
 
@@ -76,6 +77,7 @@ class LoadShedding(opf_env.OpfEnv):
 
         net.sgen['controllable'] = False
 
+        # Constraint: We can not have too much active power from ext grid
         net.ext_grid['max_p_mw'] = self.max_p_exchange
         net.ext_grid['min_p_mw'] = -np.inf
 
@@ -98,6 +100,7 @@ class LoadShedding(opf_env.OpfEnv):
     def _sampling(self, *args, **kwargs):
         super()._sampling(*args, **kwargs)
 
+        # Sample prices for loads and storages
         for unit_type in ('load', 'storage'):
             self._sample_from_range(
             'poly_cost', 'cp1_eur_per_mw',
