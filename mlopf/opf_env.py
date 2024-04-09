@@ -15,6 +15,7 @@ from scipy import stats
 from mlopf.penalties import (voltage_violation, line_overload,
                              trafo_overload, ext_grid_overpower)
 from mlopf.objectives import min_pp_costs
+from mlopf.util.normalization import get_normalization_params
 
 warnings.simplefilter('once')
 
@@ -29,8 +30,9 @@ class OpfEnv(gym.Env, abc.ABC):
                  pf_for_obs=None,
                  bus_wise_obs=False,
                  diff_reward=False,
-                 reward_function='summation',
-                 reward_scaling=1,
+                 reward_function: str='summation',
+                 reward_scaling: str=None,
+                 reward_scaling_params: dict=dict(),
                  squash_reward=False,
                  remove_normal_obs=False,
                  add_res_obs=False,
@@ -109,7 +111,6 @@ class OpfEnv(gym.Env, abc.ABC):
         self.reward_function = reward_function
         self.vector_reward = vector_reward
         self.squash_reward = squash_reward
-        self.reward_scaling = reward_scaling
 
         # Default penalties are purely linear
         self.volt_pen = (volt_pen_kwargs if volt_pen_kwargs
@@ -145,46 +146,49 @@ class OpfEnv(gym.Env, abc.ABC):
 
         self.test_steps = define_test_steps(test_share)
 
+        # Prepare reward scaling for later on 
+        self.reward_scaling = reward_scaling
         self.penalty_weight = penalty_weight
-        # Get rough estimation of the objective function to compute penalties later
-        if self.reward_scaling == 'minmax' and 'min_obj' in self.__dict__.keys():
-            pass
-        elif self.reward_scaling == 'normalization' and 'mean_obj' in self.__dict__.keys():
-            pass
-        elif self.reward_function == 'replacement' and 'mean_abs_obj' in self.__dict__.keys():
-            pass
-        elif self.reward_function in ('replacement', 'replacementA', 'multiplication', 'replacement_plus_summation') or self.reward_scaling in ('minmax', 'normalization'):
-            objs = []
-            pens = []
-            for _ in range(1000):
-                self._sampling()
-                self._apply_actions(self.action_space.sample())
-                self._run_pf()
-                objs.append(self.calc_objective(self.net))
-                pens.append(self.calc_violations()[3])
-                
-            self.min_obj = np.array(objs).sum(axis=1).min()
-            self.max_obj = np.array(objs).sum(axis=1).max()
-            self.min_pen = np.array(pens).sum(axis=1).min()
-            self.max_pen = np.array(pens).sum(axis=1).max()
-            # Add some buffer to make sure we really have a worst-case
-            # self.min_obj -= 0.5 * abs(self.min_obj)
-            # Compute the mean absolute objective to compute penalty later
-            self.mean_obj = np.sum(objs, axis=1).mean()
-            self.mean_pen = np.sum(pens, axis=1).mean()
-            self.mean_abs_obj = np.abs(np.sum(objs, axis=1)).mean()
-            self.mean_abs_pen = np.abs(np.sum(pens, axis=1)).mean()
-            self.obj_std = np.std(np.sum(objs, axis=1))
-            self.pen_std = np.std(np.sum(pens, axis=1))
+        if reward_scaling_params == 'auto' or (
+                not reward_scaling_params and reward_scaling):
+            # Find reward range by trial and error
+            params = get_normalization_params(self, num_samples=1000)
+        else:
+            params = reward_scaling_params
 
-            print(f'Min objective: {self.min_obj}')
-            print(f'Max objective: {self.max_obj}')
-            print(f'Min penalty: {self.min_pen}')
-            print(f'Max penalty: {self.max_pen}')
-            print(f'Mean objective: {self.mean_obj}')
-            print(f'Mean penalty: {self.mean_pen}')
-            print(f'Std objective: {self.obj_std}')
-            print(f'Std penalty: {self.pen_std}')
+        if not reward_scaling:
+            self.reward_factor = 1
+            self.reward_bias = 0
+            self.penalty_factor = 1
+            self.penalty_bias = 0
+        elif reward_scaling == 'minmax':
+            # Scale from range [min, max] to range [-1, 1]
+            # formula: (obj - min_obj) / (max_obj - min_obj) * 2 - 1
+            diff = (params['max_obj'] - params['min_obj']) / 2
+            self.reward_factor = 1 / diff
+            self.reward_bias = -(params['min_obj'] / diff + 1)
+            diff = 2 * (params['max_viol'] - params['min_viol'])
+            self.penalty_factor = 1 / diff
+            self.penalty_bias = params['min_viol'] / diff + 1
+        elif reward_scaling == 'normalization':
+            # Scale so that mean is zero and standard deviation is one
+            # formula: (obj - mean_obj) / obj_std
+            self.reward_factor = 1 / params['std_obj']
+            self.reward_bias = -params['mean_obj'] / params['std_obj']
+            self.penalty_factor = 1 / params['std_viol']
+            self.penalty_bias = -params['mean_viol'] / params['std_viol']
+        else:
+            raise NotImplementedError('This reward scaling does not exist!')
+
+        # Potentially overwrite scaling with user settings
+        if 'reward_factor' in params.keys():
+            self.reward_factor = params['reward_factor']
+        if 'reward_bias' in params.keys():
+            self.reward_bias = params['reward_bias']
+        if 'penalty_factor' in params.keys():
+            self.penalty_factor = params['penalty_factor']
+        if 'penalty_bias' in params.keys():
+            self.penalty_bias = params['penalty_bias']
 
     def reset(self, step=None, test=False, seed=None, options=None):
         super().reset(seed=seed, options=options)
@@ -543,19 +547,9 @@ class OpfEnv(gym.Env, abc.ABC):
         
         obj = sum(objectives)
         pen = sum(penalties)
-        if self.reward_scaling == 'minmax':
-            # Scale reward to [-1, 1]
-            obj = (obj - self.min_obj) / (self.max_obj - self.min_obj) * 2 - 1 
-            pen = (pen - self.min_pen) / (self.max_pen - self.min_pen) * 2 - 1
-            reward = obj * (1 - self.penalty_weight) + pen * self.penalty_weight
-        elif self.reward_scaling == 'normalization':
-            # Scale reward so that the mean reward is zero and the std is 1
-            obj = (obj - self.mean_obj) / self.obj_std
-            pen = (pen - self.mean_pen) / self.pen_std
-        else:
-            # Scale reward with some user-defined factor
-            obj = obj * self.reward_scaling
-            pen = pen * self.reward_scaling
+        # Perform reward scaling
+        obj = obj * self.reward_factor + self.reward_bias
+        pen = pen * self.penalty_factor + self.penalty_bias
 
         if self.autoscale_penalty:
             # Scale the penalty with the objective function
@@ -574,7 +568,10 @@ class OpfEnv(gym.Env, abc.ABC):
         #     # Reward as a numpy array
         #     reward = full_obj
 
-        reward = obj * (1 - self.penalty_weight) + pen * self.penalty_weight
+        if self.reward_scaling:
+            reward = obj * (1 - self.penalty_weight) + pen * self.penalty_weight
+        else:
+            reward = obj + pen
 
         if self.squash_reward and not test:
             reward = np.sign(reward) * np.log(np.abs(reward) + 1)

@@ -131,6 +131,7 @@ class QMarketEnv(opf_env.OpfEnv):
     def __init__(self, simbench_network_name='1-LV-urban6--0-sw',
                  gen_scaling=2.0, load_scaling=1.5, seed=None, min_obs=False,
                  cos_phi=0.9, max_q_exchange=0.01, market_based=True,
+                 scaling_params_=dict(),
                  *args, **kwargs):
 
         self.cos_phi = cos_phi
@@ -162,7 +163,29 @@ class QMarketEnv(opf_env.OpfEnv):
         if 'ext_grid_pen_kwargs' not in kwargs:
             kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 500}
         
-        super().__init__(seed=seed, *args, **kwargs)
+        # Default reward scaling parameters (valid only for this setting!)
+        scaling_params = {'min_obj': -315.3594293016033, 
+                                'max_obj': -0.5631078674144792, 
+                                'min_viol': -52.545690092382365, 
+                                'max_viol': 0.0, 
+                                'mean_obj': -26.113343609478825, 
+                                'mean_viol': -9.192470515693643, 
+                                'std_obj': 32.788709683564186, 
+                                'std_viol': 9.863764412508953, 
+                                'median_obj': -15.09164386619685, 
+                                'median_viol': -6.549318454001976, 
+                                'mean_abs_obj': 26.113343609478825, 
+                                'mean_abs_viol': 9.192470515693643, 
+                                'low5_percentil_obj': -88.41343490219285, 
+                                'low5_percentil_viol': -29.79802513943093, 
+                                'top5_percentil_obj': -2.830234400507151, 
+                                'top5_percentil_viol': 0.0}
+        # Overwrite with potential user parameters
+        scaling_params.update(scaling_params_)
+        
+        super().__init__(seed=seed, 
+                         reward_scaling_params=scaling_params,
+                         *args, **kwargs)
 
         if self.vector_reward is True:
             # TODO: Update vector reward
@@ -225,8 +248,8 @@ class QMarketEnv(opf_env.OpfEnv):
 
         return net
 
-    def _sampling(self, step, test, sample_new, *args, **kwargs):
-        super()._sampling(step, test, sample_new, *args, **kwargs)
+    def _sampling(self, *args, **kwargs):
+        super()._sampling(*args, **kwargs)
 
         # Sample reactive power prices uniformly from min/max range
         if self.market_based:
@@ -310,7 +333,8 @@ class EcoDispatchEnv(opf_env.OpfEnv):
 
     def __init__(self, simbench_network_name='1-HV-urban--0-sw', min_power=0,
                  n_agents=None, gen_scaling=1.0, load_scaling=1.5, max_price=600,
-                 seed=None, *args, **kwargs):
+                 seed=None, scaling_params_=dict(),
+                 *args, **kwargs):
         # Economic dispatch normally done in EHV (too big! use HV instead!)
         # EHV option: '1-EHV-mixed--0-sw' (340 generators!!!)
         # HV options: '1-HV-urban--0-sw' and '1-HV-mixed--0-sw'
@@ -352,7 +376,30 @@ class EcoDispatchEnv(opf_env.OpfEnv):
             kwargs['trafo_pen_kwargs'] = {'linear_penalty': 100000}
         if 'ext_grid_pen_kwargs' not in kwargs:
             kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 10000}
-        super().__init__(seed=seed, *args, **kwargs)
+
+        # Default reward scaling parameters (valid only for this setting!)
+        scaling_params = {'min_obj': -127301.09091820028, 
+                                'max_obj': 50988.42737064665, 
+                                'min_viol': -2716609.471252951, 
+                                'max_viol': 0.0, 
+                                'mean_obj': -39030.794634279606, 
+                                'mean_viol': -1173471.87410195, 
+                                'std_obj': 29749.454040569886, 
+                                'std_viol': 569220.4408766169, 
+                                'median_obj': -43944.03745411843, 
+                                'median_viol': -1195101.268869129, 
+                                'mean_abs_obj': 43296.18995058919, 
+                                'mean_abs_viol': 1173471.87410195, 
+                                'low5_percentil_obj': -78988.95094280897, 
+                                'low5_percentil_viol': -2055704.7698421471, 
+                                'top5_percentil_obj': 17859.65247785135, 
+                                'top5_percentil_viol': -197965.07106005857}
+        # Overwrite with potential user parameters
+        scaling_params.update(scaling_params_)
+
+        super().__init__(seed=seed, 
+                         reward_scaling_params=scaling_params, 
+                         *args, **kwargs)
 
         if self.vector_reward is True:
             # 5 penalties and `n_participants` objective functions
