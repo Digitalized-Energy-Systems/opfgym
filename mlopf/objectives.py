@@ -102,8 +102,6 @@ def min_pp_costs(net):
                 lower, higher, price = zip(*points)
                 costs += (p_mw - np.array(lower)) * np.array(price)
 
-
-
         all_costs.append(costs)
 
     if all_costs:

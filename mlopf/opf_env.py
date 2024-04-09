@@ -283,6 +283,7 @@ class OpfEnv(gym.Env, abc.ABC):
         try:
             self.net[unit_type][column].loc[idxs] = r / df.scaling
         except AttributeError:
+            # TODO: Add comment why this is necessary
             self.net[unit_type][column].loc[idxs] = r
 
     def _sample_normal(self, std=0.3, truncated=False, sample_new=True):
@@ -636,7 +637,6 @@ class OpfEnv(gym.Env, abc.ABC):
                             f' with violations: {violations}'
                             '(should normally not happen! Check if this is some'
                             'special case with soft constraints!')
-            
 
         return sum(np.append(objectives, penalties))
 
@@ -725,6 +725,7 @@ def get_action_space(act_keys: list, seed: int):
     low = np.array([])
     high = np.array([])
     for unit_type, column, idxs in act_keys:
+        # Storages in general and reactive power can take negative values
         condition = (unit_type == 'storage' or column == 'q_mvar')
         new_lows = -np.ones(len(idxs)) if condition else np.zeros(len(idxs))
 

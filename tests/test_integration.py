@@ -69,3 +69,16 @@ def test_redispatch_integration():
     assert isinstance(reward, float)
     assert terminated
     assert isinstance(info, dict)
+
+
+def test_load_shedding_integration():
+    dummy_env = LoadShedding()
+    for _ in range(3):
+        dummy_env.reset()
+        act = dummy_env.action_space.sample()
+        obs, reward, terminated, truncated, info = dummy_env.step(act)
+
+    assert isinstance(obs, np.ndarray)
+    assert isinstance(reward, float)
+    assert terminated
+    assert isinstance(info, dict)
