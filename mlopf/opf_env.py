@@ -24,7 +24,6 @@ class OpfEnv(gym.Env, abc.ABC):
                  train_test_split=True,
                  test_share=0.2,
                  vector_reward=False,
-                 single_step=True,
                  steps_per_episode=1,
                  autocorrect_prio='p_mw',
                  pf_for_obs=None,
@@ -126,8 +125,6 @@ class OpfEnv(gym.Env, abc.ABC):
         
         self.priority = autocorrect_prio
 
-        assert single_step, 'TODO: Multi-step episodes not implemented yet'
-        self.single_step = single_step
         self.steps_per_episode = steps_per_episode
 
         # Full state of the system (available in training, but not in testing)
@@ -383,22 +380,15 @@ class OpfEnv(gym.Env, abc.ABC):
             # Do not use the objective as reward, but their diff instead
             reward -= self.prev_reward
 
-        if self.single_step:
-            # Do not step to another time-series point!
-            if self.steps_per_episode == 1:
-                terminated = True
-                truncated = False
-            elif self.step_in_episode >= self.steps_per_episode:
-                terminated = False
-                truncated = True
-            else:
-                terminated = False
-                truncated = False
-        elif random.random() < 0.02:  # TODO! Better termination criterion
-            self._sampling(step=self.current_step + 1, test=test)
-            terminated = True  # TODO
+        if self.steps_per_episode == 1:
+            terminated = True
+            truncated = False
+        elif self.step_in_episode >= self.steps_per_episode:
+            terminated = False
+            truncated = True
         else:
-            terminated = not self._sampling(step=self.current_step + 1, test=test)
+            terminated = False
+            truncated = False
 
         obs = self._get_obs(self.obs_keys, self.add_time_obs)
         assert not np.isnan(obs).any()
