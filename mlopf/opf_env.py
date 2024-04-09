@@ -191,7 +191,7 @@ class OpfEnv(gym.Env, abc.ABC):
 
     def reset(self, step=None, test=False, seed=None, options=None):
         super().reset(seed=seed, options=options)
-        self.info = {}
+        self.info = {'pf_failed': False}
         self.step_in_episode = 0
 
         if not options:
@@ -235,7 +235,10 @@ class OpfEnv(gym.Env, abc.ABC):
             self.prev_obj = self.calc_objective(self.net)
             self.prev_reward = self.calc_reward()
 
-        return self._get_obs(self.obs_keys, self.add_time_obs), copy.deepcopy(self.info)
+        obs = self._get_obs(self.obs_keys, self.add_time_obs)
+        self.previous_obs = obs.copy()
+
+        return obs, copy.deepcopy(self.info)
 
     def _sampling(self, step=None, test=False, sample_new=True, *args, **kwargs):
         data_distr = self.test_data if test is True else self.train_data
@@ -368,14 +371,29 @@ class OpfEnv(gym.Env, abc.ABC):
 
         if self.apply_action:
             self._apply_actions(action)
+
+            # TODO REmove
+            # print('---------------------------')
+            # print('gen p: ', (self.net.gen.p_mw * self.net.gen.scaling).sum())
+            # print('sgen p: ', (self.net.sgen.p_mw * self.net.sgen.scaling).sum())
+            # print('load p: ', (self.net.load.p_mw * self.net.load.scaling).sum())
+
             success = self._run_pf()
 
             if not success:
                 # Something went seriously wrong! Find out what!
                 # Maybe NAN in power setpoints?!
                 # Maybe simply catch this with a strong negative reward?!
-                logging.critical(f'Powerflow not converged and reason unknown! Run diagnostic tool to at least find out what went wrong: {pp.diagnostic(self.net)}')
-                raise pp.powerflow.LoadflowNotConverged()
+                logging.critical('Powerflow in step() not converged and reason unknown!') 
+                # logging.critical(f'Run diagnostic tool to at least find out what went wrong: {pp.diagnostic(self.net)}')
+                # raise pp.powerflow.LoadflowNotConverged()
+                obs = self.previous_obs
+                reward = -1_000_000 # self.worst_case_reward
+                terminated = True
+                truncated = False
+                self.info['valids'] = np.array([False] * 5)
+                return obs, reward, terminated, truncated, copy.deepcopy(self.info)
+
 
         reward = self.calc_reward(test)
 
@@ -401,7 +419,6 @@ class OpfEnv(gym.Env, abc.ABC):
             terminated = not self._sampling(step=self.current_step + 1, test=test)
 
         obs = self._get_obs(self.obs_keys, self.add_time_obs)
-        assert not np.isnan(obs).any()
 
         return obs, reward, terminated, truncated, copy.deepcopy(self.info)
 
@@ -467,6 +484,7 @@ class OpfEnv(gym.Env, abc.ABC):
 
         except pp.powerflow.LoadflowNotConverged:
             logging.warning('Powerflow not converged!!!')
+            self.info['pf_failed'] = True
             return False
         return True
 
@@ -608,7 +626,12 @@ class OpfEnv(gym.Env, abc.ABC):
                 self.profiles, self.current_step)
             obss = [time_obs] + obss
 
-        return np.concatenate(obss)
+        obs = np.concatenate(obss)
+        try:
+            assert not np.isnan(obs).any()
+        except AssertionError:
+            import pdb; pdb.set_trace()
+        return obs
 
     def render(self):
         logging.warning(f'Rendering not supported!')
