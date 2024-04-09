@@ -29,7 +29,7 @@ class Redispatch(opf_env.OpfEnv):
     """
 
     def __init__(self, simbench_network_name='1-EHV-mixed--0-sw',
-                 gen_scaling=0.9, load_scaling=0.7, seed=None,
+                 gen_scaling=1.0, load_scaling=0.7, seed=None,
                  cos_phi=0.9, *args, **kwargs):
 
         self.cos_phi = cos_phi
@@ -70,7 +70,7 @@ class Redispatch(opf_env.OpfEnv):
     def _define_opf(self, simbench_network_name, voltage_band=0.05, *args, **kwargs):
         net, self.profiles = build_simbench_net(
             simbench_network_name, voltage_band=voltage_band, *args, **kwargs)
-        
+
         net.gen['vm_pu'] = 1.0 
         net.ext_grid['vm_pu'] = 1.0
         net.ext_grid.drop(np.array([0,1,2,3,4,5]), inplace=True)
@@ -132,7 +132,9 @@ class Redispatch(opf_env.OpfEnv):
             'ext_grid', 'diff_price_eur_per_mw', self.net.ext_grid.index)
 
         # Run power flow calculation to get initial active power setpoints
-        self._run_pf()
+        success = self._run_pf()
+        if not success:
+            import pdb; pdb.set_trace()
 
         # Set piece wise linear costs for all generation units
         # Structure: [[min_power, current_power, -costs], [current_power, max_power, costs]]
@@ -159,7 +161,7 @@ class Redispatch(opf_env.OpfEnv):
         pwl_price = list(map(lambda x: list(map(list, x)), pwl_price))
         self.net.pwl_cost['points'] = pwl_price
         # Define constant offset costs so that costs for current power are 0
-        self.offset_costs = (current_power * price).mean()
+        self.offset_costs = (current_power * price).mean() 
 
     def calc_objective(self, net):
         """ Define what to do in vector_reward-case. """
@@ -188,6 +190,6 @@ class Redispatch(opf_env.OpfEnv):
 
         return valids, violations, perc_violations, penalties
     
-    def _run_pf(self, distributed_slack=True, **kwargs):
-        # Multiple Slack buses in this net! -> overwrite default setting
-        super()._run_pf(distributed_slack=distributed_slack, **kwargs)
+    # def _run_pf(self, distributed_slack=True, **kwargs):
+    #     # Multiple Slack buses in this net! -> overwrite default setting
+    #     return super()._run_pf(distributed_slack=distributed_slack, **kwargs)
