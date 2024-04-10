@@ -499,3 +499,24 @@ class EcoDispatchEnv(opf_env.OpfEnv):
 
         # # /10000, because too high otherwise
         # return -(np.array(p_mw) * prices).sum() / 10000
+
+if __name__ == '__main__':
+    env = SimpleOpfEnv()
+    print('Simple OPF environment created')
+    print('Observation space:', env.observation_space.shape)
+    print('Action space:', env.action_space.shape)
+
+    env = QMarketEnv()
+    print('Reactive power market environment created')
+    print('Observation space:', env.observation_space.shape)
+    print('Action space:', env.action_space.shape)
+
+    env = VoltageControlEnv()
+    print('VoltageControl environment created')
+    print('Observation space:', env.observation_space.shape)
+    print('Action space:', env.action_space.shape)
+
+    env = EcoDispatchEnv()
+    print('EcoDispatch environment created')
+    print('Observation space:', env.observation_space.shape)
+    print('Action space:', env.action_space.shape)

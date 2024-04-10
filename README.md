@@ -16,18 +16,21 @@ Tested for python 3.8 (newer version will probably not work).
 Currently, three OPF environments are available:
 
 #### Simple OPF (SimpleOpfEnv)
-Use `from mlopf.envs.thesis_envs import SimpleOpfEnv` to import this env.
+Use `from mlopf.envs import SimpleOpfEnv` to import this env.
+The observation space has 253 dimensions and the action space 34 dimensions.
 This env is the simplest one to learn. The objective is to maximize renewable
 generation subject to constraints.
 
-#### Woltage control (QMarketEnv)
-Use `from mlopf.envs.thesis_envs import VoltageControlEnv` to import this env.
+#### Woltage control (VoltageControlEnv)
+Use `from mlopf.envs import VoltageControlEnv` to import this env.
+The observation space has 315 dimensions and the action space 43 dimensions.
 The goal is to find optimal reactive power setpoints to minimize losses in the 
 system subject to constraints (mainly voltage level).
-This env has intermediate difficulty and focuses on constraint satisfaction. 
+This env has intermediate difficulty and focuses on constraint satisfaction.
 
 #### Reactive power market (QMarketEnv)
-Use `from mlopf.envs.thesis_envs import QMarketEnv` to import this env.
+Use `from mlopf.envs import QMarketEnv` to import this env.
+The observation space has 233 dimensions and the action space 5 dimensions.
 The reactive power market is an extension of the voltage control problem. 
 The objective is the minimize losses and reactive power costs in a local 
 reactive power market subject to constraints. 
@@ -35,9 +38,16 @@ This env is more difficult regarding optimization because the agent has to find
 the cheapest reactive power sources on the market to achieve the same goal. 
 
 #### Economic dispatch (EcoDispatchEnv)
-Use `from mlopf.envs.thesis_envs import EcoDispatchEnv` to import this env.
+Use `from mlopf.envs import EcoDispatchEnv` to import this env.
+The observation space has 201 dimensions and the action space 42 dimensions.
 This is the most difficult environment. The goal is to perform an economic
 dispatch, i.e. to minimize active power costs subject to constraints.
+
+#### Load shedding LoadShedding
+Use `from mlopf.envs import LoadShedding` to import this env. 
+The observation space has 163 dimensions and the action space 55 dimensions.
+The goal is to perform cost-minimal load shedding and demand response subject 
+to constraints. Difficulty not tested yet (TODO).
 
 ### OPF parameters
 All OPF environments are customizable. Parameters are:

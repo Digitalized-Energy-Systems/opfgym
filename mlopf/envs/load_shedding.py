@@ -113,3 +113,11 @@ class LoadShedding(opf_env.OpfEnv):
         for unit_type in ('load', 'storage'):
             self.net[unit_type]['max_q_mvar'] = self.net[unit_type].q_mvar * self.net[unit_type].scaling + 1e-9
             self.net[unit_type]['min_q_mvar'] = self.net[unit_type].q_mvar * self.net[unit_type].scaling - 1e-9
+
+
+if __name__ == '__main__':
+    env = LoadShedding()
+    print('Load shedding environment created')
+    print('Observation space:', env.observation_space.shape)
+    print('Action space:', env.action_space.shape)
+    
