@@ -28,11 +28,14 @@ class ObsGraphRepresentation(gym.Wrapper):
         
     def reset(self, *args, **kwargs):
         obs, info = self.env.reset(*args, **kwargs)
-        return self.model.representation(info['graph_obs']).detach().numpy(), info
+        obs = self.model.representation(info['graph_obs']).detach().numpy()
+        print(obs.shape)
+        return obs, info
     
     def step(self, *args, **kwargs):
         obs, reward, terminated, truncated, info = self.env.step(*args, **kwargs)
         obs = self.model.representation(info['next_graph_obs']).detach().numpy()
+        print(obs.shape)
         return obs, reward, terminated, truncated, info
 
     def collect_data(self, env):

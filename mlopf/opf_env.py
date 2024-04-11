@@ -51,6 +51,7 @@ class OpfEnv(gym.Env, abc.ABC):
                  penalty_weight=0.5,
                  penalty_obs_range: tuple=None,
                  test_penalty=None,
+                 graph_obs=False,
                  seed=None,
                  *args, **kwargs):
 
@@ -193,6 +194,7 @@ class OpfEnv(gym.Env, abc.ABC):
 
         # Prepare graph observation (TODO: Automate this!)
         self.n_node_features = 3
+        self.graph_obs = graph_obs
 
     def reset(self, step=None, test=False, seed=None, options=None):
         super().reset(seed=seed, options=options)
@@ -240,7 +242,8 @@ class OpfEnv(gym.Env, abc.ABC):
             self.prev_obj = self.calc_objective(self.net)
             self.prev_reward = self.calc_reward()
 
-        self.info['graph_obs'] = get_simple_graph_obs(self.net)
+        if self.graph_obs:
+            self.info['graph_obs'] = get_simple_graph_obs(self.net)
         obs = self._get_obs(self.obs_keys, self.add_time_obs)
 
         return obs, copy.deepcopy(self.info)
@@ -404,7 +407,8 @@ class OpfEnv(gym.Env, abc.ABC):
         obs = self._get_obs(self.obs_keys, self.add_time_obs)
         assert not np.isnan(obs).any()
 
-        self.info['next_graph_obs'] = get_simple_graph_obs(self.net)
+        if self.graph_obs:
+            self.info['graph_obs'] = get_simple_graph_obs(self.net)
 
         return obs, reward, terminated, truncated, copy.deepcopy(self.info)
 
@@ -603,8 +607,6 @@ class OpfEnv(gym.Env, abc.ABC):
             time_obs = get_simbench_time_observation(
                 self.profiles, self.current_step)
             obss = [time_obs] + obss
-
-        self.info['graph_obs'] = get_simple_graph_obs(self.net)
 
         return np.concatenate(obss)
 
