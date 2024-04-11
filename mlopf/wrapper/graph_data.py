@@ -7,7 +7,7 @@ from torch_geometric.data import Batch, DataLoader
 from torch_geometric.nn import GCNConv
 
 
-class ObsGraphRepresentation(gym.ObservationWrapper):
+class ObsGraphRepresentation(gym.Wrapper):
     def __init__(self, env, n_epochs=50, n_samples=20000, 
                  validation_share=0.8, *args, **kwargs):
         super().__init__(env, *args, **kwargs)
@@ -26,9 +26,15 @@ class ObsGraphRepresentation(gym.ObservationWrapper):
         train_loader, validation_batch = self.collect_data(env)
         self.train_model(train_loader, validation_batch)
         
-    def observation(self, obs):
-        return self.model.representation(obs).detach().numpy()
+    def reset(self, *args, **kwargs):
+        obs, info = self.env.reset(*args, **kwargs)
+        return self.model.representation(info['graph_obs']).detach().numpy(), info
     
+    def step(self, *args, **kwargs):
+        obs, reward, terminated, truncated, info = self.env.step(*args, **kwargs)
+        obs = self.model.representation(info['next_graph_obs']).detach().numpy()
+        return obs, reward, terminated, truncated, info
+
     def collect_data(self, env):
         data_list = []
         for i in range(self.n_samples):
