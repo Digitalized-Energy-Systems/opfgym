@@ -16,6 +16,7 @@ from mlopf.penalties import (voltage_violation, line_overload,
                              trafo_overload, ext_grid_overpower)
 from mlopf.objectives import min_pp_costs
 from mlopf.util.normalization import get_normalization_params
+from mlopf.util.graph_obs import get_bus_aggregated_obs, get_homo_graph_obs, get_simple_graph_obs
 
 warnings.simplefilter('once')
 
@@ -50,6 +51,7 @@ class OpfEnv(gym.Env, abc.ABC):
                  penalty_weight=0.5,
                  penalty_obs_range: tuple=None,
                  test_penalty=None,
+                 graph_obs=False,
                  seed=None,
                  *args, **kwargs):
 
@@ -190,6 +192,10 @@ class OpfEnv(gym.Env, abc.ABC):
         if 'penalty_bias' in params.keys():
             self.penalty_bias = params['penalty_bias']
 
+        # Prepare graph observation (TODO: Automate this!)
+        self.n_node_features = 3
+        self.graph_obs = graph_obs
+
     def reset(self, step=None, test=False, seed=None, options=None):
         super().reset(seed=seed, options=options)
         self.info = {}
@@ -236,7 +242,11 @@ class OpfEnv(gym.Env, abc.ABC):
             self.prev_obj = self.calc_objective(self.net)
             self.prev_reward = self.calc_reward()
 
-        return self._get_obs(self.obs_keys, self.add_time_obs), copy.deepcopy(self.info)
+        if self.graph_obs:
+            self.info['graph_obs'] = get_simple_graph_obs(self.net)
+        obs = self._get_obs(self.obs_keys, self.add_time_obs)
+
+        return obs, copy.deepcopy(self.info)
 
     def _sampling(self, step=None, test=False, sample_new=True, *args, **kwargs):
         data_distr = self.test_data if test is True else self.train_data
@@ -396,6 +406,9 @@ class OpfEnv(gym.Env, abc.ABC):
 
         obs = self._get_obs(self.obs_keys, self.add_time_obs)
         assert not np.isnan(obs).any()
+
+        if self.graph_obs:
+            self.info['graph_obs'] = get_simple_graph_obs(self.net)
 
         return obs, reward, terminated, truncated, copy.deepcopy(self.info)
 
@@ -757,13 +770,6 @@ def get_simbench_time_observation(profiles: dict, current_step: int):
         time_obs.append(np.cos(cyclical_time))
 
     return np.array(time_obs)
-
-
-def get_bus_aggregated_obs(net, unit_type, column, idxs):
-    """ Aggregate power values that are connected to the same bus to reduce
-    state space. """
-    df = net[unit_type].iloc[idxs]
-    return df.groupby(['bus'])[column].sum().to_numpy()
 
 
 def assert_valid_state(net):

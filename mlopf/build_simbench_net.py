@@ -76,11 +76,12 @@ def set_constraints_from_profiles(net, profiles):
         net_df[f'mean_{column}'] = profiles[type_act].mean(axis=0)
 
     # Add estimation of min/max data for external grids
-    load_gen_diff = profiles[('load', 'p_mw')].sum(
-        axis=1) - profiles[('sgen', 'p_mw')].sum(axis=1)
+    load_gen_diff = (profiles[('load', 'p_mw')] * net.load.scaling).sum(
+        axis=1) - (profiles[('sgen', 'p_mw')] * net.sgen.scaling).sum(axis=1)
     net.ext_grid['max_max_p_mw'] = load_gen_diff.max()
     net.ext_grid['min_min_p_mw'] = load_gen_diff.min()
-    # Generators should normally not increase q imbalances further
+    # Assumption: Generators should normally not increase q imbalances further
     load_q_mvar = profiles[('load', 'q_mvar')].sum(axis=1)
     net.ext_grid['max_max_q_mvar'] = load_q_mvar.max()
     net.ext_grid['min_min_q_mvar'] = load_q_mvar.min()
+    
