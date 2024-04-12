@@ -6,33 +6,22 @@ the pandapower OPF to calculate the performance of the DRL agents.
 
 """
 
+import math
+
 import gymnasium as gym
 import numpy as np
 import pandapower as pp
 
 from mlopf import opf_env
-from mlopf.objectives import min_p_loss, min_pp_costs
 from mlopf.build_simbench_net import build_simbench_net
 
-# TODO: Create functions for recurring code (or method in upper class?!)
-# TODO: Maybe add one with controllable loads (solvable) and/or storage systems (not solvable with OPF!)
-# Needs to be large-scale with big obs/act spaces! (otherwise to easy to solve)
-# New kind of objective? eg min losses, min load reduction, TODO
-# New kinds of constraints? TODO possibilities?
-# Add normal gens to actuators? -> EHV system?!
-# Use noise observations? -> stochastic environment! # TODO: simply add this to base env as flag!
-# Use multi-level grid? Is this maybe already possible?! # TODO
 
-# TODO: maybe add another env with discrete action spaces (or even both?! but probably separate idea and paper)
-
-
-class SimpleOpfEnv(opf_env.OpfEnv):
+class MaxRenewable(opf_env.OpfEnv):
     """
-    Standard Optimal Power Flow environment: The grid operator learns to set
-    active and reactive power of all generators in the system to maximize
-    active power feed-in to the external grid.
-    Since this environment has lots of actuators and a
-    simple objective function, it is well suited to investigate constraint
+    The goal is to learn to set active and reactive power of all generators in 
+    the system to maximize active power feed-in to the external grid.
+    Since this environment has an obvious solution to the optimization problem 
+    (set all gens to 100% power), it is well suited to investigate constraint 
     satisfaction.
 
     Actuators: Active/reactive power of all generators
@@ -45,57 +34,55 @@ class SimpleOpfEnv(opf_env.OpfEnv):
         constrained reactive power flow over slack bus
     """
 
-    def __init__(self, simbench_network_name='1-LV-rural3--0-sw',
-                 gen_scaling=2.5, load_scaling=2.0, cos_phi=0.9,
-                 max_q_exchange=0.01, seed=None,
+    def __init__(self, simbench_network_name='1-LV-rural3--2-sw',
+                 gen_scaling=3.0, load_scaling=1.0, cos_phi=0.95,
+                 seed=None,
                  *args, **kwargs):
 
         self.cos_phi = cos_phi
-        self.max_q_exchange = max_q_exchange
         self.net = self._define_opf(
             simbench_network_name, gen_scaling=gen_scaling,
             load_scaling=load_scaling, *args, **kwargs)
 
         # Define the RL problem
         # See all load power values, sgen max active power...
-        self.obs_keys = [('sgen', 'max_p_mw', self.net['sgen'].index),
+        self.obs_keys = [('sgen', 'p_mw', self.net['sgen'].index),
                          ('load', 'p_mw', self.net['load'].index),
                          ('load', 'q_mvar', self.net['load'].index)]
 
-        # ... and control all sgens' active and reactive power values
-        self.act_keys = [('sgen', 'p_mw', self.net['sgen'].index),
-                         ('sgen', 'q_mvar', self.net['sgen'].index)]
+        # ... and control all sgens' active power values
+        self.act_keys = [('sgen', 'p_mw', self.net['sgen'].index)]
+        # TODO: Storages?!
 
         if 'ext_grid_pen_kwargs' not in kwargs:
             kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 500}
         super().__init__(seed=seed, *args, **kwargs)
 
-        if self.vector_reward is True:
-            # 5 penalties and one objective function
-            self.reward_space = gym.spaces.Box(
-                low=-np.ones(6) * np.inf, high=np.ones(6) * np.inf, seed=seed)
+        # if self.vector_reward is True:
+        #     # 5 penalties and one objective function
+        #     self.reward_space = gym.spaces.Box(
+        #         low=-np.ones(6) * np.inf, high=np.ones(6) * np.inf, seed=seed)
 
     def _define_opf(self, simbench_network_name, *args, **kwargs):
         net, self.profiles = build_simbench_net(
             simbench_network_name, *args, **kwargs)
 
+        # TODO: Add storages?! -> If so, change poly Cost to sgen costs (instead of ext grid)
+        net.storage['controllable'] = False
         net.load['controllable'] = False
         net.sgen['controllable'] = True
 
-        net.sgen['max_s_mva'] = net.sgen['max_max_p_mw'] / self.cos_phi
-        # Assumption: Mandatory reactive power provision of cos_phi
-        net.sgen['max_max_q_mvar'] = (
-            net.sgen['max_s_mva']**2 - net.sgen['max_max_p_mw']**2)**0.5
-        net.sgen['max_q_mvar'] = net.sgen['max_max_q_mvar']
-        net.sgen['min_q_mvar'] = -net.sgen['max_max_q_mvar']
+        net.sgen['min_p_mw'] = 0  # max will be set later in sampling
+        net.sgen['q_mvar'] = 0
+        net.sgen['max_q_mvar'] = 0
+        net.sgen['min_q_mvar'] = 0
 
-        # TODO: Currently finetuned for simbench grids '1-LV-urban6--0-sw' and '1-LV-rural3--0-sw'
-        net.ext_grid['max_q_mvar'] = self.max_q_exchange
-        net.ext_grid['min_q_mvar'] = -self.max_q_exchange
+        # Assumption: Mandatory reactive power provision of cos_phi
+        self.q_factor = math.tan(math.acos(self.cos_phi))
 
         # OPF objective: Maximize active power feed-in to external grid
         # TODO: Maybe allow for gens here, if necessary
-        assert len(net.gen) == 0
+        assert len(net.gen) == 0, 'gen not supported in this environment!'
         self.active_power_costs = 30
         for idx in net['ext_grid'].index:
             pp.create_poly_cost(net, idx, 'ext_grid',
@@ -108,6 +95,10 @@ class SimpleOpfEnv(opf_env.OpfEnv):
 
         # Set constraints of current time step (also required for OPF)
         self.net.sgen['max_p_mw'] = self.net.sgen.p_mw * self.net.sgen.scaling
+
+        self.net.sgen['q_mvar'] = self.net.sgen.p_mw * self.q_factor
+        self.net['max_q_mvar'] = self.net.sgen.q_mvar * self.net.sgen.scaling + 1e-9
+        self.net['min_q_mvar'] = self.net.sgen.q_mvar * self.net.sgen.scaling - 1e-9
 
 
 class QMarketEnv(opf_env.OpfEnv):
@@ -156,7 +147,7 @@ class QMarketEnv(opf_env.OpfEnv):
                 ('poly_cost', 'cq2_eur_per_mvar2', np.arange(len(self.net.sgen) + len(self.net.ext_grid) + len(self.net.storage)))
             )
 
-        # ... and control all sgens' reactive power values
+        # ... and control all units' reactive power values
         self.act_keys = [('sgen', 'q_mvar', self.net.sgen.index),
                          ('storage', 'q_mvar', self.net.storage.index)]
 
@@ -501,8 +492,8 @@ class EcoDispatchEnv(opf_env.OpfEnv):
         # return -(np.array(p_mw) * prices).sum() / 10000
 
 if __name__ == '__main__':
-    env = SimpleOpfEnv()
-    print('Simple OPF environment created')
+    env = MaxRenewable()
+    print('Max renewable environment created')
     print('Observation space:', env.observation_space.shape)
     print('Action space:', env.action_space.shape)
 

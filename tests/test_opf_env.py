@@ -2,17 +2,17 @@ import numpy as np
 import pytest
 
 
-from mlopf.envs.thesis_envs import SimpleOpfEnv
+from mlopf.envs import MaxRenewable
 import mlopf.opf_env as opf_env
 
 
-dummy_env = SimpleOpfEnv()
-
+dummy_env = MaxRenewable()
 
 def test_obs_space_def():
+    dummy_env.reset()
     obs_keys = (
-        ('sgen', 'q_mvar', np.array([0])),
         ('sgen', 'p_mw', np.array([0])),
+        ('sgen', 'q_mvar', np.array([0])),
         ('load', 'q_mvar', np.array([0])),
         ('load', 'p_mw', np.array([0])),
         ('res_bus', 'vm_pu', np.array([0])),

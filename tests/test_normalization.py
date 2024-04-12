@@ -2,11 +2,11 @@
 import pytest
 
 from mlopf.util.normalization import get_normalization_params
-from mlopf.envs import SimpleOpfEnv
+from mlopf.envs import MaxRenewable
 
 
 def test_get_normalization_params():
-    env = SimpleOpfEnv()
+    env = MaxRenewable()
     norm_params = get_normalization_params(env, num_samples=5)
     assert isinstance(norm_params, dict)
     assert 'min_obj' in norm_params

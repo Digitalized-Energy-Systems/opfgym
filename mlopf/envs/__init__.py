@@ -1,22 +1,22 @@
-""" Register OPF environments to openai gym. """
+""" Register OPF environments to gymnasium. """
 
-from gym.envs.registration import register
+from gymnasium.envs.registration import register
 
-from mlopf.envs.thesis_envs import SimpleOpfEnv, QMarketEnv, EcoDispatchEnv, VoltageControlEnv
+from mlopf.envs.thesis_envs import MaxRenewable, QMarketEnv, EcoDispatchEnv, VoltageControlEnv
 from mlopf.envs.load_shedding import LoadShedding
 
 
 register(
-    id='SimpleOpfEnv-v0',
-    entry_point='mlopf.envs.thesis_envs:SimpleOpfEnv',
+    id='MaxRenewable-v0',
+    entry_point='mlopf.envs:MaxRenewable',
 )
 
 register(
     id='QMarketEnv-v0',
-    entry_point='mlopf.envs.thesis_envs:QMarketEnv',
+    entry_point='mlopf.envs:QMarketEnv',
 )
 
 register(
     id='EcoDispatchEnv-v0',
-    entry_point='mlopf.envs.thesis_envs:EcoDispatchEnv',
+    entry_point='mlopf.envs:EcoDispatchEnv',
 )

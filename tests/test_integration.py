@@ -5,8 +5,8 @@ import numpy as np
 from mlopf.envs import *
 
 
-def test_simple_opf_integration():
-    dummy_env = SimpleOpfEnv()
+def test_max_renewable_integration():
+    dummy_env = MaxRenewable()
     dummy_env.reset()
     for _ in range(3):
         act = dummy_env.action_space.sample()
