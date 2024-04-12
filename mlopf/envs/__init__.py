@@ -3,6 +3,8 @@
 from gym.envs.registration import register
 
 from mlopf.envs.thesis_envs import SimpleOpfEnv, QMarketEnv, EcoDispatchEnv, VoltageControlEnv
+
+from mlopf.envs.redispatch import Redispatch
 from mlopf.envs.load_shedding import LoadShedding
 
 
@@ -19,4 +21,19 @@ register(
 register(
     id='EcoDispatchEnv-v0',
     entry_point='mlopf.envs.thesis_envs:EcoDispatchEnv',
+)
+
+register(
+    id='VoltageControlEnv-v0',
+    entry_point='mlopf.envs.thesis_envs:VoltageControlEnv',
+)
+
+register(
+    id='LoadShedding-v0',
+    entry_point='mlopf.envs.thesis_envs:LoadShedding',
+)
+
+register(
+    id='Redispatch-v0',
+    entry_point='mlopf.envs.thesis_envs:Redispatch',
 )

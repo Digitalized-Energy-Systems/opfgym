@@ -63,27 +63,49 @@ def min_pp_costs(net):
     all_costs = []
     for unit_type in ('sgen', 'gen', 'ext_grid', 'load', 'storage'):
         poly_costs = net.poly_cost[net.poly_cost.et == unit_type]
-        if len(poly_costs) == 0:
+        pwl_costs = net.pwl_cost[net.pwl_cost.et == unit_type]
+        if len(poly_costs) == 0 and len(pwl_costs) == 0:
             continue
 
-        idxs = poly_costs.element
         res_df = net[f'res_{unit_type}']
-        p_mw = res_df.p_mw.loc[idxs].to_numpy()
-        q_mvar = res_df.q_mvar.loc[idxs].to_numpy()
-        linear_active_price = poly_costs.cp1_eur_per_mw.to_numpy()
-        quadr_active_price = poly_costs.cp2_eur_per_mw2.to_numpy()
-        linear_reactive_price = poly_costs.cq1_eur_per_mvar.to_numpy()
-        quadr_reactive_price = poly_costs.cq2_eur_per_mvar2.to_numpy()
+        costs = 0
 
-        # TODO: Add const cost factor somehow like: poly_costs.cp0_eur[p_mw!=0]
-        costs = (p_mw * linear_active_price
-                 + p_mw**2 * quadr_active_price
-                 + q_mvar * linear_reactive_price
-                 + q_mvar**2 * quadr_reactive_price)
+        if len(poly_costs) > 0:
+            idxs = poly_costs.element
+            p_mw = res_df.p_mw.loc[idxs].to_numpy()
+            q_mvar = res_df.q_mvar.loc[idxs].to_numpy()
+            linear_active_price = poly_costs.cp1_eur_per_mw.to_numpy()
+            quadr_active_price = poly_costs.cp2_eur_per_mw2.to_numpy()
+            linear_reactive_price = poly_costs.cq1_eur_per_mvar.to_numpy()
+            quadr_reactive_price = poly_costs.cq2_eur_per_mvar2.to_numpy()
+
+            # TODO: Add const cost factor somehow like: poly_costs.cp0_eur[p_mw!=0]
+            costs += (p_mw * linear_active_price
+                    + p_mw**2 * quadr_active_price
+                    + q_mvar * linear_reactive_price
+                    + q_mvar**2 * quadr_reactive_price)
+
+        if len(pwl_costs) > 0:
+            idxs = pwl_costs.element
+            p_mw = res_df.p_mw.loc[idxs].to_numpy() # TODO: repetition to above
+            # TODO: Pwl costs for reactive power not implemented yet!
+            # # TODO: Verify this and use numpy instead of loop
+            # for idx in idxs:
+            #     points = pwl_costs.points[idx]
+            #     p_mw = res_df.p_mw[idx]
+            #     costs += sum(
+            #         (p_mw - lower) * price 
+            #         for lower, _, price in points if p_mw > lower)
+                
+            p_mw = res_df.p_mw.loc[idxs].to_numpy()  
+            for points in zip(*pwl_costs.points):
+                lower, higher, price = zip(*points)
+                costs += (p_mw - np.array(lower)) * np.array(price)
 
         all_costs.append(costs)
 
-    all_costs = np.concatenate(all_costs)
+    if all_costs:
+        all_costs = np.concatenate(all_costs)
 
     return all_costs
 
