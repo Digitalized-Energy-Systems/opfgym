@@ -66,7 +66,7 @@ def test_compute_penalty():
     assert penalty == -30
 
     penalty = penalties.compute_penalty(
-        violation, n_violations, offset_penalty=1.5)
+        violation, n_violations, linear_penalty=0, offset_penalty=1.5)
     assert penalty == -3
 
     penalty = penalties.compute_penalty(

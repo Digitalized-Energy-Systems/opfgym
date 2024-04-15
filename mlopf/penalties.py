@@ -23,7 +23,7 @@ def compute_total_violation(net, unit_type: str, column: str, min_or_max: str,
     return absolute_violations.sum(), sum(invalids)
 
 
-def compute_penalty(violation: float, n_violations: int, linear_penalty=0,
+def compute_penalty(violation: float, n_violations: int, linear_penalty=1,
                     quadr_penalty=0, offset_penalty=0, sqrt_penalty=0, 
                     *args, **kwargs):
     """ General function to compute linear, quadratic, anc offset penalties
@@ -40,7 +40,7 @@ def compute_penalty(violation: float, n_violations: int, linear_penalty=0,
     return -penalty
 
 
-def voltage_violation(net, *args, **kwargs):
+def voltage_violation(net, autoscale=False, *args, **kwargs):
     """ Penalty for voltage violations of the upper or lower voltage
     boundary (both treated equally). """
     violation1, n_invalids1 = compute_total_violation(
@@ -50,28 +50,47 @@ def voltage_violation(net, *args, **kwargs):
 
     violation = violation1 + violation2
     n_invalids = n_invalids1 + n_invalids2
+
+    if autoscale:
+        # Scale violation to values around ~1 to make them comparable
+        violation *= 20  # Assuming a typical voltage violation of 0.05 pu
+        # if not worst_case_only:
+        #     violation /= len(net.bus)
+
     penalty = compute_penalty(violation, n_invalids, *args, **kwargs)
 
     return not bool(n_invalids), violation, penalty
 
 
-def line_overload(net, *args, **kwargs):
+def line_overload(net, autoscale=False, *args, **kwargs):
     """ Penalty for overloaded lines. Only max boundary required! """
     violation, n_invalids = compute_total_violation(
         net, 'line', 'loading_percent', 'max', **kwargs)
+
+    if autoscale:
+        # Scale violation to values around ~1 to make them comparable
+        violation /= 30  # Assuming a typical line overload of 30%
+
     penalty = compute_penalty(violation, n_invalids, *args, **kwargs)
+
     return not bool(n_invalids), violation, penalty
 
 
-def trafo_overload(net, *args, **kwargs):
+def trafo_overload(net, autoscale=False, *args, **kwargs):
     """ Penalty for overloaded trafos. Only max boundary required! """
     violation, n_invalids = compute_total_violation(
         net, 'trafo', 'loading_percent', 'max', **kwargs)
+    
+    if autoscale:
+        # Scale violation to values around ~1 to make them comparable
+        violation /= 30  # Assuming a typical trafo overload of 30%
+
     penalty = compute_penalty(violation, n_invalids, *args, **kwargs)
+
     return not bool(n_invalids), violation, penalty
 
 
-def ext_grid_overpower(net, column='p_mw', *args, **kwargs):
+def ext_grid_overpower(net, column='p_mw', autoscale=False, *args, **kwargs):
     """ Penalty for violations of max/min active/reactive power from
     external grids. """
     violation1, n_invalids1 = compute_total_violation(
@@ -81,6 +100,12 @@ def ext_grid_overpower(net, column='p_mw', *args, **kwargs):
 
     violation = violation1 + violation2
     n_invalids = n_invalids1 + n_invalids2
+
+    if autoscale:
+        # Scale violation to values around ~1 to make them comparable
+        # Use the load power as heuristic for scaling
+        violation /= net.load[f'mean_{column}'].sum()
+
     penalty = compute_penalty(violation, n_invalids, *args, **kwargs)
     
     return not bool(n_invalids), violation, penalty

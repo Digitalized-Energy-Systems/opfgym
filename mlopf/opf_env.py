@@ -32,7 +32,7 @@ class OpfEnv(gym.Env, abc.ABC):
                  diff_reward=False,
                  reward_function: str='summation',
                  reward_scaling: str=None,
-                 reward_scaling_params: dict=dict(),
+                 reward_scaling_params: dict=None,
                  squash_reward=False,
                  remove_normal_obs=False,
                  add_res_obs=False,
@@ -40,12 +40,13 @@ class OpfEnv(gym.Env, abc.ABC):
                  add_act_obs=False,
                  train_data='simbench',
                  test_data='simbench',
-                 sampling_kwargs=None,
-                 volt_pen_kwargs=None,
-                 line_pen_kwargs=None,
-                 trafo_pen_kwargs=None,
-                 ext_grid_pen_kwargs=None,
+                 sampling_kwargs: dict=None,
+                 volt_pen_kwargs: dict=None,
+                 line_pen_kwargs: dict=None,
+                 trafo_pen_kwargs: dict=None,
+                 ext_grid_pen_kwargs: dict=None,
                  autoscale_penalty=False,
+                 autoscale_violations=False,
                  min_penalty=None,
                  penalty_weight=0.5,
                  penalty_obs_range: tuple=None,
@@ -57,10 +58,8 @@ class OpfEnv(gym.Env, abc.ABC):
         self.train_test_split = train_test_split
         self.train_data = train_data
         self.test_data = test_data
-        if sampling_kwargs:
-            self.sampling_kwargs = sampling_kwargs
-        else:
-            self.sampling_kwargs = {}
+        self.sampling_kwargs = sampling_kwargs if sampling_kwargs else {}
+
 
         # Define the observation space
         if remove_normal_obs:
@@ -112,17 +111,14 @@ class OpfEnv(gym.Env, abc.ABC):
         self.vector_reward = vector_reward
         self.squash_reward = squash_reward
 
-        # Default penalties are purely linear
-        self.volt_pen = (volt_pen_kwargs if volt_pen_kwargs
-                         else {'linear_penalty': 300})
-        self.line_pen = (line_pen_kwargs if line_pen_kwargs
-                         else {'linear_penalty': 2})
-        self.trafo_pen = (trafo_pen_kwargs if trafo_pen_kwargs
-                          else {'linear_penalty': 2})
-        self.ext_grid_pen = (ext_grid_pen_kwargs if ext_grid_pen_kwargs
-                             else {'linear_penalty': 100})
-        self.autoscale_penalty = autoscale_penalty
+        self.volt_pen = volt_pen_kwargs if volt_pen_kwargs else {}
+        self.line_pen = line_pen_kwargs if line_pen_kwargs else {}
+        self.trafo_pen = trafo_pen_kwargs if trafo_pen_kwargs else {}
+        self.ext_grid_pen = ext_grid_pen_kwargs if ext_grid_pen_kwargs else {}
+
+        # self.autoscale_penalty = autoscale_penalty
         self.min_penalty = min_penalty
+        self.autoscale_violations = autoscale_violations
         
         self.priority = autocorrect_prio
 
@@ -149,6 +145,7 @@ class OpfEnv(gym.Env, abc.ABC):
         # Prepare reward scaling for later on 
         self.reward_scaling = reward_scaling
         self.penalty_weight = penalty_weight
+        reward_scaling_params = reward_scaling_params if reward_scaling_params else {}
         if reward_scaling_params == 'auto' or (
                 not reward_scaling_params and reward_scaling):
             # Find reward range by trial and error
@@ -476,11 +473,16 @@ class OpfEnv(gym.Env, abc.ABC):
         Standard penalties: voltage band, overload of lines & transformers. """
 
         valids_violations_penalties = [
-            voltage_violation(self.net, **self.volt_pen),
-            line_overload(self.net, **self.line_pen),
-            trafo_overload(self.net, **self.trafo_pen),
-            ext_grid_overpower(self.net, 'q_mvar', **self.ext_grid_pen),
-            ext_grid_overpower(self.net, 'p_mw', **self.ext_grid_pen)]
+            voltage_violation(self.net, self.autoscale_violations,
+                **self.volt_pen),
+            line_overload(self.net, self.autoscale_violations,
+                **self.line_pen),
+            trafo_overload(self.net, self.autoscale_violations,
+                **self.trafo_pen),
+            ext_grid_overpower(self.net, 'q_mvar', self.autoscale_violations,
+                **self.ext_grid_pen),
+            ext_grid_overpower(self.net, 'p_mw', self.autoscale_violations,
+                **self.ext_grid_pen)]
 
         valids, viol, penalties = zip(*valids_violations_penalties)
 
@@ -538,15 +540,16 @@ class OpfEnv(gym.Env, abc.ABC):
         obj = obj * self.reward_factor + self.reward_bias
         pen = pen * self.penalty_factor + self.penalty_bias
 
-        if self.autoscale_penalty:
-            # Scale the penalty with the objective function
-            if self.min_penalty:
-                # The min_penalty prevents the penalty to become ~0.0
-                # TODO: Maybe a simple sqrt is better?!
-                penalties *= max(abs(sum(objectives)), self.min_penalty)
-            else:
-                penalties *= abs(sum(objectives))
-            self.info['penalties'] = penalties
+        # TODO: Evaluate if this makes any sense at all
+        # if self.autoscale_penalty:
+        #     # Scale the penalty with the objective function
+        #     if self.min_penalty:
+        #         # The min_penalty prevents the penalty to become ~0.0
+        #         # TODO: Maybe a simple sqrt is better?!
+        #         penalties *= max(abs(sum(objectives)), self.min_penalty)
+        #     else:
+        #         penalties *= abs(sum(objectives))
+        #     self.info['penalties'] = penalties
 
         # if not self.vector_reward:
         #     # Use scalar reward 
@@ -555,11 +558,7 @@ class OpfEnv(gym.Env, abc.ABC):
         #     # Reward as a numpy array
         #     reward = full_obj
 
-        if self.reward_scaling:
-            # TODO: Always do this or only in combination with scaling?!
-            reward = obj * (1 - self.penalty_weight) + pen * self.penalty_weight
-        else:
-            reward = obj + pen
+        reward = obj * (1 - self.penalty_weight) + pen * self.penalty_weight
 
         if self.squash_reward and not test:
             reward = np.sign(reward) * np.log(np.abs(reward) + 1)

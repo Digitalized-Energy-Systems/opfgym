@@ -124,7 +124,7 @@ class QMarketEnv(opf_env.OpfEnv):
     def __init__(self, simbench_network_name='1-LV-urban6--0-sw',
                  gen_scaling=2.0, load_scaling=1.5, seed=None, min_obs=False,
                  cos_phi=0.9, max_q_exchange=0.01, market_based=True,
-                 scaling_params_=dict(),
+                 reward_scaling_params_=dict(),
                  *args, **kwargs):
 
         self.cos_phi = cos_phi
@@ -157,7 +157,7 @@ class QMarketEnv(opf_env.OpfEnv):
             kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 500}
         
         # Default reward scaling parameters (valid only for this setting!)
-        scaling_params = {'min_obj': -315.3594293016033, 
+        reward_scaling_params = {'min_obj': -315.3594293016033, 
                                 'max_obj': -0.5631078674144792, 
                                 'min_viol': -52.545690092382365, 
                                 'max_viol': 0.0, 
@@ -174,10 +174,10 @@ class QMarketEnv(opf_env.OpfEnv):
                                 'top5_percentil_obj': -2.830234400507151, 
                                 'top5_percentil_viol': 0.0}
         # Overwrite with potential user parameters
-        scaling_params.update(scaling_params_)
+        reward_scaling_params.update(reward_scaling_params_)
         
         super().__init__(seed=seed, 
-                         reward_scaling_params=scaling_params,
+                         reward_reward_scaling_params=reward_scaling_params,
                          *args, **kwargs)
 
         if self.vector_reward is True:
@@ -274,21 +274,6 @@ class QMarketEnv(opf_env.OpfEnv):
         else:
             return objs
 
-    def calc_violations(self):
-        """ Define what to do in vector_reward-case. """
-        # Attention: This probably works only for the default system '1-LV-urban6--0-sw'
-        # because only ext_grid q violations there and nothing else
-        valids, violations, penalties = super().calc_violations()
-        if self.vector_reward:
-            # Structure: [ext_grid_pen, other_pens]
-            penalties = np.array((penalties[3], sum(penalties) - penalties[3]))
-            violations = np.array(
-                (violations[3], sum(violations) - violations[3]))
-            valids = np.append(valids[3], np.append(
-                valids[0:3], valids[4:]).all())
-
-        return valids, violations, penalties
-
 
 class VoltageControlEnv(QMarketEnv):
     def __init__(self, simbench_network_name='1-LV-rural3--2-sw',
@@ -324,7 +309,7 @@ class EcoDispatchEnv(opf_env.OpfEnv):
 
     def __init__(self, simbench_network_name='1-HV-urban--0-sw', min_power=0,
                  n_agents=None, gen_scaling=1.0, load_scaling=1.5, max_price=600,
-                 seed=None, scaling_params_=dict(),
+                 seed=None, reward_scaling_params_=dict(),
                  *args, **kwargs):
         # Economic dispatch normally done in EHV (too big! use HV instead!)
         # EHV option: '1-EHV-mixed--0-sw' (340 generators!!!)
@@ -369,7 +354,7 @@ class EcoDispatchEnv(opf_env.OpfEnv):
             kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 10000}
 
         # Default reward scaling parameters (valid only for this setting!)
-        scaling_params = {'min_obj': -127301.09091820028, 
+        reward_scaling_params = {'min_obj': -127301.09091820028, 
                                 'max_obj': 50988.42737064665, 
                                 'min_viol': -2716609.471252951, 
                                 'max_viol': 0.0, 
@@ -386,10 +371,10 @@ class EcoDispatchEnv(opf_env.OpfEnv):
                                 'top5_percentil_obj': 17859.65247785135, 
                                 'top5_percentil_viol': -197965.07106005857}
         # Overwrite with potential user parameters
-        scaling_params.update(scaling_params_)
+        reward_scaling_params.update(reward_scaling_params_)
 
         super().__init__(seed=seed, 
-                         reward_scaling_params=scaling_params, 
+                         reward_reward_scaling_params=reward_scaling_params, 
                          *args, **kwargs)
 
         if self.vector_reward is True:
