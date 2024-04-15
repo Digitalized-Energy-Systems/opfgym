@@ -13,7 +13,7 @@ def get_normalization_params(env, num_samples=1000):
         env._run_pf()
         objectives.append(env.calc_objective(env.net))
         # TODO: These are the penalties, not the violations currently!
-        violations.append(env.calc_violations()[3])
+        violations.append(env.calc_violations()[2])
 
     norm_params = {
         'min_obj': np.array(objectives).sum(axis=1).min(),

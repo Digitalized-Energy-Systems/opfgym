@@ -482,19 +482,18 @@ class OpfEnv(gym.Env, abc.ABC):
             ext_grid_overpower(self.net, 'q_mvar', **self.ext_grid_pen),
             ext_grid_overpower(self.net, 'p_mw', **self.ext_grid_pen)]
 
-        valids, viol, perc_viol, penalties = zip(*valids_violations_penalties)
+        valids, viol, penalties = zip(*valids_violations_penalties)
 
-        return np.array(valids), np.array(viol), np.array(perc_viol), np.array(penalties)
+        return np.array(valids), np.array(viol), np.array(penalties)
 
     def calc_reward(self, test=False):
         """ Combine objective function and the penalties together. """
         objectives = self.calc_objective(self.net)
         self.info['objectives'] = objectives
-        valids, viol, percentage_viol, penalties = self.calc_violations()
+        valids, viol, penalties = self.calc_violations()
 
         self.info['valids'] = np.array(valids)
         self.info['violations'] = np.array(viol)
-        self.info['percentage_violations'] = np.array(percentage_viol)
         self.info['penalties'] = np.array(penalties)
 
         # TODO: re-structure this whole reward calculation?!
@@ -523,11 +522,6 @@ class OpfEnv(gym.Env, abc.ABC):
         #     # But ensure that the reward is always higher if valid compared to invalid 
         #     if valids.all():
         #         objectives += abs(self.min_obj)
-        elif self.reward_function == 'relative':
-            # Multiply constraint violation with objective function as penalty
-            penalties = -(~valids + percentage_viol)
-            self.info['penalties'] = penalties
-            # TODO: Problem: Does not really work if constraint=0 because inf penalty
         elif self.reward_function == "flat":
             if not valids.all():
                 # Make sure the penalty is always bigger than the objective
@@ -610,7 +604,7 @@ class OpfEnv(gym.Env, abc.ABC):
         if not success:
             return np.nan
         objectives = self.calc_objective(self.net)
-        valids, violations, percentage_violations, penalties = self.calc_violations()
+        valids, violations, penalties = self.calc_violations()
         logging.info(f'Optimal violations: {violations}')
         logging.info(f'Baseline actions: {self.get_current_actions()}')
         if sum(penalties) > 0:

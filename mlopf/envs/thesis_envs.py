@@ -278,18 +278,16 @@ class QMarketEnv(opf_env.OpfEnv):
         """ Define what to do in vector_reward-case. """
         # Attention: This probably works only for the default system '1-LV-urban6--0-sw'
         # because only ext_grid q violations there and nothing else
-        valids, violations, perc_violations, penalties = super().calc_violations()
+        valids, violations, penalties = super().calc_violations()
         if self.vector_reward:
             # Structure: [ext_grid_pen, other_pens]
             penalties = np.array((penalties[3], sum(penalties) - penalties[3]))
             violations = np.array(
                 (violations[3], sum(violations) - violations[3]))
-            perc_violations = np.array(
-                (perc_violations[3], sum(perc_violations) - perc_violations[3]))
             valids = np.append(valids[3], np.append(
                 valids[0:3], valids[4:]).all())
 
-        return valids, violations, perc_violations, penalties
+        return valids, violations, penalties
 
 
 class VoltageControlEnv(QMarketEnv):

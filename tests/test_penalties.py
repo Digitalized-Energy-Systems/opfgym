@@ -24,7 +24,7 @@ def net():
 
 def test_voltage_violation(net):
     net.res_bus.vm_pu[1] = 1.1
-    valid, violation, percentage_violation, penalty = penalties.voltage_violation(
+    valid, violation, penalty = penalties.voltage_violation(
         net, linear_penalty=2)
     assert not valid
     assert round(violation, 3) == 0.05
@@ -33,7 +33,7 @@ def test_voltage_violation(net):
 
 def test_line_overloading(net):
     net.res_line.loading_percent[1] = 120
-    valid, violation, percentage_violation, penalty = penalties.line_overload(
+    valid, violation, penalty = penalties.line_overload(
         net, linear_penalty=2)
     assert not valid
     assert violation == 20
@@ -42,7 +42,7 @@ def test_line_overloading(net):
 
 def test_trafo_overloading(net):
     net.res_trafo.loading_percent[0] = 130
-    valid, violation, percentage_violation, penalty = penalties.trafo_overload(
+    valid, violation, penalty = penalties.trafo_overload(
         net, linear_penalty=2)
     assert not valid
     assert violation == 30
@@ -51,7 +51,7 @@ def test_trafo_overloading(net):
 
 def test_ext_grid_overpower(net):
     net.res_ext_grid.q_mvar[0] = 2
-    valid, violation, percentage_violation, penalty = penalties.ext_grid_overpower(
+    valid, violation, penalty = penalties.ext_grid_overpower(
         net, column='q_mvar', linear_penalty=2)
     assert not valid
     assert violation == 1
@@ -78,10 +78,10 @@ def test_compute_violation(net):
     net.res_line.loading_percent = 120
     net.line.max_loading_percent = 100
 
-    violation, perc_violation, n_invalids = penalties.compute_total_violation(
+    violation, n_invalids = penalties.compute_total_violation(
         net, 'line', 'loading_percent', 'max')
     assert violation == 20 * len(net.line)
 
-    violation, perc_violation, n_invalids = penalties.compute_total_violation(
+    violation, n_invalids = penalties.compute_total_violation(
         net, 'line', 'loading_percent', 'max', worst_case_only=True)
     assert violation == 20
