@@ -53,11 +53,10 @@ class MaxRenewable(opf_env.OpfEnv):
         # ... and control all sgens' active power values
         self.act_keys = [('sgen', 'p_mw', self.net['sgen'].index)]
         # TODO: Storages?!
-
         if 'ext_grid_pen_kwargs' not in kwargs:
-            kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 500}
+            kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 25}
         if 'volt_pen_kwargs' not in kwargs:
-            kwargs['volt_pen_kwargs'] = {'linear_penalty': 100}
+            kwargs['volt_pen_kwargs'] = {'linear_penalty': 5}
         super().__init__(seed=seed, *args, **kwargs)
 
         # if self.vector_reward is True:
@@ -154,7 +153,7 @@ class QMarketEnv(opf_env.OpfEnv):
                          ('storage', 'q_mvar', self.net.storage.index)]
 
         if 'ext_grid_pen_kwargs' not in kwargs:
-            kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 500}
+            kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 6}
         
         # Default reward scaling parameters (valid only for this setting!)
         reward_scaling_params = {'min_obj': -315.3594293016033, 
@@ -347,11 +346,11 @@ class EcoDispatchEnv(opf_env.OpfEnv):
 
         # Set default values
         if 'line_pen_kwargs' not in kwargs:
-            kwargs['line_pen_kwargs'] = {'linear_penalty': 100000}
+            kwargs['line_pen_kwargs'] = {'linear_penalty': 3000}
         if 'trafo_pen_kwargs' not in kwargs:
-            kwargs['trafo_pen_kwargs'] = {'linear_penalty': 100000}
+            kwargs['trafo_pen_kwargs'] = {'linear_penalty': 3000}
         if 'ext_grid_pen_kwargs' not in kwargs:
-            kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 10000}
+            kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 900000}
 
         # Default reward scaling parameters (valid only for this setting!)
         reward_scaling_params = {'min_obj': -127301.09091820028, 

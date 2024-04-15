@@ -46,7 +46,7 @@ class OpfEnv(gym.Env, abc.ABC):
                  trafo_pen_kwargs: dict=None,
                  ext_grid_pen_kwargs: dict=None,
                  autoscale_penalty=False,
-                 autoscale_violations=False,
+                 autoscale_violations=True,
                  min_penalty=None,
                  penalty_weight=0.5,
                  penalty_obs_range: tuple=None,

@@ -54,7 +54,7 @@ class LoadShedding(opf_env.OpfEnv):
 
         # Define default penalties
         if 'ext_grid_pen_kwargs' not in kwargs:
-            kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 500}
+            kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 25}
 
         super().__init__(*args, **kwargs)
 
