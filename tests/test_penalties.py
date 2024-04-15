@@ -74,5 +74,14 @@ def test_compute_penalty():
     assert penalty == -23
 
 
-def test_compute_violation():
-    pass  # TODO
+def test_compute_violation(net):
+    net.res_line.loading_percent = 120
+    net.line.max_loading_percent = 100
+
+    violation, perc_violation, n_invalids = penalties.compute_total_violation(
+        net, 'line', 'loading_percent', 'max')
+    assert violation == 20 * len(net.line)
+
+    violation, perc_violation, n_invalids = penalties.compute_total_violation(
+        net, 'line', 'loading_percent', 'max', worst_case_only=True)
+    assert violation == 20

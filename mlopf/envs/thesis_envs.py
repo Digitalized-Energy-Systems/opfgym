@@ -56,6 +56,8 @@ class MaxRenewable(opf_env.OpfEnv):
 
         if 'ext_grid_pen_kwargs' not in kwargs:
             kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 500}
+        if 'volt_pen_kwargs' not in kwargs:
+            kwargs['volt_pen_kwargs'] = {'linear_penalty': 100}
         super().__init__(seed=seed, *args, **kwargs)
 
         # if self.vector_reward is True:

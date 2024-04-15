@@ -562,6 +562,7 @@ class OpfEnv(gym.Env, abc.ABC):
         #     reward = full_obj
 
         if self.reward_scaling:
+            # TODO: Always do this or only in combination with scaling?!
             reward = obj * (1 - self.penalty_weight) + pen * self.penalty_weight
         else:
             reward = obj + pen
