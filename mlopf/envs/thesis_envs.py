@@ -102,7 +102,7 @@ class MaxRenewable(opf_env.OpfEnv):
         self.net['min_q_mvar'] = self.net.sgen.q_mvar * self.net.sgen.scaling - 1e-9
 
 
-class QMarketEnv(opf_env.OpfEnv):
+class QMarket(opf_env.OpfEnv):
     """
     Voltage control / Reactive power market environment: The grid operator 
     procures reactive power from generators to minimize losses within its 
@@ -274,7 +274,7 @@ class QMarketEnv(opf_env.OpfEnv):
             return objs
 
 
-class VoltageControlEnv(QMarketEnv):
+class VoltageControl(QMarket):
     def __init__(self, simbench_network_name='1-LV-rural3--2-sw',
                  load_scaling=1.8, gen_scaling=1.5, 
                  cos_phi=0.95, max_q_exchange=0.01,
@@ -289,7 +289,7 @@ class VoltageControlEnv(QMarketEnv):
                          *args, **kwargs)
 
 
-class EcoDispatchEnv(opf_env.OpfEnv):
+class EcoDispatch(opf_env.OpfEnv):
     """
     Economic Dispatch/Active power market environment: The grid operator
     procures active power from generators to minimize losses within its system.
@@ -481,17 +481,17 @@ if __name__ == '__main__':
     print('Observation space:', env.observation_space.shape)
     print('Action space:', env.action_space.shape)
 
-    env = QMarketEnv()
+    env = QMarket()
     print('Reactive power market environment created')
     print('Observation space:', env.observation_space.shape)
     print('Action space:', env.action_space.shape)
 
-    env = VoltageControlEnv()
+    env = VoltageControl()
     print('VoltageControl environment created')
     print('Observation space:', env.observation_space.shape)
     print('Action space:', env.action_space.shape)
 
-    env = EcoDispatchEnv()
+    env = EcoDispatch()
     print('EcoDispatch environment created')
     print('Observation space:', env.observation_space.shape)
     print('Action space:', env.action_space.shape)

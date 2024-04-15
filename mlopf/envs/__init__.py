@@ -2,7 +2,7 @@
 
 from gymnasium.envs.registration import register
 
-from mlopf.envs.thesis_envs import MaxRenewable, QMarketEnv, EcoDispatchEnv, VoltageControlEnv
+from mlopf.envs.thesis_envs import MaxRenewable, QMarket, EcoDispatch, VoltageControl
 from mlopf.envs.load_shedding import LoadShedding
 
 
@@ -12,11 +12,11 @@ register(
 )
 
 register(
-    id='QMarketEnv-v0',
-    entry_point='mlopf.envs:QMarketEnv',
+    id='QMarket-v0',
+    entry_point='mlopf.envs:QMarket',
 )
 
 register(
-    id='EcoDispatchEnv-v0',
-    entry_point='mlopf.envs:EcoDispatchEnv',
+    id='EcoDispatch-v0',
+    entry_point='mlopf.envs:EcoDispatch',
 )

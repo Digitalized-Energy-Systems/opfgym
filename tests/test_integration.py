@@ -20,7 +20,7 @@ def test_max_renewable_integration():
 
 
 def test_qmarket_integration():
-    dummy_env = QMarketEnv()
+    dummy_env = QMarket()
     for _ in range(3):
         dummy_env.reset()
         act = dummy_env.action_space.sample()
@@ -33,7 +33,7 @@ def test_qmarket_integration():
 
 
 def test_voltage_control_integration():
-    dummy_env = VoltageControlEnv()
+    dummy_env = VoltageControl()
     for _ in range(3):
         dummy_env.reset()
         act = dummy_env.action_space.sample()
@@ -46,7 +46,7 @@ def test_voltage_control_integration():
 
 
 def test_eco_dispatch_integration():
-    dummy_env = EcoDispatchEnv()
+    dummy_env = EcoDispatch()
     for _ in range(3):
         dummy_env.reset()
         act = dummy_env.action_space.sample()

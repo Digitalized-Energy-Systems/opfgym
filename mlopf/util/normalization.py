@@ -45,11 +45,11 @@ if __name__ == '__main__':
                       'penalty_factor': 1, 'penalty_bias': 0}
     
     print('Running normalization for QMarketeEnv')
-    from mlopf.envs import QMarketEnv
-    env = QMarketEnv(normalization_params_=default_params)
+    from mlopf.envs import QMarket
+    env = QMarket(normalization_params_=default_params)
     get_normalization_params(env, 1000)
 
     print('Running normalization for EcoDispatchEnv')
-    from mlopf.envs import EcoDispatchEnv
-    env = EcoDispatchEnv(normalization_params_=default_params)
+    from mlopf.envs import EcoDispatch
+    env = EcoDispatch(normalization_params_=default_params)
     get_normalization_params(env, 1000)
