@@ -18,7 +18,8 @@ def compute_total_violation(net, unit_type: str, column: str, min_or_max: str,
     absolute_violations = (values - boundary)[invalids].abs()
 
     if worst_case_only:
-        return absolute_violations.max(), sum(invalids)
+        # Only return the single worst case violation
+        return absolute_violations.max(), 1
 
     return absolute_violations.sum(), sum(invalids)
 
@@ -54,8 +55,6 @@ def voltage_violation(net, autoscale=False, *args, **kwargs):
     if autoscale:
         # Scale violation to values around ~1 to make them comparable
         violation *= 20  # Assuming a typical voltage violation of 0.05 pu
-        # if not worst_case_only:
-        #     violation /= len(net.bus)
 
     penalty = compute_penalty(violation, n_invalids, *args, **kwargs)
 
