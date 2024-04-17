@@ -497,6 +497,7 @@ class OpfEnv(gym.Env, abc.ABC):
         self.info['valids'] = np.array(valids)
         self.info['violations'] = np.array(viol)
         self.info['penalties'] = np.array(penalties)
+        self.info['cost'] = abs(sum(penalties))  # Standard cost definition in Safe RL
 
         # TODO: re-structure this whole reward calculation?!
         if self.reward_function == 'summation':
