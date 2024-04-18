@@ -60,7 +60,6 @@ class OpfEnv(gym.Env, abc.ABC):
         self.test_data = test_data
         self.sampling_kwargs = sampling_kwargs if sampling_kwargs else {}
 
-
         # Define the observation space
         if remove_normal_obs:
             # Completely overwrite the observation definition
@@ -496,8 +495,7 @@ class OpfEnv(gym.Env, abc.ABC):
 
         self.info['valids'] = np.array(valids)
         self.info['violations'] = np.array(viol)
-        self.info['penalties'] = np.array(penalties)
-        self.info['cost'] = abs(sum(penalties))  # Standard cost definition in Safe RL
+        self.info['unscaled_penalties'] = np.array(penalties)
 
         # TODO: re-structure this whole reward calculation?!
         if self.reward_function == 'summation':
@@ -541,6 +539,8 @@ class OpfEnv(gym.Env, abc.ABC):
         obj = obj * self.reward_factor + self.reward_bias
         pen = pen * self.penalty_factor + self.penalty_bias
 
+        self.info['cost'] = abs(pen)  # Standard cost definition in Safe RL
+
         # TODO: Evaluate if this makes any sense at all
         # if self.autoscale_penalty:
         #     # Scale the penalty with the objective function
@@ -559,7 +559,10 @@ class OpfEnv(gym.Env, abc.ABC):
         #     # Reward as a numpy array
         #     reward = full_obj
 
-        reward = obj * (1 - self.penalty_weight) + pen * self.penalty_weight
+        if self.penalty_weight not None:
+            reward = obj * (1 - self.penalty_weight) + pen * self.penalty_weight
+        else:
+            reward = obj + pen
 
         if self.squash_reward and not test:
             reward = np.sign(reward) * np.log(np.abs(reward) + 1)
