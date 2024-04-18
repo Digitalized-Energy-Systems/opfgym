@@ -559,7 +559,7 @@ class OpfEnv(gym.Env, abc.ABC):
         #     # Reward as a numpy array
         #     reward = full_obj
 
-        if self.penalty_weight not None:
+        if self.penalty_weight is not None:
             reward = obj * (1 - self.penalty_weight) + pen * self.penalty_weight
         else:
             reward = obj + pen
