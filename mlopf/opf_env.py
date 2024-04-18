@@ -527,7 +527,7 @@ class OpfEnv(gym.Env, abc.ABC):
             if not valids.all():
                 # Make sure the penalty is always bigger than the objective
                 penalties = 2 * -abs(sum(objectives))
-                self.info['penalties'] = penalties
+                self.info['unscaled_penalties'] = penalties
         else:
             raise NotImplementedError('This reward definition does not exist!')
 
@@ -539,6 +539,7 @@ class OpfEnv(gym.Env, abc.ABC):
         obj = obj * self.reward_factor + self.reward_bias
         pen = pen * self.penalty_factor + self.penalty_bias
 
+        self.info['penalties'] = penalties * self.penalty_factor + self.penalty_bias / len(penalties)
         self.info['cost'] = abs(pen)  # Standard cost definition in Safe RL
 
         # TODO: Evaluate if this makes any sense at all
