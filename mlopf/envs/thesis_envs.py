@@ -259,7 +259,7 @@ class QMarket(opf_env.OpfEnv):
         # Assumption: Generators provide all reactive power possible
         for unit_type in ('sgen', 'storage'):
             q_max = (self.net[unit_type].max_s_mva**2 - self.net[unit_type].max_p_mw**2)**0.5
-            self.net[unit_type]['min_q_mvar'] = -q_max
+            self.net[unit_type]['min_q_mvar'] = -q_max  # No scaling required this way!
             self.net[unit_type]['max_q_mvar'] = q_max
 
 
@@ -350,7 +350,7 @@ class EcoDispatch(opf_env.OpfEnv):
         if 'trafo_pen_kwargs' not in kwargs:
             kwargs['trafo_pen_kwargs'] = {'linear_penalty': 3000}
         if 'ext_grid_pen_kwargs' not in kwargs:
-            kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 900000}
+            kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 500000}
 
         # Default reward scaling parameters (valid only for this setting!)
         reward_scaling_params = {'min_obj': -127301.09091820028, 

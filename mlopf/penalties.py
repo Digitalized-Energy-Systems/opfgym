@@ -102,8 +102,8 @@ def ext_grid_overpower(net, column='p_mw', autoscale=False, *args, **kwargs):
 
     if autoscale:
         # Scale violation to values around ~1 to make them comparable
-        # Use the load power as heuristic for scaling
-        violation /= net.load[f'mean_{column}'].sum()
+        # Use the load and sgen power as heuristic for scaling
+        violation /= abs(net.ext_grid[f'mean_{column}'].sum())
 
     penalty = compute_penalty(violation, n_invalids, *args, **kwargs)
     
