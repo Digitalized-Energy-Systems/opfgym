@@ -3,6 +3,7 @@
 import numpy as np
 
 from mlopf.envs import *
+from .sanity_check import env_sanity_check
 
 
 def test_max_renewable_integration():
@@ -17,6 +18,7 @@ def test_max_renewable_integration():
     assert isinstance(reward, float)
     assert terminated
     assert isinstance(info, dict)
+    assert env_sanity_check(dummy_env)
 
 
 def test_qmarket_integration():
@@ -30,6 +32,7 @@ def test_qmarket_integration():
     assert isinstance(reward, float)
     assert terminated
     assert isinstance(info, dict)
+    assert env_sanity_check(dummy_env)
 
 
 def test_voltage_control_integration():
@@ -43,6 +46,7 @@ def test_voltage_control_integration():
     assert isinstance(reward, float)
     assert terminated
     assert isinstance(info, dict)
+    assert env_sanity_check(dummy_env)
 
 
 def test_eco_dispatch_integration():
@@ -56,6 +60,7 @@ def test_eco_dispatch_integration():
     assert isinstance(reward, float)
     assert terminated
     assert isinstance(info, dict)
+    assert env_sanity_check(dummy_env)
 
 
 def test_load_shedding_integration():
@@ -69,3 +74,4 @@ def test_load_shedding_integration():
     assert isinstance(reward, float)
     assert terminated
     assert isinstance(info, dict)
+    assert env_sanity_check(dummy_env)
