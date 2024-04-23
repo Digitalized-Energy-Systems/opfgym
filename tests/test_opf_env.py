@@ -34,21 +34,6 @@ def test_obs_space_def():
     assert not np.isnan(obs_space.high).any()
 
 
-def test_action_space_def():
-    act_keys = (
-        ('sgen', 'p_mw', np.array([0])),
-        ('sgen', 'q_mvar', np.array([0])),
-        ('storage', 'p_mw', np.array([0])),
-        ('gen', 'p_mw', np.array([0])),
-    )
-
-    act_space = opf_env.get_action_space(act_keys, seed=42)
-    low = np.array([0.0, -1.0, -1.0, 0.0])
-    high = np.array([1.0, 1.0, 1.0, 1.0])
-    assert (act_space.low == low).all()
-    assert (act_space.high == high).all()
-
-
 def test_test_share_def():
     all_steps = dummy_env.profiles[('sgen', 'p_mw')].index
 

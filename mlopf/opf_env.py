@@ -100,11 +100,13 @@ class OpfEnv(gym.Env, abc.ABC):
         else:
             self.penalty_obs_space = None
 
+        # Define observation and action space
         self.bus_wise_obs = bus_wise_obs
         self.observation_space = get_obs_space(
             self.net, self.obs_keys, add_time_obs, self.penalty_obs_space, seed,
             bus_wise_obs=bus_wise_obs)
-        self.action_space = get_action_space(self.act_keys, seed)
+        n_actions = sum([len(idxs) for _, _, idxs in self.act_keys])
+        self.action_space = gym.spaces.Box(0, 1, shape=(n_actions,), seed=seed)
 
         self.reward_function = reward_function
         self.vector_reward = vector_reward
@@ -396,39 +398,34 @@ class OpfEnv(gym.Env, abc.ABC):
         return obs, reward, terminated, truncated, copy.deepcopy(self.info)
 
     def _apply_actions(self, action, autocorrect=False):
-        """ Apply agent actions to the power system at hand. """
+        """ Apply agent actions as setpoints to the power system at hand. """
         counter = 0
         # Clip invalid actions
-        action = np.clip(action,
-                         self.action_space.low[:len(action)],
-                         self.action_space.high[:len(action)])
+        action = np.clip(action, self.action_space.low, self.action_space.high)
         for unit_type, actuator, idxs in self.act_keys:
             df = self.net[unit_type]
-            a = action[counter:counter + len(idxs)]
-            # Actions are relative to the maximum possible (scaled) value
-            # Attention: The negative range is always equal to the pos range!
-            # TODO: maybe use action wrapper instead?!
+            partial_act = action[counter:counter + len(idxs)]
+            min_action = df[f'min_min_{actuator}'].loc[idxs]
             max_action = df[f'max_max_{actuator}'].loc[idxs]
-            new_values = a * max_action
+            # Always use continuous action space [0, 1]
+            setpoints = partial_act * (max_action - min_action) + min_action
 
             # Autocorrect impossible setpoints (however: no penalties this way)
+            # TODO: Should normally not happen. Remove this?!
             if f'max_{actuator}' in df.columns:
-                mask = new_values > df[f'max_{actuator}'].loc[idxs]
-                new_values[mask] = df[f'max_{actuator}'].loc[idxs][mask]
+                mask = setpoints > df[f'max_{actuator}'].loc[idxs]
+                setpoints[mask] = df[f'max_{actuator}'].loc[idxs][mask]
             if f'min_{actuator}' in df.columns:
-                mask = new_values < df[f'min_{actuator}'].loc[idxs]
-                new_values[mask] = df[f'min_{actuator}'].loc[idxs][mask]
+                mask = setpoints < df[f'min_{actuator}'].loc[idxs]
+                setpoints[mask] = df[f'min_{actuator}'].loc[idxs][mask]
 
             if 'scaling' in df.columns:
-                new_values /= df.scaling.loc[idxs]
-            # Scaling sometimes not existing -> TODO: maybe catch this once in init
+                # Scaling sometimes not existing -> TODO: maybe catch this once in init
+                setpoints /= df.scaling.loc[idxs]
 
-            self.net[unit_type][actuator].loc[idxs] = new_values
+            self.net[unit_type][actuator].loc[idxs] = setpoints
 
             counter += len(idxs)
-
-        if counter != len(action):
-            warnings.warn('More actions than action keys!')
 
         self._autocorrect_apparent_power(self.priority)
 
@@ -447,7 +444,8 @@ class OpfEnv(gym.Env, abc.ABC):
                 self.net[unit_type][not_prio] = np.sign(df[not_prio]) * \
                     np.minimum(df[not_prio].abs(), max_values)
 
-    def _run_pf(self, enforce_q_lims=True, calculate_voltage_angles=False, voltage_depend_loads=False, **kwargs):
+    def _run_pf(self, enforce_q_lims=True, calculate_voltage_angles=False, 
+                voltage_depend_loads=False, **kwargs):
         try:
             pp.runpp(self.net,
                      voltage_depend_loads=voltage_depend_loads,
@@ -697,21 +695,6 @@ def get_obs_space(net, obs_keys: list, add_time_obs: bool,
 
     return gym.spaces.Box(
         np.concatenate(lows, axis=0), np.concatenate(highs, axis=0), seed=seed)
-
-
-def get_action_space(act_keys: list, seed: int):
-    """ Get RL action space from defined actuators. """
-    low = np.array([])
-    high = np.array([])
-    for unit_type, column, idxs in act_keys:
-        # Storages in general and reactive power can take negative values
-        condition = (unit_type == 'storage' or column == 'q_mvar')
-        new_lows = -np.ones(len(idxs)) if condition else np.zeros(len(idxs))
-
-        low = np.append(low, new_lows)
-        high = np.append(high, np.ones(len(idxs)))
-
-    return gym.spaces.Box(low, high, seed=seed)
 
 
 def define_test_steps(test_share=0.2):
