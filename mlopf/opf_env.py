@@ -593,8 +593,11 @@ class OpfEnv(gym.Env, abc.ABC):
     def get_current_actions(self):
         # Attention: These are not necessarily the actions of the RL agent
         # because some re-scaling might have happened!
+        # These are the actions from action space [0, 1]
         action = [(self.net[f'res_{unit_type}'][column].loc[idxs]
-                   / self.net[unit_type][f'max_max_{column}'].loc[idxs])
+                   - self.net[unit_type][f'min_min_{column}'].loc[idxs])
+                   / (self.net[unit_type][f'max_max_{column}'].loc[idxs]
+                      - self.net[unit_type][f'min_min_{column}'].loc[idxs])
                   for unit_type, column, idxs in self.act_keys]
         return np.concatenate(action)
 
