@@ -407,6 +407,7 @@ class EcoDispatch(opf_env.OpfEnv):
         #     axis=0) * net['sgen']['scaling']
         # net.sgen['min_max_p_mw'] = 0
         net.sgen['controllable'] = True
+        net.sgen['min_min_p_mw'] = 0
         net.gen['controllable'] = True
 
         # TODO: Currently Ignore reactive power completely (otherwise pp OPF fails)
