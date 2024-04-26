@@ -150,7 +150,7 @@ class OpfEnv(gym.Env, abc.ABC):
         if reward_scaling_params == 'auto' or (
                 not reward_scaling_params and reward_scaling):
             # Find reward range by trial and error
-            params = get_normalization_params(self, num_samples=1000)
+            params = get_normalization_params(self, num_samples=2000)
         else:
             params = reward_scaling_params
 
@@ -167,7 +167,7 @@ class OpfEnv(gym.Env, abc.ABC):
             self.reward_bias = -(params['min_obj'] / diff + 1)
             diff = 2 * (params['max_viol'] - params['min_viol'])
             self.penalty_factor = 1 / diff
-            self.penalty_bias = params['min_viol'] / diff + 1
+            self.penalty_bias = -(params['min_viol'] / diff + 1)
         elif reward_scaling == 'normalization':
             # Scale so that mean is zero and standard deviation is one
             # formula: (obj - mean_obj) / obj_std
@@ -533,12 +533,15 @@ class OpfEnv(gym.Env, abc.ABC):
         
         obj = sum(objectives)
         pen = sum(penalties)
+
+        # Full vector information about the penalties
+        self.info['penalties'] = penalties * self.penalty_factor + self.penalty_bias / len(penalties)
+        # Standard cost definition in Safe RL (Do not use bias here to prevent sign flip)
+        self.info['cost'] = abs(pen * self.penalty_factor)  
+
         # Perform reward scaling
         obj = obj * self.reward_factor + self.reward_bias
         pen = pen * self.penalty_factor + self.penalty_bias
-
-        self.info['penalties'] = penalties * self.penalty_factor + self.penalty_bias / len(penalties)
-        self.info['cost'] = abs(pen)  # Standard cost definition in Safe RL
 
         # TODO: Evaluate if this makes any sense at all
         # if self.autoscale_penalty:
