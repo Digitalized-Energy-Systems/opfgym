@@ -405,8 +405,8 @@ class OpfEnv(gym.Env, abc.ABC):
         for unit_type, actuator, idxs in self.act_keys:
             df = self.net[unit_type]
             partial_act = action[counter:counter + len(idxs)]
-            min_action = df[f'min_min_{actuator}'].loc[idxs]
-            max_action = df[f'max_max_{actuator}'].loc[idxs]
+            min_action = df[f'min_{actuator}'].loc[idxs]
+            max_action = df[f'max_{actuator}'].loc[idxs]
             # Always use continuous action space [0, 1]
             setpoints = partial_act * (max_action - min_action) + min_action
 
@@ -598,9 +598,9 @@ class OpfEnv(gym.Env, abc.ABC):
         # because some re-scaling might have happened!
         # These are the actions from action space [0, 1]
         action = [(self.net[f'res_{unit_type}'][column].loc[idxs]
-                   - self.net[unit_type][f'min_min_{column}'].loc[idxs])
-                   / (self.net[unit_type][f'max_max_{column}'].loc[idxs]
-                      - self.net[unit_type][f'min_min_{column}'].loc[idxs])
+                   - self.net[unit_type][f'min_{column}'].loc[idxs])
+                   / (self.net[unit_type][f'max_{column}'].loc[idxs]
+                      - self.net[unit_type][f'min_{column}'].loc[idxs])
                   for unit_type, column, idxs in self.act_keys]
         return np.concatenate(action)
 
