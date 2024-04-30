@@ -4,7 +4,8 @@ from gymnasium.envs.registration import register
 
 from mlopf.envs.eco_dispatch import EcoDispatch
 from mlopf.envs.max_renewable import MaxRenewable
-from mlopf.envs.q_market import QMarket, VoltageControl
+from mlopf.envs.q_market import QMarket
+from mlopf.envs.voltage_control import VoltageControl
 from mlopf.envs.load_shedding import LoadShedding
 
 
