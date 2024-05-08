@@ -99,7 +99,7 @@ class MaxRenewable(opf_env.OpfEnv):
         # TODO: Maybe add storage max power here, e.g., to consider the current state of charge?!
 
         # Set constraints of current time step (also required for OPF)
-        self.net.sgen['max_p_mw'] = self.net.sgen.p_mw * self.net.sgen.scaling
+        self.net.sgen['max_p_mw'] = self.net.sgen.p_mw * self.net.sgen.scaling + 1e-9
 
         self.net.sgen['q_mvar'] = self.net.sgen.p_mw * self.q_factor
         self.net['max_q_mvar'] = self.net.sgen.q_mvar * self.net.sgen.scaling + 1e-9
