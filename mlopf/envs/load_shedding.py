@@ -107,7 +107,7 @@ class LoadShedding(opf_env.OpfEnv):
             self.net.poly_cost[self.net.poly_cost.et == unit_type].index)
 
         # Current load power = maximum power (only reduction possible)
-        self.net.load['max_p_mw'] = self.net.load['p_mw'] * self.net.load.scaling
+        self.net.load['max_p_mw'] = self.net.load['p_mw'] * self.net.load.scaling + 1e-9
 
         # Make sure reactive power is not controllable
         for unit_type in ('load', 'storage'):
