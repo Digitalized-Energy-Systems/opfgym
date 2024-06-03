@@ -38,6 +38,7 @@ class OpfEnv(gym.Env, abc.ABC):
                  add_res_obs=False,
                  add_time_obs=False,
                  add_act_obs=False,
+                 add_mean_obs=False,
                  train_data='simbench',
                  test_data='simbench',
                  sampling_kwargs: dict=None,
@@ -51,6 +52,7 @@ class OpfEnv(gym.Env, abc.ABC):
                  penalty_weight=0.5,
                  penalty_obs_range: tuple=None,
                  test_penalty=None,
+                 autoscale_actions=True,
                  seed=None,
                  *args, **kwargs):
 
@@ -90,6 +92,8 @@ class OpfEnv(gym.Env, abc.ABC):
                 ('res_ext_grid', 'q_mvar', self.net.ext_grid.index)
             ])
 
+        self.add_mean_obs = add_mean_obs
+
         if penalty_obs_range:
             n_penalties = 4 # TODO
             self.penalty_obs_space = gym.spaces.Box(
@@ -103,8 +107,8 @@ class OpfEnv(gym.Env, abc.ABC):
         # Define observation and action space
         self.bus_wise_obs = bus_wise_obs
         self.observation_space = get_obs_space(
-            self.net, self.obs_keys, add_time_obs, self.penalty_obs_space, seed,
-            bus_wise_obs=bus_wise_obs)
+            self.net, self.obs_keys, add_time_obs, add_mean_obs, 
+            self.penalty_obs_space, seed, bus_wise_obs=bus_wise_obs)
         n_actions = sum([len(idxs) for _, _, idxs in self.act_keys])
         self.action_space = gym.spaces.Box(0, 1, shape=(n_actions,), seed=seed)
 
@@ -122,6 +126,7 @@ class OpfEnv(gym.Env, abc.ABC):
         self.autoscale_violations = autoscale_violations
         
         self.priority = autocorrect_prio
+        self.autoscale_actions = autoscale_actions
 
         self.steps_per_episode = steps_per_episode
 
@@ -405,19 +410,26 @@ class OpfEnv(gym.Env, abc.ABC):
         for unit_type, actuator, idxs in self.act_keys:
             df = self.net[unit_type]
             partial_act = action[counter:counter + len(idxs)]
-            min_action = df[f'min_{actuator}'].loc[idxs]
-            max_action = df[f'max_{actuator}'].loc[idxs]
+            if self.autoscale_actions:
+                # Ensure that actions are always valid by using the current range
+                min_action = df[f'min_{actuator}'].loc[idxs]
+                max_action = df[f'max_{actuator}'].loc[idxs]
+            else:
+                # Use the full action range instead (only different if min/max change during training)
+                min_action = df[f'min_min_{actuator}'].loc[idxs]
+                max_action = df[f'max_max_{actuator}'].loc[idxs]
+
             # Always use continuous action space [0, 1]
             setpoints = partial_act * (max_action - min_action) + min_action
 
-            # Autocorrect impossible setpoints (however: no penalties this way)
-            # TODO: Should normally not happen. Remove this?!
-            if f'max_{actuator}' in df.columns:
-                mask = setpoints > df[f'max_{actuator}'].loc[idxs]
-                setpoints[mask] = df[f'max_{actuator}'].loc[idxs][mask]
-            if f'min_{actuator}' in df.columns:
-                mask = setpoints < df[f'min_{actuator}'].loc[idxs]
-                setpoints[mask] = df[f'min_{actuator}'].loc[idxs][mask]
+            # Autocorrect impossible setpoints (without penalties, TODO: add penalties here?)
+            if not self.autoscale_actions:
+                if f'max_{actuator}' in df.columns:
+                    mask = setpoints > df[f'max_{actuator}'].loc[idxs]
+                    setpoints[mask] = df[f'max_{actuator}'].loc[idxs][mask]
+                if f'min_{actuator}' in df.columns:
+                    mask = setpoints < df[f'min_{actuator}'].loc[idxs]
+                    setpoints[mask] = df[f'min_{actuator}'].loc[idxs][mask]
 
             if 'scaling' in df.columns:
                 # Scaling sometimes not existing -> TODO: maybe catch this once in init
@@ -583,6 +595,13 @@ class OpfEnv(gym.Env, abc.ABC):
         if self.penalty_obs_space:
             obss = [self.linear_penalties] + obss
 
+        if self.add_mean_obs:
+            mean_obs = []
+            for partial_obs in obss:
+                if len(partial_obs) > 1:
+                    mean_obs.append(np.mean(partial_obs))
+            obss.append(mean_obs)
+
         if add_time_obs:
             time_obs = get_simbench_time_observation(
                 self.profiles, self.current_step)
@@ -632,7 +651,7 @@ class OpfEnv(gym.Env, abc.ABC):
         return True
 
 
-def get_obs_space(net, obs_keys: list, add_time_obs: bool, 
+def get_obs_space(net, obs_keys: list, add_time_obs: bool, add_mean_obs: bool,
                   penalty_obs_space: gym.Space=None, seed: int=None,
                   last_n_obs: int=1, bus_wise_obs=False):
     """ Get observation space from the constraints of the power network. """
@@ -695,6 +714,14 @@ def get_obs_space(net, obs_keys: list, add_time_obs: bool,
         for _ in range(last_n_obs):
             lows.append(l)
             highs.append(h)
+
+    if add_mean_obs:
+        # Add mean values of each category as additional observations
+        start_from = 1 if add_time_obs else 0
+        add_l = [np.mean(l) for l in lows[start_from:] if len(l) > 1]
+        add_h = [np.mean(h) for h in highs[start_from:] if len(h) > 1]
+        lows.append(np.array(add_l))
+        highs.append(np.array(add_h))
 
     assert not sum(pd.isna(l).any() for l in lows)
     assert not sum(pd.isna(h).any() for h in highs)
