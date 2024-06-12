@@ -52,6 +52,7 @@ class OpfEnv(gym.Env, abc.ABC):
                  penalty_weight=0.5,
                  penalty_obs_range: tuple=None,
                  test_penalty=None,
+                 clip_reward: tuple=None,
                  autoscale_actions=True,
                  seed=None,
                  *args, **kwargs):
@@ -124,6 +125,7 @@ class OpfEnv(gym.Env, abc.ABC):
         # self.autoscale_penalty = autoscale_penalty
         self.min_penalty = min_penalty
         self.autoscale_violations = autoscale_violations
+        self.clip_reward = clip_reward
         
         self.priority = autocorrect_prio
         self.autoscale_actions = autoscale_actions
@@ -577,6 +579,9 @@ class OpfEnv(gym.Env, abc.ABC):
             reward = obj * (1 - self.penalty_weight) + pen * self.penalty_weight
         else:
             reward = obj + pen
+
+        if self.clip_reward:
+            reward = np.clip(reward, self.clip_reward[0], self.clip_reward[1])
 
         if self.squash_reward and not test:
             reward = np.sign(reward) * np.log(np.abs(reward) + 1)
