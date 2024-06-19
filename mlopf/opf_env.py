@@ -85,8 +85,10 @@ class OpfEnv(gym.Env, abc.ABC):
         self.add_time_obs = add_time_obs
         # Add observations that require previous pf calculation
         if add_res_obs:
+            # Tricky: Only use buses with actual units connected. Otherwise, too many auxiliary buses are included.
+            bus_idxs = set(self.net.load.bus) | set(self.net.sgen.bus) | set(self.net.gen.bus) | set(self.net.storage.bus)
             self.obs_keys.extend([
-                ('res_bus', 'vm_pu', self.net.bus.index),
+                ('res_bus', 'vm_pu', np.sort(list(bus_idxs))),
                 ('res_line', 'loading_percent', self.net.line.index),
                 ('res_trafo', 'loading_percent', self.net.trafo.index),
                 ('res_ext_grid', 'p_mw', self.net.ext_grid.index),
