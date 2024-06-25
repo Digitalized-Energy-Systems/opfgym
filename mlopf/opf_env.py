@@ -54,6 +54,7 @@ class OpfEnv(gym.Env, abc.ABC):
                  test_penalty=None,
                  clip_reward: tuple=None,
                  autoscale_actions=True,
+                 diff_action_step_size=None,
                  seed=None,
                  *args, **kwargs):
 
@@ -131,6 +132,7 @@ class OpfEnv(gym.Env, abc.ABC):
         
         self.priority = autocorrect_prio
         self.autoscale_actions = autoscale_actions
+        self.diff_action_step_size = diff_action_step_size
 
         self.steps_per_episode = steps_per_episode
 
@@ -375,7 +377,7 @@ class OpfEnv(gym.Env, abc.ABC):
         self.step_in_episode += 1
 
         if self.apply_action:
-            self._apply_actions(action)
+            self._apply_actions(action, self.diff_action_step_size)
             success = self._run_pf()
 
             if not success:
@@ -406,12 +408,15 @@ class OpfEnv(gym.Env, abc.ABC):
 
         return obs, reward, terminated, truncated, copy.deepcopy(self.info)
 
-    def _apply_actions(self, action, autocorrect=False):
+    def _apply_actions(self, action, diff_action_step_size=None):
         """ Apply agent actions as setpoints to the power system at hand. """
         counter = 0
         # Clip invalid actions
         action = np.clip(action, self.action_space.low, self.action_space.high)
         for unit_type, actuator, idxs in self.act_keys:
+            if len(idxs) == 0:
+                continue
+
             df = self.net[unit_type]
             partial_act = action[counter:counter + len(idxs)]
             if self.autoscale_actions:
@@ -423,11 +428,22 @@ class OpfEnv(gym.Env, abc.ABC):
                 min_action = df[f'min_min_{actuator}'].loc[idxs]
                 max_action = df[f'max_max_{actuator}'].loc[idxs]
 
+            delta_action = (max_action - min_action).values
+
             # Always use continuous action space [0, 1]
-            setpoints = partial_act * (max_action - min_action) + min_action
+            if diff_action_step_size is not None:
+                # Agent sets incremental setpoints instead of absolute ones.
+                previous_setpoints = self.net[unit_type][actuator].loc[idxs].values
+                partial_act = partial_act * 2 - 1
+                if 'scaling' in df.columns:
+                    previous_setpoints *= df.scaling.loc[idxs]
+                setpoints = partial_act * diff_action_step_size * delta_action + previous_setpoints
+            else:
+                # Agent sets absolute setpoints in range [min, max]
+                setpoints = partial_act * delta_action + min_action
 
             # Autocorrect impossible setpoints (without penalties, TODO: add penalties here?)
-            if not self.autoscale_actions:
+            if not self.autoscale_actions or diff_action_step_size is not None:
                 if f'max_{actuator}' in df.columns:
                     mask = setpoints > df[f'max_{actuator}'].loc[idxs]
                     setpoints[mask] = df[f'max_{actuator}'].loc[idxs][mask]
