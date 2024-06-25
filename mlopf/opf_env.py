@@ -152,7 +152,7 @@ class OpfEnv(gym.Env, abc.ABC):
         if diff_reward:
             self.pf_for_obs = True
 
-        self.test_steps = define_test_steps(test_share)
+        self.test_steps = define_test_steps(test_share, **kwargs)
 
         # Prepare reward scaling for later on 
         self.reward_scaling = reward_scaling
@@ -263,7 +263,17 @@ class OpfEnv(gym.Env, abc.ABC):
             self._sample_uniform(sample_new=sample_new)
         elif data_distr == 'normal_around_mean':
             self._sample_normal(sample_new=sample_new, *args, **kwargs)
-
+        elif data_distr == 'mixed':
+            # Use different data sources with different probabilities
+            r = np.random.random()
+            data_probs = kwargs.get('data_probabilities', (0.5, 0.75, 1.0))
+            if r < data_probs[0]:
+                self._set_simbench_state(step, test, *args, **kwargs)
+            elif r < data_probs[1]:
+                self._sample_uniform(sample_new=sample_new)
+            elif r < data_probs[2]:
+                self._sample_normal(sample_new=sample_new, *args, **kwargs)
+            
     def _sample_uniform(self, sample_keys=None, sample_new=True):
         """ Standard pre-implemented method to set power system to a new random
         state from uniform sampling. Uses the observation space as basis.
@@ -331,6 +341,7 @@ class OpfEnv(gym.Env, abc.ABC):
                 step = np.random.choice(self.test_steps)
             else:
                 while True:
+                    # TODO: This can be done far more efficiently!
                     step = random.randint(0, total_n_steps - 1)
                     if self.train_test_split and step in self.test_steps:
                         continue
@@ -753,15 +764,20 @@ def get_obs_space(net, obs_keys: list, add_time_obs: bool, add_mean_obs: bool,
         np.concatenate(lows, axis=0), np.concatenate(highs, axis=0), seed=seed)
 
 
-def define_test_steps(test_share=0.2):
-    """ Return the indices of the simbench test data points """
+def define_test_steps(test_share=0.2, random_test_steps=False, **kwargs):
+    """ Return the indices of the simbench test data points. """
     assert test_share > 0.0, 'Please set train_test_split=False if no separate test data should be used'
 
     if test_share == 1.0:
         # Special case: Use the full simbench data set as test set
         return np.arange(24 * 4 * 366)
 
+    if random_test_steps:
+        # Randomly sample test data
+        return np.random.choice(np.arange(24 * 4 * 366), int(24 * 4 * 366 * test_share))
+
     # Use weekly blocks to make sure that all weekdays are equally represented
+    # TODO: Allow for arbitrary blocks? Like days or months?
     n_weeks = int(52 * test_share)
     # Sample equidistant weeks from the whole year
     week_idxs = np.linspace(0, 52, num=n_weeks, endpoint=False, dtype=int)
