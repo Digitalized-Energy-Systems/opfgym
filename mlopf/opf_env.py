@@ -24,16 +24,16 @@ class OpfEnv(gym.Env, abc.ABC):
     def __init__(self,
                  train_test_split=True,
                  test_share=0.2,
-                 vector_reward=False,
                  steps_per_episode=1,
                  autocorrect_prio='p_mw',
                  pf_for_obs=None,
                  bus_wise_obs=False,
                  diff_reward=False,
                  reward_function: str='summation',
+                 reward_function_params: dict=None,
+                 clip_reward: tuple=None,
                  reward_scaling: str=None,
                  reward_scaling_params: dict=None,
-                 squash_reward=False,
                  remove_normal_obs=False,
                  add_res_obs=False,
                  add_time_obs=False,
@@ -46,13 +46,10 @@ class OpfEnv(gym.Env, abc.ABC):
                  line_pen_kwargs: dict=None,
                  trafo_pen_kwargs: dict=None,
                  ext_grid_pen_kwargs: dict=None,
-                 autoscale_penalty=False,
                  autoscale_violations=True,
-                 min_penalty=None,
                  penalty_weight=0.5,
                  penalty_obs_range: tuple=None,
                  test_penalty=None,
-                 clip_reward: tuple=None,
                  autoscale_actions=True,
                  diff_action_step_size=None,
                  seed=None,
@@ -117,16 +114,13 @@ class OpfEnv(gym.Env, abc.ABC):
         self.action_space = gym.spaces.Box(0, 1, shape=(n_actions,), seed=seed)
 
         self.reward_function = reward_function
-        self.vector_reward = vector_reward
-        self.squash_reward = squash_reward
+        self.reward_function_params = reward_function_params if reward_function_params else {}
 
         self.volt_pen = volt_pen_kwargs if volt_pen_kwargs else {}
         self.line_pen = line_pen_kwargs if line_pen_kwargs else {}
         self.trafo_pen = trafo_pen_kwargs if trafo_pen_kwargs else {}
         self.ext_grid_pen = ext_grid_pen_kwargs if ext_grid_pen_kwargs else {}
 
-        # self.autoscale_penalty = autoscale_penalty
-        self.min_penalty = min_penalty
         self.autoscale_violations = autoscale_violations
         self.clip_reward = clip_reward
         
@@ -159,31 +153,34 @@ class OpfEnv(gym.Env, abc.ABC):
         self.penalty_weight = penalty_weight
         reward_scaling_params = reward_scaling_params if reward_scaling_params else {}
         if reward_scaling_params == 'auto' or (
+                'num_samples' in reward_scaling_params) or (
                 not reward_scaling_params and reward_scaling):
+            num_samples = reward_scaling_params.get('num_samples', 3000)
             # Find reward range by trial and error
-            params = get_normalization_params(self, num_samples=2000)
+            params = get_normalization_params(self, num_samples=num_samples)
         else:
             params = reward_scaling_params
 
+        self.normalization_params = params
         if not reward_scaling:
-            self.reward_factor = 1
-            self.reward_bias = 0
+            self.objective_factor = 1
+            self.objective_bias = 0
             self.penalty_factor = 1
             self.penalty_bias = 0
         elif reward_scaling == 'minmax':
             # Scale from range [min, max] to range [-1, 1]
             # formula: (obj - min_obj) / (max_obj - min_obj) * 2 - 1
             diff = (params['max_obj'] - params['min_obj']) / 2
-            self.reward_factor = 1 / diff
-            self.reward_bias = -(params['min_obj'] / diff + 1)
+            self.objective_factor = 1 / diff
+            self.objective_bias = -(params['min_obj'] / diff + 1)
             diff = 2 * (params['max_viol'] - params['min_viol'])
             self.penalty_factor = 1 / diff
             self.penalty_bias = -(params['min_viol'] / diff + 1)
         elif reward_scaling == 'normalization':
             # Scale so that mean is zero and standard deviation is one
             # formula: (obj - mean_obj) / obj_std
-            self.reward_factor = 1 / params['std_obj']
-            self.reward_bias = -params['mean_obj'] / params['std_obj']
+            self.objective_factor = 1 / params['std_obj']
+            self.objective_bias = -params['mean_obj'] / params['std_obj']
             self.penalty_factor = 1 / params['std_viol']
             self.penalty_bias = -params['mean_viol'] / params['std_viol']
         else:
@@ -191,13 +188,24 @@ class OpfEnv(gym.Env, abc.ABC):
 
         # Potentially overwrite scaling with user settings
         if 'reward_factor' in params.keys():
-            self.reward_factor = params['reward_factor']
-        if 'reward_bias' in params.keys():
-            self.reward_bias = params['reward_bias']
+            self.objective_factor = params['reward_factor']
+        if 'objective_bias' in params.keys():
+            self.objective_bias = params['objective_bias']
         if 'penalty_factor' in params.keys():
             self.penalty_factor = params['penalty_factor']
         if 'penalty_bias' in params.keys():
             self.penalty_bias = params['penalty_bias']
+
+        if self.reward_function == 'replacement':
+            valid_reward = self.reward_function_params.get('valid_reward', 1)
+            # Standard variants: Use mean or worst case objective as reward
+            if isinstance(valid_reward, str):
+                if valid_reward == 'worst':
+                    valid_reward = -self.normalization_params['min_obj']
+                elif valid_reward == 'mean':
+                    valid_reward = -self.normalization_params['mean_obj']
+                valid_reward = valid_reward * self.objective_factor + self.objective_bias
+            self.valid_reward = valid_reward
 
     def reset(self, step=None, test=False, seed=None, options=None):
         super().reset(seed=seed, options=options)
@@ -398,7 +406,7 @@ class OpfEnv(gym.Env, abc.ABC):
                 logging.critical(f'Powerflow not converged and reason unknown! Run diagnostic tool to at least find out what went wrong: {pp.diagnostic(self.net)}')
                 raise pp.powerflow.LoadflowNotConverged()
 
-        reward = self.calc_reward(test)
+        reward = self.calc_reward()
 
         if self.diff_reward:
             # Do not use the objective as reward, but their diff instead
@@ -528,95 +536,56 @@ class OpfEnv(gym.Env, abc.ABC):
 
         return np.array(valids), np.array(viol), np.array(penalties)
 
-    def calc_reward(self, test=False):
+    def calc_reward(self):
         """ Combine objective function and the penalties together. """
-        objectives = self.calc_objective(self.net)
-        self.info['objectives'] = objectives
-        valids, viol, penalties = self.calc_violations()
+        self.info['objectives'] = self.calc_objective(self.net)
+        valids, violations, penalties = self.calc_violations()
+
+        # Perform reward scaling, e.g., to range [-1, 1] (if defined)
+        objective = sum(self.info['objectives']) * self.objective_factor + self.objective_bias
+        penalty = sum(penalties) * self.penalty_factor + self.penalty_bias
 
         self.info['valids'] = np.array(valids)
-        self.info['violations'] = np.array(viol)
+        self.info['violations'] = np.array(violations)  
+        # self.info['original_violations'] = np.array(original_violations)
         self.info['unscaled_penalties'] = np.array(penalties)
+        # Full vector information about the penalties
+        self.info['penalties'] = penalties * self.penalty_factor + self.penalty_bias / len(penalties) 
+        # Standard cost definition in Safe RL (Do not use bias here to prevent sign flip)
+        self.info['cost'] = abs(sum(penalties) * self.penalty_factor - self.reward_function_params.get('invalid_penalty', 0.0))  
 
-        # TODO: re-structure this whole reward calculation?!
         if self.reward_function == 'summation':
-            # Idea: Add penalty to objective function (no change required)
+            # Add penalty to objective function (no change required)
             pass
         elif self.reward_function == 'replacement':
-            # Idea: Only give objective as reward, if solution valid
-            if not valids.all():
-                objectives[:] = 0.0
+            # Only give objective as reward, if solution valid
+            if valids.all():
+                # Make sure that the valid reward is always higher
+                objective += self.valid_reward
             else:
-                # Make sure that the objective is always positive
-                # This way, even the worst-case results in zero reward
-                objectives += self.mean_abs_obj / len(objectives)
-        elif self.reward_function == 'replacementA':
-            # Idea: Only give objective as reward, if solution valid
-            if not valids.all():
-                objectives[:] = 0.0
+                objective = 0.0
+        elif self.reward_function == "parameterized":
+            # Parameterized combination of summation and replacement.
+            # If valid_reward==0 & objective_share==1: Summation reward
+            # If valid_reward>0 & objective_share==0: Replacement reward
+            # The range in between represents weighted combinations of both
+            # The invalid_penalty is added to allow for inverse replacement method
+            # (punish invalid states instead of rewarding valid ones)
+            if valids.all():
+                objective += self.reward_function_params.get('valid_reward', 0)
             else:
-                # Use the worst case objective instead here 
-                objectives += abs(self.min_obj) / len(objectives)
-        # elif self.reward_function == 'replacement_plus_summation':
-        #     # TODO Idea: can these two be combined?!
-        #     # If valid: Use objective as reward
-        #     # If invalid: Use penalties as reward + objective to make sure agent learns both at the same time (and not first only penalties and then only objective))
-        #     # But ensure that the reward is always higher if valid compared to invalid 
-        #     if valids.all():
-        #         objectives += abs(self.min_obj)
-        elif self.reward_function == "flat":
-            if not valids.all():
-                # Make sure the penalty is always bigger than the objective
-                penalties = 2 * -abs(sum(objectives))
-                self.info['unscaled_penalties'] = penalties
+                objective *= self.reward_function_params.get('objective_share', 1)
+                penalty -= self.reward_function_params.get('invalid_penalty', 0.5)
         else:
             raise NotImplementedError('This reward definition does not exist!')
 
-        # full_obj = np.append(objectives, penalties)
-        
-        obj = sum(objectives)
-        pen = sum(penalties)
-
-        # Full vector information about the penalties
-        self.info['penalties'] = penalties * self.penalty_factor + self.penalty_bias / len(penalties)
-        # Standard cost definition in Safe RL (Do not use bias here to prevent sign flip)
-        self.info['cost'] = abs(pen * self.penalty_factor)  
-
-        # Perform reward scaling
-        obj = obj * self.reward_factor + self.reward_bias
-        pen = pen * self.penalty_factor + self.penalty_bias
-
-        # TODO: Evaluate if this makes any sense at all
-        # if self.autoscale_penalty:
-        #     # Scale the penalty with the objective function
-        #     if self.min_penalty:
-        #         # The min_penalty prevents the penalty to become ~0.0
-        #         # TODO: Maybe a simple sqrt is better?!
-        #         penalties *= max(abs(sum(objectives)), self.min_penalty)
-        #     else:
-        #         penalties *= abs(sum(objectives))
-        #     self.info['penalties'] = penalties
-
-        # if not self.vector_reward:
-        #     # Use scalar reward 
-        #     reward = sum(full_obj)
-        # else:
-        #     # Reward as a numpy array
-        #     reward = full_obj
-
         if self.penalty_weight is not None:
-            reward = obj * (1 - self.penalty_weight) + pen * self.penalty_weight
+            reward = objective * (1 - self.penalty_weight) + penalty * self.penalty_weight
         else:
-            reward = obj + pen
+            reward = objective + penalty
 
         if self.clip_reward:
             reward = np.clip(reward, self.clip_reward[0], self.clip_reward[1])
-
-        if self.squash_reward and not test:
-            reward = np.sign(reward) * np.log(np.abs(reward) + 1)
-            if self.min_penalty and not valids.all():
-                # Prevent that the penalty gets completely squashed
-                reward -= self.min_penalty
 
         return reward
 
@@ -685,9 +654,9 @@ class OpfEnv(gym.Env, abc.ABC):
         return True
 
 
-def get_obs_space(net, obs_keys: list, add_time_obs: bool, add_mean_obs: bool,
-                  penalty_obs_space: gym.Space=None, seed: int=None,
-                  last_n_obs: int=1, bus_wise_obs=False):
+def get_obs_space(net, obs_keys: list, add_time_obs: bool, 
+                  add_mean_obs: bool=False, penalty_obs_space: gym.Space=None, 
+                  seed: int=None, last_n_obs: int=1, bus_wise_obs=False):
     """ Get observation space from the constraints of the power network. """
     lows, highs = [], []
 

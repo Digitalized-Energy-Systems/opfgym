@@ -45,13 +45,6 @@ class VoltageControl(opf_env.OpfEnv):
         
         super().__init__(seed=seed, *args, **kwargs)
 
-        # if self.vector_reward is True:
-        #     # TODO: Update vector reward
-        #     # 2 penalties and `n_sgen+1` objective functions
-        #     n_objs = 2 + len(self.net.sgen) + 1
-        #     self.reward_space = gym.spaces.Box(
-        #         low=-np.ones(n_objs) * np.inf, high=np.ones(n_objs) * np.inf, seed=seed)
-
     def _define_opf(self, simbench_network_name, *args, **kwargs):
         net, self.profiles = build_simbench_net(
             simbench_network_name, *args, **kwargs)
@@ -70,7 +63,6 @@ class VoltageControl(opf_env.OpfEnv):
         net.storage['max_max_q_mvar'] = net.storage['max_s_mva']
         net.storage['min_min_q_mvar'] = -net.storage['max_s_mva']
 
-        # TODO: Currently finetuned for simbench grid '1-LV-urban6--0-sw'
         net.ext_grid['max_q_mvar'] = self.max_q_exchange
         net.ext_grid['min_q_mvar'] = -self.max_q_exchange
 
@@ -127,13 +119,3 @@ class VoltageControl(opf_env.OpfEnv):
             q_max = (self.net[unit_type].max_s_mva**2 - self.net[unit_type].max_p_mw**2)**0.5
             self.net[unit_type]['min_q_mvar'] = -q_max  # No scaling required this way!
             self.net[unit_type]['max_q_mvar'] = q_max
-
-    # def calc_objective(self, net):
-    #     """ Define what to do in vector_reward-case. """
-    #     objs = super().calc_objective(net)
-    #     if self.vector_reward:
-    #         # Structure: [sgen1_costs, sgen2_costs, ..., loss_costs]
-    #         return np.append(objs[0:len(self.net.sgen)],
-    #                          sum(objs[len(self.net.sgen):]))
-    #     else:
-    #         return objs

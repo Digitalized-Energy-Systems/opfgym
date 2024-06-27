@@ -73,15 +73,6 @@ class EcoDispatch(opf_env.OpfEnv):
 
         super().__init__(seed=seed, *args, **kwargs)
 
-        if self.vector_reward is True:
-            # 5 penalties and `n_participants` objective functions
-            n_objs = 5 + len(self.net.sgen) + \
-                len(self.net.ext_grid) + len(self.net.gen)
-            self.reward_space = gym.spaces.Box(
-                low=-np.ones(n_objs) * np.inf,
-                high=np.ones(n_objs) * np.inf,
-                seed=seed)
-
     def _define_opf(self, simbench_network_name, min_power, n_agents, *args, **kwargs):
         net, self.profiles = build_simbench_net(
             simbench_network_name, *args, **kwargs)
