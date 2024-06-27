@@ -52,6 +52,7 @@ class OpfEnv(gym.Env, abc.ABC):
                  test_penalty=None,
                  autoscale_actions=True,
                  diff_action_step_size=None,
+                 clipped_action_penalty=0,
                  seed=None,
                  *args, **kwargs):
 
@@ -127,6 +128,7 @@ class OpfEnv(gym.Env, abc.ABC):
         self.priority = autocorrect_prio
         self.autoscale_actions = autoscale_actions
         self.diff_action_step_size = diff_action_step_size
+        self.clipped_action_penalty = clipped_action_penalty
 
         self.steps_per_episode = steps_per_episode
 
@@ -396,7 +398,7 @@ class OpfEnv(gym.Env, abc.ABC):
         self.step_in_episode += 1
 
         if self.apply_action:
-            self._apply_actions(action, self.diff_action_step_size)
+            correction = self._apply_actions(action, self.diff_action_step_size)
             success = self._run_pf()
 
             if not success:
@@ -411,6 +413,8 @@ class OpfEnv(gym.Env, abc.ABC):
         if self.diff_reward:
             # Do not use the objective as reward, but their diff instead
             reward -= self.prev_reward
+        if self.clipped_action_penalty:
+            reward -= correction * self.clipped_action_penalty
 
         if self.steps_per_episode == 1:
             terminated = True
@@ -429,9 +433,12 @@ class OpfEnv(gym.Env, abc.ABC):
 
     def _apply_actions(self, action, diff_action_step_size=None):
         """ Apply agent actions as setpoints to the power system at hand. """
-        counter = 0
+
         # Clip invalid actions
         action = np.clip(action, self.action_space.low, self.action_space.high)
+
+        correction = 0
+        counter = 0
         for unit_type, actuator, idxs in self.act_keys:
             if len(idxs) == 0:
                 continue
@@ -461,13 +468,15 @@ class OpfEnv(gym.Env, abc.ABC):
                 # Agent sets absolute setpoints in range [min, max]
                 setpoints = partial_act * delta_action + min_action
 
-            # Autocorrect impossible setpoints (without penalties, TODO: add penalties here?)
+            # Autocorrect impossible setpoints
             if not self.autoscale_actions or diff_action_step_size is not None:
                 if f'max_{actuator}' in df.columns:
                     mask = setpoints > df[f'max_{actuator}'].loc[idxs]
+                    correction += (setpoints - df[f'max_{actuator}'].loc[idxs])[mask].sum()
                     setpoints[mask] = df[f'max_{actuator}'].loc[idxs][mask]
                 if f'min_{actuator}' in df.columns:
                     mask = setpoints < df[f'min_{actuator}'].loc[idxs]
+                    correction += (df[f'max_{actuator}'].loc[idxs] - setpoints)[mask].sum()
                     setpoints[mask] = df[f'min_{actuator}'].loc[idxs][mask]
 
             if 'scaling' in df.columns:
@@ -478,12 +487,15 @@ class OpfEnv(gym.Env, abc.ABC):
 
             counter += len(idxs)
 
-        self._autocorrect_apparent_power(self.priority)
+        correction += self._autocorrect_apparent_power(self.priority)
+
+        return correction
 
     def _autocorrect_apparent_power(self, priority='p_mw'):
         """ Autocorrect to maximum apparent power if necessary. Relevant for
         sgens, loads, and storages """
         not_prio = 'p_mw' if priority == 'q_mvar' else 'q_mvar'
+        correction = 0
         for unit_type in ('sgen', 'load', 'storage'):
             df = self.net[unit_type]
             if 'max_s_mva' in df.columns:
@@ -491,9 +503,12 @@ class OpfEnv(gym.Env, abc.ABC):
                 values2 = (df[priority] * df.scaling).to_numpy() ** 2
                 # Make sure to prevent negative values for sqare root
                 max_values = np.maximum(s_mva2 - values2, 0)**0.5 / df.scaling
-                # Reduce non-priority power column
-                self.net[unit_type][not_prio] = np.sign(df[not_prio]) * \
-                    np.minimum(df[not_prio].abs(), max_values)
+                # Reduce non-priority power setpoints
+                new_values = np.sign(df[not_prio]) * np.minimum(df[not_prio].abs(), max_values)
+                correction += (self.net[unit_type][not_prio] - new_values).abs().sum()
+                self.net[unit_type][not_prio] = new_values
+
+        return correction
 
     def _run_pf(self, enforce_q_lims=True, calculate_voltage_angles=False, 
                 voltage_depend_loads=False, **kwargs):
