@@ -52,11 +52,6 @@ class MaxRenewable(opf_env.OpfEnv):
             kwargs['volt_pen_kwargs'] = {'linear_penalty': 5}
         super().__init__(seed=seed, *args, **kwargs)
 
-        # if self.vector_reward is True:
-        #     # 5 penalties and one objective function
-        #     self.reward_space = gym.spaces.Box(
-        #         low=-np.ones(6) * np.inf, high=np.ones(6) * np.inf, seed=seed)
-
     def _define_opf(self, simbench_network_name, *args, **kwargs):
         net, self.profiles = build_simbench_net(
             simbench_network_name, *args, **kwargs)
