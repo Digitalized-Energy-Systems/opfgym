@@ -62,6 +62,10 @@ class MaxRenewable(opf_env.OpfEnv):
         net.storage['q_mvar'] = 0
         net.storage['max_q_mvar'] = 0
         net.storage['min_q_mvar'] = 0
+        # Assume that storage systems are completely usable 
+        # (do not consider state of charge for example)
+        net.storage['max_p_mw'] = net.storage['max_max_p_mw']
+        net.storage['min_p_mw'] = net.storage['min_min_p_mw']
         
         net.sgen['controllable'] = True
         net.sgen['min_p_mw'] = 0  # max will be set later in sampling
@@ -90,7 +94,6 @@ class MaxRenewable(opf_env.OpfEnv):
 
     def _sampling(self, *args, **kwargs):
         super()._sampling(*args, **kwargs)
-
         # TODO: Maybe add storage max power here, e.g., to consider the current state of charge?!
 
         # Set constraints of current time step (also required for OPF)
