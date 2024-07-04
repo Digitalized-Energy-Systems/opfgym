@@ -28,7 +28,7 @@ class OpfEnv(gym.Env, abc.ABC):
                  autocorrect_prio='p_mw',
                  pf_for_obs=None,
                  bus_wise_obs=False,
-                 diff_reward=False,
+                 diff_objective=False,
                  reward_function: str='summation',
                  reward_function_params: dict=None,
                  clip_reward: tuple=None,
@@ -144,8 +144,9 @@ class OpfEnv(gym.Env, abc.ABC):
                     self.pf_for_obs = True
                     break
 
-        self.diff_reward = diff_reward
-        if diff_reward:
+        self.diff_objective = diff_objective
+        if diff_objective:
+            # An initial power flow is required to compute the initial objective
             self.pf_for_obs = True
 
         self.test_steps = define_test_steps(test_share, **kwargs)
@@ -198,7 +199,7 @@ class OpfEnv(gym.Env, abc.ABC):
         if 'penalty_bias' in params.keys():
             self.penalty_bias = params['penalty_bias']
 
-        if self.reward_function == 'replacement':
+        if self.reward_function in ('replacement', 'parameterized'):
             valid_reward = self.reward_function_params.get('valid_reward', 1)
             # Standard variants: Use mean or worst case objective as reward
             if isinstance(valid_reward, str):
@@ -253,7 +254,6 @@ class OpfEnv(gym.Env, abc.ABC):
                 return self.reset()
 
             self.prev_obj = self.calc_objective(self.net)
-            self.prev_reward = self.calc_reward()
 
         return self._get_obs(self.obs_keys, self.add_time_obs), copy.deepcopy(self.info)
 
@@ -281,7 +281,7 @@ class OpfEnv(gym.Env, abc.ABC):
                 self._set_simbench_state(step, test, *args, **kwargs)
             elif r < data_probs[1]:
                 self._sample_uniform(sample_new=sample_new)
-            elif r < data_probs[2]:
+            else:
                 self._sample_normal(sample_new=sample_new, *args, **kwargs)
             
     def _sample_uniform(self, sample_keys=None, sample_new=True):
@@ -410,10 +410,7 @@ class OpfEnv(gym.Env, abc.ABC):
 
         reward = self.calc_reward()
 
-        if self.diff_reward:
-            # Do not use the objective as reward, but their diff instead
-            reward -= self.prev_reward
-        if self.clipped_action_penalty:
+        if self.clipped_action_penalty and self.apply_action:
             reward -= correction * self.clipped_action_penalty
 
         if self.steps_per_episode == 1:
@@ -472,24 +469,26 @@ class OpfEnv(gym.Env, abc.ABC):
             if not self.autoscale_actions or diff_action_step_size is not None:
                 if f'max_{actuator}' in df.columns:
                     mask = setpoints > df[f'max_{actuator}'].loc[idxs]
-                    correction += (setpoints - df[f'max_{actuator}'].loc[idxs])[mask].sum()
                     setpoints[mask] = df[f'max_{actuator}'].loc[idxs][mask]
                 if f'min_{actuator}' in df.columns:
                     mask = setpoints < df[f'min_{actuator}'].loc[idxs]
-                    correction += (df[f'max_{actuator}'].loc[idxs] - setpoints)[mask].sum()
                     setpoints[mask] = df[f'min_{actuator}'].loc[idxs][mask]
 
             if 'scaling' in df.columns:
-                # Scaling sometimes not existing -> TODO: maybe catch this once in init
+                # Scaling column sometimes not existing
                 setpoints /= df.scaling.loc[idxs]
 
             self.net[unit_type][actuator].loc[idxs] = setpoints
 
             counter += len(idxs)
 
-        correction += self._autocorrect_apparent_power(self.priority)
+        # TODO: Not really relevant if active/reactive not optimized together
+        # self._autocorrect_apparent_power(self.priority)
 
-        return correction
+        # Did the action need to be corrected to be in bounds?
+        mean_correction = np.mean(abs(self.get_current_actions(False) - action))
+
+        return mean_correction
 
     def _autocorrect_apparent_power(self, priority='p_mw'):
         """ Autocorrect to maximum apparent power if necessary. Relevant for
@@ -556,8 +555,14 @@ class OpfEnv(gym.Env, abc.ABC):
         self.info['objectives'] = self.calc_objective(self.net)
         valids, violations, penalties = self.calc_violations()
 
+        if self.diff_objective:
+            # Compute difference to previous objective
+            objectives = self.info['objectives'] - self.prev_obj
+        else:
+            objectives = self.info['objectives']
+
         # Perform reward scaling, e.g., to range [-1, 1] (if defined)
-        objective = sum(self.info['objectives']) * self.objective_factor + self.objective_bias
+        objective = sum(objectives) * self.objective_factor + self.objective_bias
         penalty = sum(penalties) * self.penalty_factor + self.penalty_bias
 
         self.info['valids'] = np.array(valids)
@@ -630,16 +635,33 @@ class OpfEnv(gym.Env, abc.ABC):
     def render(self):
         logging.warning(f'Rendering not supported!')
 
-    def get_current_actions(self):
+    def get_current_actions(self, results=True):
         # Attention: These are not necessarily the actions of the RL agent
         # because some re-scaling might have happened!
         # These are the actions from action space [0, 1]
-        action = [(self.net[f'res_{unit_type}'][column].loc[idxs]
-                   - self.net[unit_type][f'min_{column}'].loc[idxs])
-                   / (self.net[unit_type][f'max_{column}'].loc[idxs]
-                      - self.net[unit_type][f'min_{column}'].loc[idxs])
-                  for unit_type, column, idxs in self.act_keys]
-        return np.concatenate(action)
+        res_flag = 'res_' if results else ''
+        action = []
+        for unit_type, column, idxs in self.act_keys:
+            setpoints = self.net[f'{res_flag}{unit_type}'][column].loc[idxs]
+
+            # If data not taken taken from res table, scaling required 
+            if not results and 'scaling' in self.net[unit_type].columns:
+                setpoints *= self.net[unit_type].scaling.loc[idxs]
+
+            # Action space depends on autoscaling 
+            min_id = 'min_' if self.autoscale_actions else 'min_min_'
+            max_id = 'max_' if self.autoscale_actions else 'max_max_' 
+            min_values = self.net[unit_type][f'{min_id}{column}'].loc[idxs]
+            max_values = self.net[unit_type][f'{max_id}{column}'].loc[idxs]
+
+            action.append((setpoints - min_values) / (max_values - min_values))
+
+        action = np.concatenate(action)
+
+        assert max(action) <= 1.0 
+        assert min(action) >= 0.0
+
+        return action
 
     def baseline_reward(self, **kwargs):
         """ Compute some baseline to compare training performance with. In this
