@@ -658,9 +658,6 @@ class OpfEnv(gym.Env, abc.ABC):
 
         action = np.concatenate(action)
 
-        assert max(action) <= 1.0 
-        assert min(action) >= 0.0
-
         return action
 
     def baseline_reward(self, **kwargs):
