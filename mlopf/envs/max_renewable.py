@@ -85,6 +85,7 @@ class MaxRenewable(opf_env.OpfEnv):
                                 cp1_eur_per_mw=-active_power_costs)
             
         # Assumption: Storage power is more expensive than sgen power
+        # TODO: Does not really make sense. Far to simplified.
         storage_costs = active_power_costs / (self.storage_efficiency**2)
         for idx in net['storage'].index:
             pp.create_poly_cost(net, idx, 'storage',
@@ -100,8 +101,8 @@ class MaxRenewable(opf_env.OpfEnv):
         self.net.sgen['max_p_mw'] = self.net.sgen.p_mw * self.net.sgen.scaling + 1e-6
 
         self.net.sgen['q_mvar'] = self.net.sgen.p_mw * self.q_factor
-        self.net['max_q_mvar'] = self.net.sgen.q_mvar * self.net.sgen.scaling + 1e-9
-        self.net['min_q_mvar'] = self.net.sgen.q_mvar * self.net.sgen.scaling - 1e-9
+        self.net.sgen['max_q_mvar'] = self.net.sgen.q_mvar * self.net.sgen.scaling + 1e-9
+        self.net.sgen['min_q_mvar'] = self.net.sgen.q_mvar * self.net.sgen.scaling - 1e-9
 
 
 if __name__ == '__main__':
