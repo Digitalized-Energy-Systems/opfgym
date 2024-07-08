@@ -53,6 +53,7 @@ class OpfEnv(gym.Env, abc.ABC):
                  autoscale_actions=True,
                  diff_action_step_size=None,
                  clipped_action_penalty=0,
+                 initial_action='center',
                  seed=None,
                  *args, **kwargs):
 
@@ -129,6 +130,7 @@ class OpfEnv(gym.Env, abc.ABC):
         self.autoscale_actions = autoscale_actions
         self.diff_action_step_size = diff_action_step_size
         self.clipped_action_penalty = clipped_action_penalty
+        self.initial_action = initial_action
 
         self.steps_per_episode = steps_per_episode
 
@@ -213,6 +215,7 @@ class OpfEnv(gym.Env, abc.ABC):
     def reset(self, step=None, test=False, seed=None, options=None):
         super().reset(seed=seed, options=options)
         self.info = {}
+        self.current_simbench_step = None
         self.step_in_episode = 0
 
         if not options:
@@ -237,9 +240,8 @@ class OpfEnv(gym.Env, abc.ABC):
             
         self._sampling(step, test, self.apply_action)
         
-        if self.add_act_obs:
+        if self.initial_action == 'random':
             # Use random actions as starting point so that agent learns to handle that
-            # TODO: Maybe better to combine this with multi-step?!
             act = self.action_space.sample()
         else:
             # Reset all actions to default values
@@ -320,29 +322,32 @@ class OpfEnv(gym.Env, abc.ABC):
         """ Sample data around mean values from simbench data. """
         assert sample_new, 'Currently only implemented for sample_new=True'
         for unit_type, column, idxs in self.obs_keys:
-            if 'res_' not in unit_type and 'poly_cost' not in unit_type:
-                df = self.net[unit_type].loc[idxs]
-                mean = df[f'mean_{column}']
-                
-                max_values = (df[f'max_max_{column}'] / df.scaling).to_numpy()
-                min_values = (df[f'min_min_{column}'] / df.scaling).to_numpy()
-                diff = max_values - min_values
-                if relative_std:
-                    std = relative_std * diff
-                else:
-                    std = df[f'std_dev_{column}']
+            if ('res_' in unit_type or 'poly_cost' in unit_type 
+                    or (unit_type, column, idxs) in self.act_keys):
+                continue 
+    
+            df = self.net[unit_type].loc[idxs]
+            mean = df[f'mean_{column}']
+            
+            max_values = (df[f'max_max_{column}'] / df.scaling).to_numpy()
+            min_values = (df[f'min_min_{column}'] / df.scaling).to_numpy()
+            diff = max_values - min_values
+            if relative_std:
+                std = relative_std * diff
+            else:
+                std = df[f'std_dev_{column}']
 
-                if truncated:
-                    # Make sure to re-distribute truncated values 
-                    random_values = stats.truncnorm.rvs(
-                        min_values, max_values, mean, std * diff, len(mean))
-                else:
-                    # Simply clip values to min/max range
-                    random_values = np.random.normal(
-                        mean, std * diff, len(mean))
-                    random_values = np.clip(
-                        random_values, min_values, max_values)
-                self.net[unit_type][column].loc[idxs] = random_values
+            if truncated:
+                # Make sure to re-distribute truncated values 
+                random_values = stats.truncnorm.rvs(
+                    min_values, max_values, mean, std * diff, len(mean))
+            else:
+                # Simply clip values to min/max range
+                random_values = np.random.normal(
+                    mean, std * diff, len(mean))
+                random_values = np.clip(
+                    random_values, min_values, max_values)
+            self.net[unit_type][column].loc[idxs] = random_values
 
     def _set_simbench_state(self, step: int=None, test=False,
                             noise_factor=0.1, noise_distribution='uniform',
@@ -367,7 +372,7 @@ class OpfEnv(gym.Env, abc.ABC):
         else:
             assert step < total_n_steps
 
-        self.current_step = step
+        self.current_simbench_step = step
 
         for type_act in self.profiles.keys():
             if not self.profiles[type_act].shape[1]:
@@ -449,7 +454,7 @@ class OpfEnv(gym.Env, abc.ABC):
 
             df = self.net[unit_type]
             partial_act = action[counter:counter + len(idxs)]
-            if self.autoscale_actions and not diff_action_step_size:
+            if self.autoscale_actions:
                 # Ensure that actions are always valid by using the current range
                 min_action = df[f'min_{actuator}'].loc[idxs]
                 max_action = df[f'max_{actuator}'].loc[idxs]
@@ -635,7 +640,7 @@ class OpfEnv(gym.Env, abc.ABC):
 
         if add_time_obs:
             time_obs = get_simbench_time_observation(
-                self.profiles, self.current_step)
+                self.profiles, self.current_simbench_step)
             obss = [time_obs] + obss
 
         return np.concatenate(obss)
