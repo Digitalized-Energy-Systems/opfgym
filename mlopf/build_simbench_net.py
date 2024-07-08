@@ -79,8 +79,9 @@ def set_constraints_from_profiles(net, profiles):
         else:
             net_df[f'max_max_{column}'] = profiles[type_act].max(axis=0) * net_df.scaling
             net_df[f'min_min_{column}'] = profiles[type_act].min(axis=0) * net_df.scaling
-        # Compute mean. Sometimes required for data sampling.
+        # Compute mean and standard dev. Sometimes required for data sampling.
         net_df[f'mean_{column}'] = profiles[type_act].mean(axis=0)
+        net_df[f'std_dev_{column}'] = profiles[type_act].std(axis=0)
 
     # Add estimation of min/max data for external grids
     load_gen_diff = profiles[('load', 'p_mw')].sum(

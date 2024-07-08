@@ -316,20 +316,28 @@ class OpfEnv(gym.Env, abc.ABC):
             # TODO: Add comment why this is necessary
             self.net[unit_type][column].loc[idxs] = r
 
-    def _sample_normal(self, std=0.3, truncated=False, sample_new=True):
+    def _sample_normal(self, relative_std=None, truncated=False, sample_new=True):
         """ Sample data around mean values from simbench data. """
         assert sample_new, 'Currently only implemented for sample_new=True'
         for unit_type, column, idxs in self.obs_keys:
             if 'res_' not in unit_type and 'poly_cost' not in unit_type:
                 df = self.net[unit_type].loc[idxs]
                 mean = df[f'mean_{column}']
+                
                 max_values = (df[f'max_max_{column}'] / df.scaling).to_numpy()
                 min_values = (df[f'min_min_{column}'] / df.scaling).to_numpy()
                 diff = max_values - min_values
+                if relative_std:
+                    std = relative_std * diff
+                else:
+                    std = df[f'std_dev_{column}']
+
                 if truncated:
+                    # Make sure to re-distribute truncated values 
                     random_values = stats.truncnorm.rvs(
                         min_values, max_values, mean, std * diff, len(mean))
                 else:
+                    # Simply clip values to min/max range
                     random_values = np.random.normal(
                         mean, std * diff, len(mean))
                     random_values = np.clip(
@@ -434,7 +442,6 @@ class OpfEnv(gym.Env, abc.ABC):
         # Clip invalid actions
         action = np.clip(action, self.action_space.low, self.action_space.high)
 
-        correction = 0
         counter = 0
         for unit_type, actuator, idxs in self.act_keys:
             if len(idxs) == 0:
@@ -442,7 +449,7 @@ class OpfEnv(gym.Env, abc.ABC):
 
             df = self.net[unit_type]
             partial_act = action[counter:counter + len(idxs)]
-            if self.autoscale_actions:
+            if self.autoscale_actions and not diff_action_step_size:
                 # Ensure that actions are always valid by using the current range
                 min_action = df[f'min_{actuator}'].loc[idxs]
                 max_action = df[f'max_{actuator}'].loc[idxs]
@@ -454,19 +461,20 @@ class OpfEnv(gym.Env, abc.ABC):
             delta_action = (max_action - min_action).values
 
             # Always use continuous action space [0, 1]
-            if diff_action_step_size is not None:
+            if diff_action_step_size:
                 # Agent sets incremental setpoints instead of absolute ones.
                 previous_setpoints = self.net[unit_type][actuator].loc[idxs].values
-                partial_act = partial_act * 2 - 1
                 if 'scaling' in df.columns:
                     previous_setpoints *= df.scaling.loc[idxs]
+                # Make sure decreasing the setpoint is possible as well
+                partial_act = partial_act * 2 - 1
                 setpoints = partial_act * diff_action_step_size * delta_action + previous_setpoints
             else:
                 # Agent sets absolute setpoints in range [min, max]
                 setpoints = partial_act * delta_action + min_action
 
             # Autocorrect impossible setpoints
-            if not self.autoscale_actions or diff_action_step_size is not None:
+            if not self.autoscale_actions or diff_action_step_size:
                 if f'max_{actuator}' in df.columns:
                     mask = setpoints > df[f'max_{actuator}'].loc[idxs]
                     setpoints[mask] = df[f'max_{actuator}'].loc[idxs][mask]
