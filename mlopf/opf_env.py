@@ -46,6 +46,7 @@ class OpfEnv(gym.Env, abc.ABC):
                  line_pen_kwargs: dict=None,
                  trafo_pen_kwargs: dict=None,
                  ext_grid_pen_kwargs: dict=None,
+                 only_worst_case_violations=False,
                  autoscale_violations=True,
                  penalty_weight=0.5,
                  penalty_obs_range: tuple=None,
@@ -122,7 +123,7 @@ class OpfEnv(gym.Env, abc.ABC):
         self.line_pen = line_pen_kwargs if line_pen_kwargs else {}
         self.trafo_pen = trafo_pen_kwargs if trafo_pen_kwargs else {}
         self.ext_grid_pen = ext_grid_pen_kwargs if ext_grid_pen_kwargs else {}
-
+        self.only_worst_case_violations = only_worst_case_violations
         self.autoscale_violations = autoscale_violations
         self.clip_reward = clip_reward
         
@@ -549,15 +550,15 @@ class OpfEnv(gym.Env, abc.ABC):
 
         valids_violations_penalties = [
             voltage_violation(self.net, self.autoscale_violations,
-                **self.volt_pen),
+                worst_case_only=self.only_worst_case_violations, **self.volt_pen),
             line_overload(self.net, self.autoscale_violations,
-                **self.line_pen),
+                worst_case_only=self.only_worst_case_violations, **self.line_pen),
             trafo_overload(self.net, self.autoscale_violations,
-                **self.trafo_pen),
+                worst_case_only=self.only_worst_case_violations, **self.trafo_pen),
             ext_grid_overpower(self.net, 'q_mvar', self.autoscale_violations,
-                **self.ext_grid_pen),
+                worst_case_only=self.only_worst_case_violations, **self.ext_grid_pen),
             ext_grid_overpower(self.net, 'p_mw', self.autoscale_violations,
-                **self.ext_grid_pen)]
+                worst_case_only=self.only_worst_case_violations, **self.ext_grid_pen)]
 
         valids, viol, penalties = zip(*valids_violations_penalties)
 
