@@ -161,9 +161,8 @@ class OpfEnv(gym.Env, abc.ABC):
         if reward_scaling_params == 'auto' or (
                 'num_samples' in reward_scaling_params) or (
                 not reward_scaling_params and reward_scaling):
-            num_samples = reward_scaling_params.get('num_samples', 3000)
             # Find reward range by trial and error
-            params = get_normalization_params(self, num_samples=num_samples)
+            params = get_normalization_params(self, **reward_scaling_params)
         else:
             params = reward_scaling_params
 
@@ -207,13 +206,14 @@ class OpfEnv(gym.Env, abc.ABC):
             # Standard variants: Use mean or worst case objective as reward
             if isinstance(valid_reward, str):
                 if valid_reward == 'worst':
-                    valid_reward = -self.normalization_params['min_obj']
+                    valid_reward = self.normalization_params['min_obj']
                 elif valid_reward == 'mean':
-                    valid_reward = -self.normalization_params['mean_obj']
+                    valid_reward = self.normalization_params['mean_obj']
                 valid_reward = valid_reward * self.objective_factor + self.objective_bias
             self.valid_reward = valid_reward
 
     def reset(self, step=None, test=False, seed=None, options=None):
+        # TODO: remove step and test from args
         super().reset(seed=seed, options=options)
         self.info = {}
         self.current_simbench_step = None
@@ -256,7 +256,7 @@ class OpfEnv(gym.Env, abc.ABC):
                     'Failed powerflow calculcation in reset. Try again!')
                 return self.reset()
 
-            self.prev_obj = self.calc_objective(self.net)
+            self.initial_obj = self.calc_objective(self.net, base_objective=True)
 
         return self._get_obs(self.obs_keys, self.add_time_obs), copy.deepcopy(self.info)
 
@@ -537,11 +537,14 @@ class OpfEnv(gym.Env, abc.ABC):
             return False
         return True
 
-    def calc_objective(self, net):
+    def calc_objective(self, net, base_objective=False):
         """ Default: Compute reward/costs from poly costs. Works only if
         defined as pandapower OPF problem and only for poly costs! If that is
         not the case, this method needs to be overwritten! """
-        return -min_pp_costs(net)
+        if base_objective or not self.diff_objective:
+            return -min_pp_costs(net)
+        else:
+            return -min_pp_costs(net) - self.initial_obj
 
     def calc_violations(self):
         """ Constraint violations result in a penalty that can be subtracted
@@ -566,27 +569,31 @@ class OpfEnv(gym.Env, abc.ABC):
 
     def calc_reward(self):
         """ Combine objective function and the penalties together. """
-        self.info['objectives'] = self.calc_objective(self.net)
+        objective = sum(self.calc_objective(self.net))
         valids, violations, penalties = self.calc_violations()
+        
+        penalty = sum(penalties)
 
-        if self.diff_objective:
-            # Compute difference to previous objective
-            objectives = self.info['objectives'] - self.prev_obj
-        else:
-            objectives = self.info['objectives']
+        # Perform potential reward clipping (e.g., to prevent exploding rewards)
+        if self.normalization_params['clip_range_obj']:
+            objective = np.clip(objective,
+                                self.normalization_params['clip_range_obj'][0],
+                                self.normalization_params['clip_range_obj'][1])
+        if self.normalization_params['clip_range_viol']:
+            penalty = np.clip(penalty,
+                              self.normalization_params['clip_range_viol'][0],
+                              self.normalization_params['clip_range_viol'][1])
 
         # Perform reward scaling, e.g., to range [-1, 1] (if defined)
-        objective = sum(objectives) * self.objective_factor + self.objective_bias
-        penalty = sum(penalties) * self.penalty_factor + self.penalty_bias
+        objective = objective * self.objective_factor + self.objective_bias
+        penalty = penalty * self.penalty_factor + self.penalty_bias
 
         self.info['valids'] = np.array(valids)
         self.info['violations'] = np.array(violations)  
-        # self.info['original_violations'] = np.array(original_violations)
         self.info['unscaled_penalties'] = np.array(penalties)
-        # Full vector information about the penalties
-        self.info['penalties'] = penalties * self.penalty_factor + self.penalty_bias / len(penalties) 
+        self.info['penalty'] = penalty
         # Standard cost definition in Safe RL (Do not use bias here to prevent sign flip)
-        self.info['cost'] = abs(sum(penalties) * self.penalty_factor - self.reward_function_params.get('invalid_penalty', 0.0))  
+        self.info['cost'] = abs(penalty * self.penalty_factor - self.reward_function_params.get('invalid_penalty', 0.0))  
 
         if self.reward_function == 'summation':
             # Add penalty to objective function (no change required)
@@ -681,7 +688,7 @@ class OpfEnv(gym.Env, abc.ABC):
         success = self._optimal_power_flow(**kwargs)
         if not success:
             return np.nan
-        objectives = self.calc_objective(self.net)
+        objectives = self.calc_objective(self.net, base_objective=True)
         valids, violations, penalties = self.calc_violations()
         logging.info(f'Optimal violations: {violations}')
         logging.info(f'Baseline actions: {self.get_current_actions()}')
