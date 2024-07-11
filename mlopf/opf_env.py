@@ -613,7 +613,9 @@ class OpfEnv(gym.Env, abc.ABC):
             # The invalid_penalty is added to allow for inverse replacement method
             # (punish invalid states instead of rewarding valid ones)
             if valids.all():
-                objective += self.reward_function_params.get('valid_reward', 0)
+                # Positive penalty may sound strange but the intution is that 
+                # the penalty reward term represents constraint satisfaction
+                penalty += self.reward_function_params.get('valid_reward', 0)
             else:
                 objective *= self.reward_function_params.get('objective_share', 1)
                 penalty -= self.reward_function_params.get('invalid_penalty', 0.5)
