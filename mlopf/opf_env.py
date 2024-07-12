@@ -152,7 +152,8 @@ class OpfEnv(gym.Env, abc.ABC):
             # An initial power flow is required to compute the initial objective
             self.pf_for_obs = True
 
-        self.test_steps = define_test_steps(test_share, **kwargs)
+        self.test_steps, self.train_steps = define_test_train_split(
+            test_share, **kwargs)
 
         # Prepare reward scaling for later on 
         self.reward_scaling = reward_scaling
@@ -352,7 +353,7 @@ class OpfEnv(gym.Env, abc.ABC):
 
     def _set_simbench_state(self, step: int=None, test=False,
                             noise_factor=0.1, noise_distribution='uniform',
-                            *args, **kwargs):
+                            in_between_steps=False, *args, **kwargs):
         """ Standard pre-implemented method to sample a random state from the
         simbench time-series data and set that state.
 
@@ -364,12 +365,13 @@ class OpfEnv(gym.Env, abc.ABC):
             if test is True and self.train_test_split is True:
                 step = np.random.choice(self.test_steps)
             else:
-                while True:
-                    # TODO: This can be done far more efficiently!
-                    step = random.randint(0, total_n_steps - 1)
-                    if self.train_test_split and step in self.test_steps:
-                        continue
-                    break
+                step = np.random.choice(self.train_steps)
+                # while True:
+                #     # TODO: This can be done far more efficiently!
+                #     step = random.randint(0, total_n_steps - 1)
+                #     if self.train_test_split and step in self.test_steps:
+                #         continue
+                #     break
         else:
             assert step < total_n_steps
 
@@ -380,6 +382,12 @@ class OpfEnv(gym.Env, abc.ABC):
                 continue
             unit_type, actuator = type_act
             data = self.profiles[type_act].loc[step, self.net[unit_type].index]
+
+            if in_between_steps and step < total_n_steps - 1:
+                # Random linear interpolation between two steps
+                next_data = self.profiles[type_act].loc[step + 1, self.net[unit_type].index]
+                r = np.random.random()
+                data = data * r + next_data * (1 - r)
 
             # Add some noise to create unique data samples
             if noise_distribution == 'uniform':
@@ -575,11 +583,11 @@ class OpfEnv(gym.Env, abc.ABC):
         penalty = sum(penalties)
 
         # Perform potential reward clipping (e.g., to prevent exploding rewards)
-        if self.normalization_params['clip_range_obj']:
+        if 'clip_range_obj' in self.normalization_params:
             objective = np.clip(objective,
                                 self.normalization_params['clip_range_obj'][0],
                                 self.normalization_params['clip_range_obj'][1])
-        if self.normalization_params['clip_range_viol']:
+        if 'clip_range_viol' in self.normalization_params:
             penalty = np.clip(penalty,
                               self.normalization_params['clip_range_viol'][0],
                               self.normalization_params['clip_range_viol'][1])
@@ -790,28 +798,31 @@ def get_obs_space(net, obs_keys: list, add_time_obs: bool,
         np.concatenate(lows, axis=0), np.concatenate(highs, axis=0), seed=seed)
 
 
-def define_test_steps(test_share=0.2, random_test_steps=False, **kwargs):
+def define_test_train_split(test_share=0.2, random_test_steps=False, **kwargs):
     """ Return the indices of the simbench test data points. """
     assert test_share > 0.0, 'Please set train_test_split=False if no separate test data should be used'
 
+    n_data_points = 24 * 4 * 366
+    all_steps = np.arange(n_data_points)
     if test_share == 1.0:
         # Special case: Use the full simbench data set as test set
-        return np.arange(24 * 4 * 366)
-
-    if random_test_steps:
+        test_steps = all_steps
+    elif random_test_steps:
         # Randomly sample test data
-        return np.random.choice(np.arange(24 * 4 * 366), int(24 * 4 * 366 * test_share))
+        test_steps = np.random.choice(all_steps, int(n_data_points * test_share))
+    else:
+        # Use weekly blocks to make sure that all weekdays are equally represented
+        # TODO: Allow for arbitrary blocks? Like days or months?
+        n_weeks = int(52 * test_share)
+        # Sample equidistant weeks from the whole year
+        week_idxs = np.linspace(0, 52, num=n_weeks, endpoint=False, dtype=int)
+        one_week = 7 * 24 * 4
+        test_steps = np.concatenate(
+            [np.arange(idx * one_week, (idx + 1) * one_week) for idx in week_idxs])
+    
+    train_steps = np.array(tuple(set(all_steps) - set(test_steps)))
 
-    # Use weekly blocks to make sure that all weekdays are equally represented
-    # TODO: Allow for arbitrary blocks? Like days or months?
-    n_weeks = int(52 * test_share)
-    # Sample equidistant weeks from the whole year
-    week_idxs = np.linspace(0, 52, num=n_weeks, endpoint=False, dtype=int)
-
-    one_week = 7 * 24 * 4
-    return np.concatenate(
-        [np.arange(idx * one_week, (idx + 1) * one_week) for idx in week_idxs]
-    )
+    return test_steps, train_steps
 
 
 def get_simbench_time_observation(profiles: dict, current_step: int):

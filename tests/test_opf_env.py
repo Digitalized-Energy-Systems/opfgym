@@ -39,15 +39,15 @@ def test_test_share_def():
 
     # Test if test data share is calculated correctly
     # Some minor deviations are perfectly fine
-    test_steps = opf_env.define_test_steps(test_share=0.1)
+    test_steps, train_steps = opf_env.define_test_train_split(test_share=0.1)
     assert len(all_steps) / 10.5 <= len(test_steps) <= len(all_steps) / 9.5
-    test_steps = opf_env.define_test_steps(test_share=0.5)
+    test_steps, train_steps = opf_env.define_test_train_split(test_share=0.5)
     assert len(all_steps) / 2.1 <= len(test_steps) <= len(all_steps) / 1.9
 
     # Edge case: All data is test data
-    test_steps = opf_env.define_test_steps(test_share=1.0)
-    assert (all_steps == all_steps).all()
+    test_steps, train_steps = opf_env.define_test_train_split(test_share=1.0)
+    assert set(test_steps) == set(all_steps)
 
     # Edge case: No test data -> should not be done with test_share
     with pytest.raises(AssertionError):
-        opf_env.define_test_steps(test_share=0.0)
+        opf_env.define_test_train_split(test_share=0.0)
