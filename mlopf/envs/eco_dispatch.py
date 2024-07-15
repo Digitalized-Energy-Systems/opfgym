@@ -50,13 +50,13 @@ class EcoDispatch(opf_env.OpfEnv):
         self.act_keys = [('sgen', 'p_mw', self.net.sgen.index),
                          ('gen', 'p_mw', self.net.gen.index)]
 
-        # Set default values
-        if 'line_pen_kwargs' not in kwargs:
-            kwargs['line_pen_kwargs'] = {'linear_penalty': 3000}
-        if 'trafo_pen_kwargs' not in kwargs:
-            kwargs['trafo_pen_kwargs'] = {'linear_penalty': 3000}
-        if 'ext_grid_pen_kwargs' not in kwargs:
-            kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 500000}
+        # # Set default values
+        # if 'line_pen_kwargs' not in kwargs:
+        #     kwargs['line_pen_kwargs'] = {'linear_penalty': 3000}
+        # if 'trafo_pen_kwargs' not in kwargs:
+        #     kwargs['trafo_pen_kwargs'] = {'linear_penalty': 3000}
+        # if 'ext_grid_pen_kwargs' not in kwargs:
+        #     kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 500000}
 
         super().__init__(seed=seed, *args, **kwargs)
 

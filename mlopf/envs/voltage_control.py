@@ -40,8 +40,8 @@ class VoltageControl(opf_env.OpfEnv):
         self.act_keys = [('sgen', 'q_mvar', self.net.sgen.index),
                          ('storage', 'q_mvar', self.net.storage.index)]
 
-        if 'ext_grid_pen_kwargs' not in kwargs:
-            kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 6}
+        # if 'ext_grid_pen_kwargs' not in kwargs:
+        #     kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 6}
         
         super().__init__(seed=seed, *args, **kwargs)
 

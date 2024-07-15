@@ -116,9 +116,9 @@ class OpfEnv(gym.Env, abc.ABC):
         n_actions = sum([len(idxs) for _, _, idxs in self.act_keys])
         self.action_space = gym.spaces.Box(0, 1, shape=(n_actions,), seed=seed)
 
+        # Reward function
         self.reward_function = reward_function
         self.reward_function_params = reward_function_params if reward_function_params else {}
-
         self.volt_pen = volt_pen_kwargs if volt_pen_kwargs else {}
         self.line_pen = line_pen_kwargs if line_pen_kwargs else {}
         self.trafo_pen = trafo_pen_kwargs if trafo_pen_kwargs else {}
@@ -127,6 +127,7 @@ class OpfEnv(gym.Env, abc.ABC):
         self.autoscale_violations = autoscale_violations
         self.clip_reward = clip_reward
         
+        # Action space details
         self.priority = autocorrect_prio
         self.autoscale_actions = autoscale_actions
         self.diff_action_step_size = diff_action_step_size
