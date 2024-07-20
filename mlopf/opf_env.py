@@ -85,16 +85,26 @@ class OpfEnv(gym.Env, abc.ABC):
 
         self.add_time_obs = add_time_obs
         # Add observations that require previous pf calculation
+        if add_res_obs is True:
+            # Default: Add all results that are usually available
+            add_res_obs = ('voltage_magnitude', 'voltage_angle', 
+                           'line_loading', 'trafo_loading', 'ext_grid_power')
         if add_res_obs:
             # Tricky: Only use buses with actual units connected. Otherwise, too many auxiliary buses are included.
             bus_idxs = set(self.net.load.bus) | set(self.net.sgen.bus) | set(self.net.gen.bus) | set(self.net.storage.bus)
-            self.obs_keys.extend([
-                ('res_bus', 'vm_pu', np.sort(list(bus_idxs))),
-                ('res_line', 'loading_percent', self.net.line.index),
-                ('res_trafo', 'loading_percent', self.net.trafo.index),
-                ('res_ext_grid', 'p_mw', self.net.ext_grid.index),
-                ('res_ext_grid', 'q_mvar', self.net.ext_grid.index)
-            ])
+            add_obs = []
+            if 'voltage_magnitude' in add_res_obs:
+                add_obs.append(('res_bus', 'vm_pu', np.sort(list(bus_idxs))))
+            if 'voltage_angle' in add_res_obs:
+                add_obs.append(('res_bus', 'va_degree', np.sort(list(bus_idxs))))
+            if 'line_loading' in add_res_obs:
+                add_obs.append(('res_line', 'loading_percent', self.net.line.index))
+            if 'trafo_loading' in add_res_obs:
+                add_obs.append(('res_trafo', 'loading_percent', self.net.trafo.index))
+            if 'ext_grid_power' in add_res_obs:
+                add_obs.append(('res_ext_grid', 'p_mw', self.net.ext_grid.index))
+                add_obs.append(('res_ext_grid', 'q_mvar', self.net.ext_grid.index))
+            self.obs_keys.extend(add_obs)   
 
         self.add_mean_obs = add_mean_obs
 
@@ -584,11 +594,11 @@ class OpfEnv(gym.Env, abc.ABC):
         penalty = sum(penalties)
 
         # Perform potential reward clipping (e.g., to prevent exploding rewards)
-        if 'clip_range_obj' in self.normalization_params:
+        if self.normalization_params['clip_range_obj'][0] is not None:
             objective = np.clip(objective,
                                 self.normalization_params['clip_range_obj'][0],
                                 self.normalization_params['clip_range_obj'][1])
-        if 'clip_range_viol' in self.normalization_params:
+        if self.normalization_params['clip_range_viol'][0] is not None:
             penalty = np.clip(penalty,
                               self.normalization_params['clip_range_viol'][0],
                               self.normalization_params['clip_range_viol'][1])
@@ -742,27 +752,33 @@ def get_obs_space(net, obs_keys: list, add_time_obs: bool,
             # The constraints are never defined in the results table
             unit_type = unit_type[4:]
 
-        try:
-            if f'min_min_{column}' in net[unit_type].columns:
-                l = net[unit_type][f'min_min_{column}'].loc[idxs].to_numpy()
-            else:
-                l = net[unit_type][f'min_{column}'].loc[idxs].to_numpy()
-            if f'max_max_{column}' in net[unit_type].columns:
-                h = net[unit_type][f'max_max_{column}'].loc[idxs].to_numpy()
-            else:
-                h = net[unit_type][f'max_{column}'].loc[idxs].to_numpy()
-        except KeyError:
-            # Special case: trafos and lines (have minimum constraint of zero)
-            l = np.zeros(len(idxs))
-            # Assumption: No lines with loading more than 150%
-            h = net[unit_type][f'max_{column}'].loc[idxs].to_numpy() * 1.5
+        if column == 'va_degree':
+            # Usually no constraints for voltage angles defined
+            # Assumption: [30, 30] degree range (experience)
+            l = np.full(len(idxs), -30)
+            h = np.full(len(idxs), +30)
+        else:
+            try:
+                if f'min_min_{column}' in net[unit_type].columns:
+                    l = net[unit_type][f'min_min_{column}'].loc[idxs].to_numpy()
+                else:
+                    l = net[unit_type][f'min_{column}'].loc[idxs].to_numpy()
+                if f'max_max_{column}' in net[unit_type].columns:
+                    h = net[unit_type][f'max_max_{column}'].loc[idxs].to_numpy()
+                else:
+                    h = net[unit_type][f'max_{column}'].loc[idxs].to_numpy()
+            except KeyError:
+                # Special case: trafos and lines (have minimum constraint of zero)
+                l = np.zeros(len(idxs))
+                # Assumption: No lines with loading more than 150%
+                h = net[unit_type][f'max_{column}'].loc[idxs].to_numpy() * 1.5
 
-        # Special case: voltages
-        if column == 'vm_pu' or unit_type == 'ext_grid':
-            diff = h - l
-            # Assumption: If [0.95, 1.05] voltage band, no voltage outside [0.875, 1.125] range
-            l = l - diff * 0.75
-            h = h + diff * 0.75
+            # Special case: voltages
+            if column == 'vm_pu' or unit_type == 'ext_grid':
+                diff = h - l
+                # Assumption: If [0.95, 1.05] voltage band, no voltage outside [0.875, 1.125] range
+                l = l - diff * 0.75
+                h = h + diff * 0.75
             
         try:
             if 'min' in column or 'max' in column:
