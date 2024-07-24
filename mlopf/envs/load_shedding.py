@@ -1,9 +1,6 @@
 """ 
 Load shedding environment: The agent learns to perform cost minimal load 
-shedding in case of a grid overload.
-
-TODO: How to deal with reactive power actuators?
-TODO: Maybe change this to demand response env (load can be increased as well)
+shedding in case of a grid overload in a commercial area grid.
 
 """
 
@@ -14,8 +11,9 @@ from mlopf import opf_env
 from mlopf.build_simbench_net import build_simbench_net
 
 
-# TODO: Problem: Sadly pandapower cannot deal with coupled active/reactive power,
-# which would be necassary for this environment. Current solution: Only active power shedding...
+# Problem: Sadly pandapower cannot deal with coupled active/reactive power,
+# which would be necessary for this environment.
+# Current solution: Only active power shedding...
 
 class LoadShedding(opf_env.OpfEnv):
     """
@@ -32,10 +30,12 @@ class LoadShedding(opf_env.OpfEnv):
 
     """
 
-    def __init__(self, simbench_network_name='1-LV-semiurb4--2-sw',
-                 gen_scaling=1.0, load_scaling=3.0,
-                 max_p_exchange=0.1, *args, **kwargs):
+    def __init__(self, simbench_network_name='1-MV-comm--2-sw',
+                 gen_scaling=1.6, load_scaling=2.2, min_load_power=0.6,
+                 min_storage_power=1.0, max_p_exchange=8.0, *args, **kwargs):
 
+        self.min_load_power = min_load_power
+        self.min_storage_power = min_storage_power
         self.max_p_exchange = max_p_exchange
         self.net = self._define_opf(
             simbench_network_name, gen_scaling=gen_scaling,
@@ -46,11 +46,12 @@ class LoadShedding(opf_env.OpfEnv):
         self.obs_keys = [('sgen', 'p_mw', self.net.sgen.index),
                          ('load', 'p_mw', self.net.load.index),
                          ('load', 'q_mvar', self.net.load.index),
+                         ('storage', 'p_mw', self.net.storage.index[~self.net.storage.controllable]),
                          ('poly_cost', 'cp1_eur_per_mw', self.net.poly_cost.index)]
 
         # Control active power of loads and storages
-        self.act_keys = [('load', 'p_mw', self.net.load.index),
-                         ('storage', 'p_mw', self.net.storage.index)]
+        self.act_keys = [('load', 'p_mw', self.net.load.index[self.net.load.controllable]),
+                         ('storage', 'p_mw', self.net.storage.index[self.net.storage.controllable])]
 
         # Define default penalties
         if 'ext_grid_pen_kwargs' not in kwargs:
@@ -58,22 +59,23 @@ class LoadShedding(opf_env.OpfEnv):
 
         super().__init__(*args, **kwargs)
 
-
     def _define_opf(self, simbench_network_name, *args, **kwargs):
         net, self.profiles = build_simbench_net(
             simbench_network_name, *args, **kwargs)
 
-        net.load['controllable'] = True
+        net.load['controllable'] = net.load.max_max_p_mw > self.min_load_power
         # Assumption: Every load can be reduced to zero power
         net.load['min_min_p_mw'] = 0
         net.load['min_p_mw'] = 0
 
-        # Storages fully controllable
-        net.storage['controllable'] = True
+        # Biggest Storage system controllable
         max_storage_power = np.maximum(
             net.storage['min_min_p_mw'].abs(), net.storage['max_max_p_mw'].abs())
         net.storage['min_p_mw'] = -max_storage_power
         net.storage['max_p_mw'] = max_storage_power
+        net.storage['min_min_p_mw'] = -max_storage_power
+        net.storage['max_max_p_mw'] = max_storage_power
+        net.storage['controllable'] = net.storage.max_max_p_mw > self.min_storage_power
 
         net.sgen['controllable'] = False
 
@@ -82,7 +84,7 @@ class LoadShedding(opf_env.OpfEnv):
         net.ext_grid['min_p_mw'] = -np.inf
 
         for unit_type in ('load', 'storage'):
-            for idx in net[unit_type].index:
+            for idx in net[unit_type].index[net[unit_type].controllable]:
                 pp.create_poly_cost(net, idx, unit_type, cp1_eur_per_mw=0)
 
         # Define range from which to sample load shedding prices
@@ -91,9 +93,12 @@ class LoadShedding(opf_env.OpfEnv):
         net.poly_cost['min_cp1_eur_per_mw'] = -max_load_shedding_price
         net.poly_cost['max_cp1_eur_per_mw'] = 0
         # Assumption: using storage is far cheaper on average
+        # Assumption: Perfect storage efficiency
         max_storage_price = 1
         net.poly_cost['min_cp1_eur_per_mw'][net.poly_cost.et == 'storage'] = 0
         net.poly_cost['max_cp1_eur_per_mw'][net.poly_cost.et == 'storage'] = max_storage_price
+
+        net.ext_grid['vm_pu'] = 1.0
 
         return net
 
@@ -101,10 +106,9 @@ class LoadShedding(opf_env.OpfEnv):
         super()._sampling(*args, **kwargs)
 
         # Sample prices for loads and storages
-        for unit_type in ('load', 'storage'):
-            self._sample_from_range(
-            'poly_cost', 'cp1_eur_per_mw',
-            self.net.poly_cost[self.net.poly_cost.et == unit_type].index)
+        # The idea is that not always the same loads should be shedded
+        self._sample_from_range(
+            'poly_cost', 'cp1_eur_per_mw', self.net.poly_cost.index)
 
         # Current load power = maximum power (only reduction possible)
         self.net.load['max_p_mw'] = self.net.load['p_mw'] * self.net.load.scaling + 1e-9
@@ -118,6 +122,7 @@ class LoadShedding(opf_env.OpfEnv):
 if __name__ == '__main__':
     env = LoadShedding()
     print('Load shedding environment created')
+    print('Number of buses: ', len(env.net.bus))
     print('Observation space:', env.observation_space.shape)
     print('Action space:', env.action_space.shape)
     

@@ -20,9 +20,10 @@ class QMarket(VoltageControl):
 
     """
 
-    def __init__(self, simbench_network_name='1-LV-urban6--0-sw',
-                 gen_scaling=2.0, load_scaling=1.5, seed=None, min_obs=False,
-                 cos_phi=0.9, max_q_exchange=0.01, market_based=True,
+    def __init__(self, simbench_network_name='1-MV-rural--0-sw',
+                 gen_scaling=1.0, load_scaling=1.3, seed=None, 
+                 min_sgen_power=0.2, cos_phi=0.95, max_q_exchange=0.2, 
+                 market_based=True, 
                  *args, **kwargs):
 
         super().__init__(simbench_network_name=simbench_network_name,
@@ -31,16 +32,20 @@ class QMarket(VoltageControl):
                          cos_phi=cos_phi,
                          max_q_exchange=max_q_exchange, 
                          market_based=market_based,
+                         min_sgen_power=min_sgen_power,
                          seed=seed,
                          *args, **kwargs)
+
 
 if __name__ == '__main__':
     env = QMarket()
     print('Reactive power market environment created')
+    print('Number of buses: ', len(env.net.bus))
     print('Observation space:', env.observation_space.shape)
     print('Action space:', env.action_space.shape)
 
     env = VoltageControl()
     print('VoltageControl environment created')
+    print('Number of buses: ', len(env.net.bus))
     print('Observation space:', env.observation_space.shape)
     print('Action space:', env.action_space.shape)

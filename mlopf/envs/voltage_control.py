@@ -7,13 +7,14 @@ from mlopf.build_simbench_net import build_simbench_net
 
 
 class VoltageControl(opf_env.OpfEnv):
-    def __init__(self, simbench_network_name='1-LV-rural3--2-sw',
-                 load_scaling=1.8, gen_scaling=1.5, 
-                 cos_phi=0.95, max_q_exchange=0.01,
-                 market_based=False,
-                 seed=None,
-                 *args, **kwargs):
+    def __init__(self, simbench_network_name='1-MV-semiurb--1-sw',
+                 load_scaling=1.3, gen_scaling=1.3, 
+                 cos_phi=0.95, max_q_exchange=1.0, min_sgen_power=0.5, 
+                 min_storage_power=0.5, market_based=False,
+                 seed=None, *args, **kwargs):
 
+        self.min_sgen_power = min_sgen_power
+        self.min_storage_power = min_storage_power
         self.cos_phi = cos_phi
         self.market_based = market_based
         self.max_q_exchange = max_q_exchange
@@ -27,22 +28,19 @@ class VoltageControl(opf_env.OpfEnv):
             ('sgen', 'p_mw', self.net.sgen.index),
             ('storage', 'p_mw', self.net.storage.index),
             ('load', 'p_mw', self.net.load.index),
-            ('load', 'q_mvar', self.net.load.index)
+            ('load', 'q_mvar', self.net.load.index),
         ]
 
         if market_based:
             # Consider reactive power prices as well
             self.obs_keys.append(
-                ('poly_cost', 'cq2_eur_per_mvar2', np.arange(len(self.net.sgen) + len(self.net.ext_grid) + len(self.net.storage)))
+                ('poly_cost', 'cq2_eur_per_mvar2', self.net.poly_cost.index)
             )
 
         # ... and control all units' reactive power values
-        self.act_keys = [('sgen', 'q_mvar', self.net.sgen.index),
-                         ('storage', 'q_mvar', self.net.storage.index)]
+        self.act_keys = [('sgen', 'q_mvar', self.net.sgen.index[self.net.sgen.controllable]),
+                         ('storage', 'q_mvar', self.net.storage.index[self.net.storage.controllable])]
 
-        # if 'ext_grid_pen_kwargs' not in kwargs:
-        #     kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 6}
-        
         super().__init__(seed=seed, *args, **kwargs)
 
     def _define_opf(self, simbench_network_name, *args, **kwargs):
@@ -51,13 +49,13 @@ class VoltageControl(opf_env.OpfEnv):
 
         net.load['controllable'] = False
 
-        net.sgen['controllable'] = True
+        net.sgen['controllable'] = net.sgen.max_max_p_mw > self.min_sgen_power
         # Assumption: Generators can provide more reactive than active power
         net.sgen['max_s_mva'] = net.sgen['max_max_p_mw'] / self.cos_phi
         net.sgen['max_max_q_mvar'] = net.sgen['max_s_mva']
         net.sgen['min_min_q_mvar'] = -net.sgen['max_s_mva']
 
-        net.storage['controllable'] = True
+        net.storage['controllable'] = net.storage.max_max_p_mw > self.min_storage_power
         # Assumption reactive power range = active power range
         net.storage['max_s_mva'] = net.storage['max_max_p_mw'].abs()
         net.storage['max_max_q_mvar'] = net.storage['max_s_mva']
@@ -68,31 +66,27 @@ class VoltageControl(opf_env.OpfEnv):
 
         # Add price params to the network (as poly cost so that the OPF works)
         # Add loss costs at slack so that objective = loss minimization
-        self.loss_costs = 30
-        for idx in net.sgen.index:
+        # Comment: Costs are not in eur but eur/1000 instead
+        self.loss_costs = 0.03
+        for idx in net.sgen.index[net.sgen.controllable]:
             pp.create_poly_cost(net, idx, 'sgen',
                                 cp1_eur_per_mw=self.loss_costs,
                                 cq2_eur_per_mvar2=0)
 
-        for idx in net['ext_grid'].index:
-            pp.create_poly_cost(net, idx, 'ext_grid',
-                                cp1_eur_per_mw=self.loss_costs,
-                                cq2_eur_per_mvar2=0)
-            
-        for idx in net['storage'].index:
+        for idx in net.storage.index[net.storage.controllable]:
             pp.create_poly_cost(net, idx, 'storage',
                                 cp1_eur_per_mw=-self.loss_costs,
                                 cq2_eur_per_mvar2=0)
-            
-        # Load costs are fixed anyway. Added only for completeness.
-        for idx in net['load'].index:
-            pp.create_poly_cost(net, idx, 'load',
-                                cp1_eur_per_mw=-self.loss_costs)
+
+        for idx in net.ext_grid.index:
+            pp.create_poly_cost(net, idx, 'ext_grid',
+                                cp1_eur_per_mw=self.loss_costs,
+                                cq2_eur_per_mvar2=0)
 
         assert len(net.gen) == 0  # TODO: Maybe add gens here, if necessary
 
         # Define range from which to sample reactive power prices on market
-        self.max_price = 30000
+        self.max_price = 0.03
         net.poly_cost['min_cq2_eur_per_mvar2'] = 0
         net.poly_cost['max_cq2_eur_per_mvar2'] = self.max_price
 
@@ -114,8 +108,10 @@ class VoltageControl(opf_env.OpfEnv):
             self.net[unit_type]['max_p_mw'] = self.net[unit_type].p_mw * self.net[unit_type].scaling + 1e-9
             self.net[unit_type]['min_p_mw'] = self.net[unit_type].p_mw * self.net[unit_type].scaling - 1e-9
 
-        # Assumption: Generators provide all reactive power possible
+        # Assumption: Generators offer all reactive power possible
         for unit_type in ('sgen', 'storage'):
             q_max = (self.net[unit_type].max_s_mva**2 - self.net[unit_type].max_p_mw**2)**0.5
             self.net[unit_type]['min_q_mvar'] = -q_max  # No scaling required this way!
             self.net[unit_type]['max_q_mvar'] = q_max
+            # Make sure that without any action, zero Q is provided
+            self.net[unit_type]['q_mvar'] = 0
