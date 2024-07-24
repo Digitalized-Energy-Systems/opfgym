@@ -203,6 +203,12 @@ class OpfEnv(gym.Env, abc.ABC):
         else:
             raise NotImplementedError('This reward scaling does not exist!')
 
+        # Error handling
+        if np.isnan(self.penalty_bias):
+            self.penalty_bias = 0
+        if np.isinf(self.penalty_factor):
+            self.penalty_factor = 1
+
         # Potentially overwrite scaling with user settings
         if 'reward_factor' in params.keys():
             self.objective_factor = params['reward_factor']
@@ -594,14 +600,20 @@ class OpfEnv(gym.Env, abc.ABC):
         penalty = sum(penalties)
 
         # Perform potential reward clipping (e.g., to prevent exploding rewards)
-        if self.normalization_params['clip_range_obj'][0] is not None:
-            objective = np.clip(objective,
-                                self.normalization_params['clip_range_obj'][0],
-                                self.normalization_params['clip_range_obj'][1])
-        if self.normalization_params['clip_range_viol'][0] is not None:
-            penalty = np.clip(penalty,
-                              self.normalization_params['clip_range_viol'][0],
-                              self.normalization_params['clip_range_viol'][1])
+        try:
+            if self.normalization_params['clip_range_obj'][0] is not None:
+                objective = np.clip(objective,
+                                    self.normalization_params['clip_range_obj'][0],
+                                    self.normalization_params['clip_range_obj'][1])
+        except KeyError:
+            pass
+        try:
+            if self.normalization_params['clip_range_viol'][0] is not None:
+                penalty = np.clip(penalty,
+                                self.normalization_params['clip_range_viol'][0],
+                                self.normalization_params['clip_range_viol'][1])
+        except KeyError:
+            pass
 
         # Perform reward scaling, e.g., to range [-1, 1] (if defined)
         objective = objective * self.objective_factor + self.objective_bias
