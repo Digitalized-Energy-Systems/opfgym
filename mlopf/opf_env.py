@@ -293,7 +293,7 @@ class OpfEnv(gym.Env, abc.ABC):
         elif data_distr == 'full_uniform':
             self._sample_uniform(sample_new=sample_new)
         elif data_distr == 'normal_around_mean':
-            self._sample_normal(sample_new=sample_new, *args, **kwargs)
+            self._sample_normal(sample_new=sample_new, **kwargs)
         elif data_distr == 'mixed':
             # Use different data sources with different probabilities
             r = np.random.random()
@@ -303,7 +303,7 @@ class OpfEnv(gym.Env, abc.ABC):
             elif r < data_probs[1]:
                 self._sample_uniform(sample_new=sample_new)
             else:
-                self._sample_normal(sample_new=sample_new, *args, **kwargs)
+                self._sample_normal(sample_new=sample_new, **kwargs)
             
     def _sample_uniform(self, sample_keys=None, sample_new=True):
         """ Standard pre-implemented method to set power system to a new random
@@ -332,19 +332,20 @@ class OpfEnv(gym.Env, abc.ABC):
 
         r = np.random.uniform(low, high, size=(len(idxs),))
         try:
-            self.net[unit_type][column].loc[idxs] = r / df.scaling
+            # Constraints are scaled, which is why we need to divide by scaling
+            self.net[unit_type][column].loc[idxs] = r / df.scaling[idxs]
         except AttributeError:
-            # TODO: Add comment why this is necessary
+            # If scaling factor is not defined, assume scaling=1
             self.net[unit_type][column].loc[idxs] = r
 
-    def _sample_normal(self, relative_std=None, truncated=False, sample_new=True):
+    def _sample_normal(self, relative_std=None, truncated=False, 
+                       sample_new=True, **kwargs):
         """ Sample data around mean values from simbench data. """
         assert sample_new, 'Currently only implemented for sample_new=True'
         for unit_type, column, idxs in self.obs_keys:
-            if ('res_' in unit_type or 'poly_cost' in unit_type 
-                    or (unit_type, column, idxs) in self.act_keys):
+            if 'res_' in unit_type or 'poly_cost' in unit_type:
                 continue 
-    
+
             df = self.net[unit_type].loc[idxs]
             mean = df[f'mean_{column}']
             
@@ -444,7 +445,7 @@ class OpfEnv(gym.Env, abc.ABC):
                 # Something went seriously wrong! Find out what!
                 # Maybe NAN in power setpoints?!
                 # Maybe simply catch this with a strong negative reward?!
-                logging.critical(f'Powerflow not converged and reason unknown! Run diagnostic tool to at least find out what went wrong: {pp.diagnostic(self.net)}')
+                logging.critical(f'\nPowerflow not converged and reason unknown! Run diagnostic tool to at least find out what went wrong: {pp.diagnostic(self.net)}')
                 raise pp.powerflow.LoadflowNotConverged()
 
         reward = self.calc_reward()
@@ -673,10 +674,8 @@ class OpfEnv(gym.Env, abc.ABC):
             obss = [self.linear_penalties] + obss
 
         if self.add_mean_obs:
-            mean_obs = []
-            for partial_obs in obss:
-                if len(partial_obs) > 1:
-                    mean_obs.append(np.mean(partial_obs))
+            mean_obs = [np.mean(partial_obs) for partial_obs in obss 
+                        if len(partial_obs) > 1]
             obss.append(mean_obs)
 
         if add_time_obs:
