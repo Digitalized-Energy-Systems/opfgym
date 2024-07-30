@@ -11,8 +11,8 @@ dummy_env = MaxRenewable()
 def test_obs_space_def():
     dummy_env.reset()
     obs_keys = (
-        ('sgen', 'p_mw', np.array([0])),
-        ('sgen', 'q_mvar', np.array([0])),
+        ('sgen', 'p_mw', np.array([46])),
+        ('sgen', 'q_mvar', np.array([46])),
         ('load', 'q_mvar', np.array([0])),
         ('load', 'p_mw', np.array([0])),
         ('res_bus', 'vm_pu', np.array([0])),
