@@ -23,6 +23,10 @@ def get_normalization_params(env,
     objectives = np.array(objectives).sum(axis=1)
     violations = np.array(violations).sum(axis=1)
 
+    # Remove potential NaNs (due to failed power flows or similar)
+    objectives = objectives[~np.isnan(objectives)]
+    violations = violations[~np.isnan(violations)]
+
     if clip_obj_percentiles:
         bottom_clip_obj = np.percentile(objectives, clip_obj_percentiles[0])
         top_clip_obj = np.percentile(objectives, clip_obj_percentiles[1])
