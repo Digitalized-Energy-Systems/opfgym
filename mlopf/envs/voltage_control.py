@@ -115,3 +115,12 @@ class VoltageControl(opf_env.OpfEnv):
             self.net[unit_type]['max_q_mvar'] = q_max
             # Make sure that without any action, zero Q is provided
             self.net[unit_type]['q_mvar'] = 0
+
+
+if __name__ == '__main__':
+    env = VoltageControl()
+    print('VoltageControl environment created')
+    print('Number of buses: ', len(env.net.bus))
+    print('Observation space:', env.observation_space.shape)
+    print('Action space:', env.action_space.shape, f'(Generators: {sum(env.net.sgen.controllable)}, Storage: {sum(env.net.storage.controllable)})')
+    

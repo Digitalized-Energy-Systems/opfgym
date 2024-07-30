@@ -40,7 +40,7 @@ class MaxRenewable(opf_env.OpfEnv):
         # Define the RL problem
         # See all load power values, sgen max active power...
         self.obs_keys = [
-            ('sgen', 'p_mw', self.net.sgen.index),
+            ('sgen', 'max_p_mw', self.net.sgen.index),
             ('load', 'p_mw', self.net.load.index),
             ('load', 'q_mvar', self.net.load.index),
             ('storage', 'p_mw', self.net.storage.index[~self.net.storage.controllable])
@@ -83,6 +83,13 @@ class MaxRenewable(opf_env.OpfEnv):
         net.sgen['max_q_mvar'] = 0
         net.sgen['min_q_mvar'] = 0
 
+        # Required for data sampling
+        net.sgen['mean_max_p_mw'] = net.sgen['mean_p_mw']
+        net.sgen['std_dev_max_p_mw'] = net.sgen['std_dev_p_mw']
+        # Required for observation space definition
+        net.sgen['min_min_max_p_mw'] = net.sgen['min_min_p_mw']
+        net.sgen['max_max_max_p_mw'] = net.sgen['max_max_p_mw']
+
         # TODO: Maybe allow for gens here, if necessary
         assert len(net.gen) == 0, 'gen not supported in this environment!'
 
@@ -114,4 +121,5 @@ if __name__ == '__main__':
     print('Max renewable environment created')
     print('Number of buses: ', len(env.net.bus))
     print('Observation space:', env.observation_space.shape)
-    print('Action space:', env.action_space.shape)
+    print('Action space:', env.action_space.shape, f'(Generators: {sum(env.net.sgen.controllable)}, Storage: {sum(env.net.storage.controllable)})')
+    
