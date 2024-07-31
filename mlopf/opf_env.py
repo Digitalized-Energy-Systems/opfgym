@@ -432,7 +432,7 @@ class OpfEnv(gym.Env, abc.ABC):
 
         return True
 
-    def step(self, action, test=False, *args, **kwargs):
+    def step(self, action, *args, **kwargs):
         assert not np.isnan(action).any()
         self.info = {}
         self.step_in_episode += 1
@@ -446,7 +446,7 @@ class OpfEnv(gym.Env, abc.ABC):
                 # Maybe NAN in power setpoints?!
                 # Maybe simply catch this with a strong negative reward?!
                 logging.critical(f'\nPowerflow not converged and reason unknown! Run diagnostic tool to at least find out what went wrong: {pp.diagnostic(self.net)}')
-                raise pp.powerflow.LoadflowNotConverged()
+                return np.array([np.nan]), np.nan, True, False, copy.deepcopy(self.info)
 
         reward = self.calc_reward()
 
