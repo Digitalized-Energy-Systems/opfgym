@@ -63,6 +63,8 @@ class EcoDispatch(opf_env.OpfEnv):
 
         # Prevent "selling" of active power to upper system
         net.ext_grid['min_p_mw'] = 0
+        # Prevent infinite power consumption. Set to biggest generator.
+        net.ext_grid['max_p_mw'] = net.sgen.max_max_p_mw.max()
 
         # Generator constraints required for OPF
         net.sgen['min_p_mw'] = 0
@@ -108,3 +110,4 @@ if __name__ == '__main__':
     print('Number of buses: ', len(env.net.bus))
     print('Observation space:', env.observation_space.shape)
     print('Action space:', env.action_space.shape)
+    
