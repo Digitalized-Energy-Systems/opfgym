@@ -25,11 +25,10 @@ class MaxRenewable(opf_env.OpfEnv):
     """
 
     def __init__(self, simbench_network_name='1-HV-mixed--1-sw',
-                 gen_scaling=0.8, load_scaling=0.8, storage_efficiency=0.95, 
+                 gen_scaling=0.8, load_scaling=0.8,
                  min_storage_power=10, min_sgen_power=24, 
                  seed=None, *args, **kwargs):
 
-        self.storage_efficiency = storage_efficiency
         self.min_sgen_power = min_sgen_power
         self.min_storage_power = min_storage_power
 
@@ -62,6 +61,7 @@ class MaxRenewable(opf_env.OpfEnv):
         if len(net.ext_grid) > 1:
             net.ext_grid = net.ext_grid.iloc[0:1]
 
+        # Less strict constraint than default (otherwise, too restrictive)
         net.trafo['max_loading_percent'] = 100
 
         net.load['controllable'] = False
@@ -98,13 +98,6 @@ class MaxRenewable(opf_env.OpfEnv):
         for idx in net.sgen.index:
             pp.create_poly_cost(net, idx, 'sgen',
                                 cp1_eur_per_mw=-active_power_costs)
-            
-        # Assumption: Storage power is more expensive than sgen power
-        # TODO: Does not really make sense. Far to simplified.
-        storage_costs = active_power_costs / (self.storage_efficiency**2)
-        for idx in net.storage.index:
-            pp.create_poly_cost(net, idx, 'storage', 
-                                cp1_eur_per_mw=storage_costs)
 
         return net
 
