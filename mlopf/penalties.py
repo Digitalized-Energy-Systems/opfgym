@@ -27,7 +27,7 @@ def compute_total_violation(net, unit_type: str, column: str, min_or_max: str,
 def compute_penalty(violation: float, n_violations: int, linear_penalty=1,
                     quadr_penalty=0, offset_penalty=0, sqrt_penalty=0, 
                     *args, **kwargs):
-    """ General function to compute linear, quadratic, anc offset penalties
+    """ General function to compute linear, quadratic, and offset penalties
     for constraint violations in pandapower nets """
 
     penalty = violation * linear_penalty

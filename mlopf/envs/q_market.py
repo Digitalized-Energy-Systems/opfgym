@@ -42,10 +42,5 @@ if __name__ == '__main__':
     print('Reactive power market environment created')
     print('Number of buses: ', len(env.net.bus))
     print('Observation space:', env.observation_space.shape)
-    print('Action space:', env.action_space.shape)
-
-    env = VoltageControl()
-    print('VoltageControl environment created')
-    print('Number of buses: ', len(env.net.bus))
-    print('Observation space:', env.observation_space.shape)
-    print('Action space:', env.action_space.shape)
+    print('Action space:', env.action_space.shape, f'(Generators: {sum(env.net.sgen.controllable)}, Storage: {sum(env.net.storage.controllable)})')
+    

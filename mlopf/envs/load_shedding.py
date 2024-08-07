@@ -53,10 +53,6 @@ class LoadShedding(opf_env.OpfEnv):
         self.act_keys = [('load', 'p_mw', self.net.load.index[self.net.load.controllable]),
                          ('storage', 'p_mw', self.net.storage.index[self.net.storage.controllable])]
 
-        # Define default penalties
-        if 'ext_grid_pen_kwargs' not in kwargs:
-            kwargs['ext_grid_pen_kwargs'] = {'linear_penalty': 25}
-
         super().__init__(*args, **kwargs)
 
     def _define_opf(self, simbench_network_name, *args, **kwargs):
@@ -94,7 +90,7 @@ class LoadShedding(opf_env.OpfEnv):
         net.poly_cost['max_cp1_eur_per_mw'] = 0
         # Assumption: using storage is far cheaper on average
         # Assumption: Perfect storage efficiency
-        max_storage_price = 1
+        max_storage_price = 2
         net.poly_cost['min_cp1_eur_per_mw'][net.poly_cost.et == 'storage'] = 0
         net.poly_cost['max_cp1_eur_per_mw'][net.poly_cost.et == 'storage'] = max_storage_price
 
@@ -124,5 +120,5 @@ if __name__ == '__main__':
     print('Load shedding environment created')
     print('Number of buses: ', len(env.net.bus))
     print('Observation space:', env.observation_space.shape)
-    print('Action space:', env.action_space.shape)
+    print('Action space:', env.action_space.shape, f'(Loads: {sum(env.net.load.controllable)}, Storage: {sum(env.net.storage.controllable)})')
     
