@@ -446,6 +446,11 @@ class OpfEnv(gym.Env, abc.ABC):
                 # Maybe NAN in power setpoints?!
                 # Maybe simply catch this with a strong negative reward?!
                 logging.critical(f'\nPowerflow not converged and reason unknown! Run diagnostic tool to at least find out what went wrong: {pp.diagnostic(self.net)}')
+                
+                self.info['valids'] = np.array([False] * 5)
+                self.info['violations'] = np.array([1] * 5)
+                self.info['unscaled_penalties'] = np.array([1] * 5)
+                self.info['penalty'] = 5
                 return np.array([np.nan]), np.nan, True, False, copy.deepcopy(self.info)
 
         reward = self.calc_reward()
@@ -625,7 +630,10 @@ class OpfEnv(gym.Env, abc.ABC):
         self.info['unscaled_penalties'] = np.array(penalties)
         self.info['penalty'] = penalty
         # Standard cost definition in Safe RL (Do not use bias here to prevent sign flip)
-        self.info['cost'] = abs(penalty * self.penalty_factor - self.reward_function_params.get('invalid_penalty', 0.0))  
+        if not valids.all():
+            self.info['cost'] = abs(penalty * self.penalty_factor - self.reward_function_params.get('invalid_penalty', 0.0))  
+        else:
+            self.info['cost'] = 0
 
         if self.reward_function == 'summation':
             # Add penalty to objective function (no change required)
