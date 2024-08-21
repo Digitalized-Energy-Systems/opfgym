@@ -22,8 +22,7 @@ warnings.simplefilter('once')
 
 class OpfEnv(gym.Env, abc.ABC):
     def __init__(self,
-                 train_test_split=True,
-                 test_share=0.2,
+                 evaluate_on='validation',
                  steps_per_episode=1,
                  autocorrect_prio='p_mw',
                  pf_for_obs=None,
@@ -58,8 +57,7 @@ class OpfEnv(gym.Env, abc.ABC):
                  seed=None,
                  *args, **kwargs):
 
-        # Should be always True. Maybe only allow False for paper investigation
-        self.train_test_split = train_test_split
+        self.evaluate_on = evaluate_on
         self.train_data = train_data
         self.test_data = test_data
         self.sampling_kwargs = sampling_kwargs if sampling_kwargs else {}
@@ -163,8 +161,7 @@ class OpfEnv(gym.Env, abc.ABC):
             # An initial power flow is required to compute the initial objective
             self.pf_for_obs = True
 
-        self.test_steps, self.train_steps = define_test_train_split(
-            test_share, **kwargs)
+        self.test_steps, self.validation_steps, self.train_steps = define_test_train_split(**kwargs)
 
         # Prepare reward scaling for later on 
         self.reward_scaling = reward_scaling
@@ -230,8 +227,7 @@ class OpfEnv(gym.Env, abc.ABC):
                 valid_reward = valid_reward * self.objective_factor + self.objective_bias
             self.valid_reward = valid_reward
 
-    def reset(self, step=None, test=False, seed=None, options=None):
-        # TODO: remove step and test from args
+    def reset(self, seed=None, options=None):
         super().reset(seed=seed, options=options)
         self.info = {}
         self.current_simbench_step = None
@@ -380,16 +376,14 @@ class OpfEnv(gym.Env, abc.ABC):
 
         total_n_steps = len(self.profiles[('load', 'q_mvar')])
         if step is None:
-            if test is True and self.train_test_split is True:
+            if test is True and self.evaluate_on == 'test':
                 step = np.random.choice(self.test_steps)
+                print('test step: ', step)
+            elif test is True and self.evaluate_on == 'validation':
+                step = np.random.choice(self.validation_steps)
+                print('test step: ', step)
             else:
                 step = np.random.choice(self.train_steps)
-                # while True:
-                #     # TODO: This can be done far more efficiently!
-                #     step = random.randint(0, total_n_steps - 1)
-                #     if self.train_test_split and step in self.test_steps:
-                #         continue
-                #     break
         else:
             assert step < total_n_steps
 
@@ -834,31 +828,60 @@ def get_obs_space(net, obs_keys: list, add_time_obs: bool,
         np.concatenate(lows, axis=0), np.concatenate(highs, axis=0), seed=seed)
 
 
-def define_test_train_split(test_share=0.2, random_test_steps=False, **kwargs):
+def define_test_train_split(test_share=0.2, random_test_steps=False, 
+                            validation_share=0.2, random_validation_steps=False,
+                            **kwargs):
     """ Return the indices of the simbench test data points. """
-    assert test_share > 0.0, 'Please set train_test_split=False if no separate test data should be used'
+    assert test_share + validation_share <= 1.0
+    if random_test_steps:
+        assert random_validation_steps, 'Random test data does only make sense with also random validation data'
 
     n_data_points = 24 * 4 * 366
     all_steps = np.arange(n_data_points)
+
+    # Define test dataset
     if test_share == 1.0:
         # Special case: Use the full simbench data set as test set
-        test_steps = all_steps
+        return all_steps, np.array([]), np.array([])
     elif random_test_steps:
-        # Randomly sample test data
+        # Randomly sample test data steps from the whole year
         test_steps = np.random.choice(all_steps, int(n_data_points * test_share))
     else:
-        # Use weekly blocks to make sure that all weekdays are equally represented
+        # Use deterministic weekly blocks to ensure that all weekdays are equally represented
         # TODO: Allow for arbitrary blocks? Like days or months?
-        n_weeks = int(52 * test_share)
+        n_test_weeks = int(52 * test_share)
         # Sample equidistant weeks from the whole year
-        week_idxs = np.linspace(0, 52, num=n_weeks, endpoint=False, dtype=int)
+        test_week_idxs = np.linspace(0, 51, num=n_test_weeks, dtype=int)
         one_week = 7 * 24 * 4
         test_steps = np.concatenate(
-            [np.arange(idx * one_week, (idx + 1) * one_week) for idx in week_idxs])
+            [np.arange(idx * one_week, (idx + 1) * one_week) for idx in test_week_idxs])
     
-    train_steps = np.array(tuple(set(all_steps) - set(test_steps)))
+    # Define validation dataset
+    remaining_steps = np.array(tuple(set(all_steps) - set(test_steps)))
+    if validation_share == 1.0:
+        return np.array([]), all_steps, np.array([])
+    elif random_validation_steps:
+        validation_steps = np.random.choice(remaining_steps, int(n_data_points * validation_share))
+    else:
+        if random_test_steps:
+            test_week_idxs = np.array([])
 
-    return test_steps, train_steps
+        n_validation_weeks = int(52 * validation_share)
+        # Make sure to use only validation weeks that are not already test weeks
+        remaining_week_idxs = np.array(tuple(set(np.arange(52)) - set(test_week_idxs)))
+        week_pseudo_idxs = np.linspace(0, len(remaining_week_idxs)-1,
+                                       num=n_validation_weeks, dtype=int)
+        validation_week_idxs = remaining_week_idxs[week_pseudo_idxs]
+        validation_steps = np.concatenate(
+            [np.arange(idx * one_week, (idx + 1) * one_week) for idx in validation_week_idxs])
+
+    # Use remaining steps as training steps
+    train_steps = np.array(tuple(set(remaining_steps) - set(validation_steps)))
+
+    print('valid steps:', validation_steps)
+    print('test steps: ', test_steps)
+
+    return test_steps, validation_steps, train_steps
 
 
 def get_simbench_time_observation(profiles: dict, current_step: int):
