@@ -378,10 +378,8 @@ class OpfEnv(gym.Env, abc.ABC):
         if step is None:
             if test is True and self.evaluate_on == 'test':
                 step = np.random.choice(self.test_steps)
-                print('test step: ', step)
             elif test is True and self.evaluate_on == 'validation':
                 step = np.random.choice(self.validation_steps)
-                print('test step: ', step)
             else:
                 step = np.random.choice(self.train_steps)
         else:
@@ -855,7 +853,7 @@ def define_test_train_split(test_share=0.2, random_test_steps=False,
         one_week = 7 * 24 * 4
         test_steps = np.concatenate(
             [np.arange(idx * one_week, (idx + 1) * one_week) for idx in test_week_idxs])
-    
+
     # Define validation dataset
     remaining_steps = np.array(tuple(set(all_steps) - set(test_steps)))
     if validation_share == 1.0:
@@ -877,9 +875,6 @@ def define_test_train_split(test_share=0.2, random_test_steps=False,
 
     # Use remaining steps as training steps
     train_steps = np.array(tuple(set(remaining_steps) - set(validation_steps)))
-
-    print('valid steps:', validation_steps)
-    print('test steps: ', test_steps)
 
     return test_steps, validation_steps, train_steps
 
