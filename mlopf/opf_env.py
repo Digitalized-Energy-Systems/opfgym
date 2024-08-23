@@ -841,6 +841,8 @@ def define_test_train_split(test_share=0.2, random_test_steps=False,
     if test_share == 1.0:
         # Special case: Use the full simbench data set as test set
         return all_steps, np.array([]), np.array([])
+    elif test_share == 0.0:
+        test_steps = np.array([])
     elif random_test_steps:
         # Randomly sample test data steps from the whole year
         test_steps = np.random.choice(all_steps, int(n_data_points * test_share))
@@ -858,6 +860,8 @@ def define_test_train_split(test_share=0.2, random_test_steps=False,
     remaining_steps = np.array(tuple(set(all_steps) - set(test_steps)))
     if validation_share == 1.0:
         return np.array([]), all_steps, np.array([])
+    elif validation_share == 0.0:
+        validation_steps = np.array([])
     elif random_validation_steps:
         validation_steps = np.random.choice(remaining_steps, int(n_data_points * validation_share))
     else:

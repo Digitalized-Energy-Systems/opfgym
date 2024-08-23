@@ -68,6 +68,10 @@ def test_test_share_def():
     test_steps, validation_steps, train_steps = opf_env.define_test_train_split(test_share=1.0, validation_share=0.0)
     assert set(test_steps) == set(all_steps)
 
+    # Edge case: No validation data
+    test_steps, validation_steps, train_steps = opf_env.define_test_train_split(validation_share=0.0)
+    assert len(validation_steps) == 0
+
     # Only 100% of the data can be used
     with pytest.raises(AssertionError):
         opf_env.define_test_train_split(test_share=0.6, validation_share=0.6)
