@@ -478,6 +478,8 @@ class OpfEnv(gym.Env, abc.ABC):
 
             df = self.net[unit_type]
             partial_act = action[counter:counter + len(idxs)]
+
+
             if self.autoscale_actions:
                 # Ensure that actions are always valid by using the current range
                 min_action = df[f'min_{actuator}'].loc[idxs]
@@ -514,6 +516,13 @@ class OpfEnv(gym.Env, abc.ABC):
             if 'scaling' in df.columns:
                 # Scaling column sometimes not existing
                 setpoints /= df.scaling.loc[idxs]
+
+            if actuator == 'closed' or actuator == 'in_service':
+                # Special case: Only binary actions
+                setpoints = np.round(setpoints).astype(bool)
+            elif actuator == 'tap_pos' or actuator == 'step':
+                # Special case: Only discrete actions
+                setpoints = np.round(setpoints)
 
             self.net[unit_type][actuator].loc[idxs] = setpoints
 
@@ -594,7 +603,7 @@ class OpfEnv(gym.Env, abc.ABC):
         """ Combine objective function and the penalties together. """
         objective = sum(self.calc_objective(base_objective=False))
         valids, violations, penalties = self.calc_violations()
-        
+
         penalty = sum(penalties)
 
         # Perform potential reward clipping (e.g., to prevent exploding rewards)
