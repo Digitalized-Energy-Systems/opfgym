@@ -270,7 +270,7 @@ class OpfEnv(gym.Env, abc.ABC):
                     'Failed powerflow calculcation in reset. Try again!')
                 return self.reset()
 
-            self.initial_obj = self.calc_objective(self.net, base_objective=True)
+            self.initial_obj = self.calc_objective(base_objective=True)
 
         return self._get_obs(self.obs_keys, self.add_time_obs), copy.deepcopy(self.info)
 
@@ -560,14 +560,14 @@ class OpfEnv(gym.Env, abc.ABC):
             return False
         return True
 
-    def calc_objective(self, net, base_objective=False):
+    def calc_objective(self, base_objective=True):
         """ Default: Compute reward/costs from poly costs. Works only if
         defined as pandapower OPF problem and only for poly costs! If that is
         not the case, this method needs to be overwritten! """
         if base_objective or not self.diff_objective:
-            return -min_pp_costs(net)
+            return -min_pp_costs(self.net)
         else:
-            return -min_pp_costs(net) - self.initial_obj
+            return -min_pp_costs(self.net) - self.initial_obj
 
     def calc_violations(self):
         """ Constraint violations result in a penalty that can be subtracted
@@ -592,7 +592,7 @@ class OpfEnv(gym.Env, abc.ABC):
 
     def calc_reward(self):
         """ Combine objective function and the penalties together. """
-        objective = sum(self.calc_objective(self.net))
+        objective = sum(self.calc_objective(base_objective=False))
         valids, violations, penalties = self.calc_violations()
         
         penalty = sum(penalties)
@@ -685,19 +685,24 @@ class OpfEnv(gym.Env, abc.ABC):
 
         return np.concatenate(obss)
 
-    def render(self):
-        logging.warning(f'Rendering not supported!')
+    def render(self, **kwargs):
+        """ Render the current state of the power system. Uses the `simple_plot` 
+        pandapower method. Overwrite for more sophisticated rendering. For 
+        kwargs, refer to the pandapower docs: 
+        https://pandapower.readthedocs.io/en/latest/plotting/matplotlib/simple_plot.html"""
+        ax = pp.plotting.simple_plot(self.net, **kwargs)
+        return ax
 
     def get_current_actions(self, results=True):
         # Attention: These are not necessarily the actions of the RL agent
         # because some re-scaling might have happened!
-        # These are the actions from action space [0, 1]
+        # These are the actions from the original action space [0, 1]
         res_flag = 'res_' if results else ''
         action = []
         for unit_type, column, idxs in self.act_keys:
             setpoints = self.net[f'{res_flag}{unit_type}'][column].loc[idxs]
 
-            # If data not taken taken from res table, scaling required 
+            # If data not taken from res table, scaling required
             if not results and 'scaling' in self.net[unit_type].columns:
                 setpoints *= self.net[unit_type].scaling.loc[idxs]
 
@@ -713,14 +718,14 @@ class OpfEnv(gym.Env, abc.ABC):
 
         return action
 
-    def baseline_reward(self, **kwargs):
+    def baseline_objective(self, **kwargs):
         """ Compute some baseline to compare training performance with. In this
         case, use the optimal possible reward, which can be computed with the
         optimal power flow. """
         success = self._optimal_power_flow(**kwargs)
         if not success:
             return np.nan
-        objectives = self.calc_objective(self.net, base_objective=True)
+        objectives = self.calc_objective(base_objective=True)
         valids, violations, penalties = self.calc_violations()
         logging.info(f'Optimal violations: {violations}')
         logging.info(f'Baseline actions: {self.get_current_actions()}')
