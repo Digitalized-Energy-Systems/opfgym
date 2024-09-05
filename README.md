@@ -1,73 +1,135 @@
 ### General
 A set of benchmark environments to solve the Optimal Power Flow (OPF) problem
-with reinforcement learning (RL) algorithms. All environments use the gymnasium 
-interface. (exception: `env.render()` not implemented)
+with reinforcement learning (RL) algorithms. It is also easily possible to create custom OPF environments. 
+All environments use the [gymnasium API](https://gymnasium.farama.org/index.html). 
+The modelling of the power systems and the calculation of power flows happens with
+[pandapower](https://pandapower.readthedocs.io/en/latest/index.html).
+The benchmark power grids and time-series data of loads and generators are 
+taken from [SimBench](https://simbench.de/en/).
 
-Warning: The whole repository is work in progress. Feel free to use the 
+Warning: The whole repository is work-in-progress. Feel free to use the 
 environments as benchmarks for your research. However, the environments can be 
 expected to change slightly in the next months. The release of version 1.0 is 
-planned for about fall/winter 2024.   
+planned for about winter 2024. Afterward, the benchmarks will be kept as 
+stable as possible. 
+
+If you want to use the benchmark environments or the general framework to build 
+own environments, please cite the following publication, where the framework is 
+first mentioned (in an early stage): https://doi.org/10.1016/j.egyai.2024.100410
+
 
 ### Installation
 Clone the repository and run `pip install -e .` within some kind of virtual env.
-Tested for python 3.8 (newer version will probably not work).
+Tested for python 3.10.
+
 
 ### Environments
-Currently, three OPF environments are available:
+Currently, five OPF benchmark environments are available:
 
-#### Simple OPF (SimpleOpfEnv)
-Use `from mlopf.envs import SimpleOpfEnv` to import this env.
-The observation space has 253 dimensions and the action space 34 dimensions.
+#### Maximize Renewable Feed-In (MaxRenewable)
+Use `from mlopf.envs import MaxRenewable` to import this env.
+The observation space has 172 dimensions and the action space 18 dimensions.
 This env is the simplest one to learn. The objective is to maximize renewable
-generation subject to constraints.
+generation without violating the constraints.
 
-#### Woltage control (VoltageControlEnv)
-Use `from mlopf.envs import VoltageControlEnv` to import this env.
-The observation space has 315 dimensions and the action space 43 dimensions.
+#### Woltage Control (VoltageControl)
+Use `from mlopf.envs import VoltageControl` to import this env.
+The observation space has 442 dimensions and the action space 14 dimensions.
 The goal is to find optimal reactive power setpoints to minimize losses in the 
-system subject to constraints (mainly voltage level).
-This env has intermediate difficulty and focuses on constraint satisfaction.
+system subject to constraints (mainly voltage level). Early version first published in 
+https://doi.org/10.1016/j.egyai.2024.100410.
 
-#### Reactive power market (QMarketEnv)
-Use `from mlopf.envs import QMarketEnv` to import this env.
-The observation space has 233 dimensions and the action space 5 dimensions.
+#### Reactive Power Market (QMarket)
+Use `from mlopf.envs import QMarket` to import this env.
+The observation space has 305 dimensions and the action space 10 dimensions.
 The reactive power market is an extension of the voltage control problem. 
-The objective is the minimize losses and reactive power costs in a local 
+The objective is to minimize loss costs and reactive power costs in a local 
 reactive power market subject to constraints. 
-This env is more difficult regarding optimization because the agent has to find
-the cheapest reactive power sources on the market to achieve the same goal. 
 
-#### Economic dispatch (EcoDispatchEnv)
-Use `from mlopf.envs import EcoDispatchEnv` to import this env.
+#### Economic Dispatch (EcoDispatch)
+Use `from mlopf.envs import EcoDispatch` to import this env.
 The observation space has 201 dimensions and the action space 42 dimensions.
-This is the most difficult environment. The goal is to perform an economic
-dispatch, i.e. to minimize active power costs subject to constraints.
+The goal is to perform an economic dispatch, i.e., to minimize active power 
+costs subject to constraints. Early version first published in 
+https://doi.org/10.1016/j.egyai.2024.100410.
 
-#### Load shedding LoadShedding
+#### Load Shedding (LoadShedding)
 Use `from mlopf.envs import LoadShedding` to import this env. 
-The observation space has 163 dimensions and the action space 55 dimensions.
-The goal is to perform cost-minimal load shedding and demand response subject 
-to constraints. Difficulty not tested yet (TODO).
+The observation space has 386 dimensions and the action space 16 dimensions.
+The goal is to perform cost-minimal load shedding subject to constraints.
 
-### OPF parameters
-All OPF environments are customizable. Parameters are:
+### Working With the Framework
+All environments use the gymnasium API:
+* Use `env.reset()` to start a new episode ([see gymnasium docs](https://gymnasium.farama.org/index.html))
+* Use `env.step(action)` to apply an action to the environment ([see gymnasium docs](https://gymnasium.farama.org/index.html))
+* Use `env.render()` to render the underlying power grid. For documentation of the usable keyword arguments, refer to the [pandapower documentation](https://pandapower.readthedocs.io/en/latest/plotting/matplotlib/simple_plot.html): 
+
+On top, some additional OPF-specfic features are implemented: 
+* Use `env.baseline_objective()` to solve the OPF with a conventional OPF solver. Returns the optimal value of the objective function. Warning: Changes the state of the power system to the optimal state!
+* Use `sum(env.calc_objective())` to compute the value of the objective function in the current state. (Remove the `sum()` to get a vector representation)
+* Use `env.get_current_actions()` to get the currently applied actions (e.g. generator setpoints). Warning: The actions are always scaled to range [0, 1] and not directly interpretable as power setpoints! 0 represents the minimum
+possible setpoint, while 1 represents the maximum setpoint. 
+* Work-in-progress (TODO: `env.is_valid()`, `env.get_current_setpoints()`, etc.)
+
+### Minimal Code Example
+Loads one benchmark environment, performs a random action on that
+environment,  computes the resulting percentage error relative to the
+optimal action, and prints both actions (the optimal and suboptimal one).
+Repeat three times. 
+~~~
+from mlopf.envs import QMarket
+env = QMarket()
+for _ in range(3):
+    observation, info = env.reset()
+    terminated, truncated = False, False
+    while not terminated and not truncated: 
+        # Perform random action (replace with learning agent)
+        action = env.action_space.sample()  
+        observation, reward, terminated, truncated, info = env.step(action)
+
+        # Check for constraint satisfaction
+        valid = info['valids'].all()
+        print(f"The grid satisfies all constraints: {valid}")
+
+        # Compute the error
+        objective = sum(env.calc_objective())
+        optimal_objective = env.baseline_objective()
+        optimal_actions = env.get_current_actions()
+        percentage_error = optimal_objective - objective / abs(optimal_objective) * 100
+        print(f"Percentage error of the random action: {round(percentage_error, 2)}%")
+        print(f"Optimal actions: {optimal_actions[:3]} (first three entries)")
+        print(f"Agent actions: {action[:3]} (first three entries)")
+        print("-------------------------------------")
+~~~
+
+
+### OPF Parameters
+All OPF environments are customizable (with `env = QMarket(**kwargs)`). 
+The parameters can be classified into two 
+categories, depending on whether they change the underlying OPF problem or only 
+the environment representation of the problem (e.g. the observation space).
+The following parameters change the OPF problems and should only be changed if 
+it is okay to change the benchmark problem: (if no comparability with other works is required)
 * `simbench_network_name`: Define which simbench system to use (see table)
 * `gen_scaling`: Define how much to upscale the generators (e.g. to create more potential constraint violations and therefore more difficult problems)
 * `load_scaling`: Equivalent to `gen_scaling`
 * `voltage_band`: Define the voltage band (default `0.05` for +-0.05pu)
 * `max_loading`: Define the maximum load of lines and trafos (default `80` for 80%)
-* Work in progress (TODO)
+* Work-in-progress
 
-However, if you want your results to be comparable with other research, you 
-should stick to the default settings. 
+The following parameters only change the problem representation and can be 
+changed for RL environment design:
+* Work-in-progress  
 
-### Simbench energy systems
+
+### Simbench Benchmark Systems
 For every environment, different simbench/pandapower energy systems can be
-choosen. The difficulty of the learning problem depends mainly on the number of
-generators (~number of actuators) and the number of buses (~number of sensors
-and ~complexity of the underlying function).
+choosen. Warning: This changes the OPF problem and makes comparability with 
+other works impossible. Do this only to create new separate environments. 
 
-To decide which system to use for experiments, here a quick list with the
+The difficulty of the learning problem depends mainly on the number of
+generators (~number of actuators) and the number of buses (~number of sensors
+and ~complexity of the underlying function). To decide which system to use for experiments, here a quick list with the
 relevant information for each simbench system for quick access:
 (Insert 0,1,2 for current, future and far future system, see simbench documentation)
 
@@ -95,5 +157,7 @@ simbench systems. Whenever, you change the simbench system, it could happen
 that the OPF is not solvable anymore, e.g. because the constraints are too tight.
 
 
-### How to create a new env?
+### How to create a new environment?
+Work-in-progress: Please check how the benchmark environments are defined (`mlopf/envs/`)
+
 TODO: What needs to be done if you want to implement your own OPF environment? (action_space, observation_space, sampling, etc)
