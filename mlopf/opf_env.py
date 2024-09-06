@@ -15,52 +15,54 @@ from scipy import stats
 from mlopf.penalties import (voltage_violation, line_overload,
                              trafo_overload, ext_grid_overpower)
 from mlopf.objectives import min_pp_costs
+from mlopf.util.normalization import get_normalization_params
 
 warnings.simplefilter('once')
 
 
 class OpfEnv(gym.Env, abc.ABC):
     def __init__(self,
-                 train_test_split=True,
-                 test_share=0.2,
-                 vector_reward=False,
-                 single_step=True,
+                 evaluate_on='validation',
                  steps_per_episode=1,
                  autocorrect_prio='p_mw',
                  pf_for_obs=None,
                  bus_wise_obs=False,
-                 diff_reward=False,
-                 reward_function='summation',
-                 reward_scaling=1,
+                 diff_objective=False,
+                 reward_function: str='summation',
+                 reward_function_params: dict=None,
+                 clip_reward: tuple=None,
+                 reward_scaling: str=None,
+                 reward_scaling_params: dict=None,
                  remove_normal_obs=False,
                  add_res_obs=False,
                  add_time_obs=False,
                  add_act_obs=False,
+                 add_mean_obs=False,
                  train_data='simbench',
                  test_data='simbench',
-                 sampling_kwargs=None,
-                 volt_pen_kwargs=None,
-                 line_pen_kwargs=None,
-                 trafo_pen_kwargs=None,
-                 ext_grid_pen_kwargs=None,
-                 autoscale_penalty=False,
-                 min_penalty=None,
+                 sampling_kwargs: dict=None,
+                 volt_pen_kwargs: dict=None,
+                 line_pen_kwargs: dict=None,
+                 trafo_pen_kwargs: dict=None,
+                 ext_grid_pen_kwargs: dict=None,
+                 only_worst_case_violations=False,
+                 autoscale_violations=True,
                  penalty_weight=0.5,
-                 squash_reward=False,
-                 seed=None, 
-                 eval=False):
-        
-        self.eval = eval
+                 penalty_obs_range: tuple=None,
+                 test_penalty=None,
+                 autoscale_actions=True,
+                 diff_action_step_size=None,
+                 clipped_action_penalty=0,
+                 initial_action='center',
+                 seed=None,
+                 *args, **kwargs):
 
-        # Should be always True. Maybe only allow False for paper investigation
-        self.train_test_split = train_test_split
+        self.evaluate_on = evaluate_on
         self.train_data = train_data
         self.test_data = test_data
-        if sampling_kwargs:
-            self.sampling_kwargs = sampling_kwargs
-        else:
-            self.sampling_kwargs = {}
+        self.sampling_kwargs = sampling_kwargs if sampling_kwargs else {}
 
+        # Define the observation space
         if remove_normal_obs:
             # Completely overwrite the observation definition
             assert add_res_obs or add_time_obs or add_act_obs
@@ -81,44 +83,65 @@ class OpfEnv(gym.Env, abc.ABC):
 
         self.add_time_obs = add_time_obs
         # Add observations that require previous pf calculation
+        if add_res_obs is True:
+            # Default: Add all results that are usually available
+            add_res_obs = ('voltage_magnitude', 'voltage_angle', 
+                           'line_loading', 'trafo_loading', 'ext_grid_power')
         if add_res_obs:
-            self.obs_keys.extend([
-                ('res_bus', 'vm_pu', self.net.bus.index),
-                ('res_line', 'loading_percent', self.net.line.index),
-                ('res_trafo', 'loading_percent', self.net.trafo.index),
-                ('res_ext_grid', 'p_mw', self.net.ext_grid.index),
-                ('res_ext_grid', 'q_mvar', self.net.ext_grid.index)
-            ])
+            # Tricky: Only use buses with actual units connected. Otherwise, too many auxiliary buses are included.
+            bus_idxs = set(self.net.load.bus) | set(self.net.sgen.bus) | set(self.net.gen.bus) | set(self.net.storage.bus)
+            add_obs = []
+            if 'voltage_magnitude' in add_res_obs:
+                add_obs.append(('res_bus', 'vm_pu', np.sort(list(bus_idxs))))
+            if 'voltage_angle' in add_res_obs:
+                add_obs.append(('res_bus', 'va_degree', np.sort(list(bus_idxs))))
+            if 'line_loading' in add_res_obs:
+                add_obs.append(('res_line', 'loading_percent', self.net.line.index))
+            if 'trafo_loading' in add_res_obs:
+                add_obs.append(('res_trafo', 'loading_percent', self.net.trafo.index))
+            if 'ext_grid_power' in add_res_obs:
+                add_obs.append(('res_ext_grid', 'p_mw', self.net.ext_grid.index))
+                add_obs.append(('res_ext_grid', 'q_mvar', self.net.ext_grid.index))
+            self.obs_keys.extend(add_obs)   
 
+        self.add_mean_obs = add_mean_obs
+
+        if penalty_obs_range:
+            n_penalties = 4 # TODO
+            self.penalty_obs_space = gym.spaces.Box(
+                low=np.ones(n_penalties) * penalty_obs_range[0], 
+                high=np.ones(n_penalties) * penalty_obs_range[1], 
+                seed=seed)
+            self.test_penalty = test_penalty
+        else:
+            self.penalty_obs_space = None
+
+        # Define observation and action space
         self.bus_wise_obs = bus_wise_obs
         self.observation_space = get_obs_space(
-            self.net, self.obs_keys, add_time_obs, seed,
-            bus_wise_obs=bus_wise_obs)
-        self.action_space = get_action_space(self.act_keys, seed)
+            self.net, self.obs_keys, add_time_obs, add_mean_obs, 
+            self.penalty_obs_space, seed, bus_wise_obs=bus_wise_obs)
+        n_actions = sum([len(idxs) for _, _, idxs in self.act_keys])
+        self.action_space = gym.spaces.Box(0, 1, shape=(n_actions,), seed=seed)
 
+        # Reward function
         self.reward_function = reward_function
-        self.vector_reward = vector_reward
-        self.squash_reward = squash_reward
-        # if reward_scaling == 'auto':
-        #     reward_scaling = get_automatic_reward_scaling(self.net)
-        self.reward_scaling = reward_scaling
-
-        # Default penalties are purely linear
-        self.volt_pen = (volt_pen_kwargs if volt_pen_kwargs
-                         else {'linear_penalty': 300})
-        self.line_pen = (line_pen_kwargs if line_pen_kwargs
-                         else {'linear_penalty': 2})
-        self.trafo_pen = (trafo_pen_kwargs if trafo_pen_kwargs
-                          else {'linear_penalty': 2})
-        self.ext_grid_pen = (ext_grid_pen_kwargs if ext_grid_pen_kwargs
-                             else {'linear_penalty': 100})
-        self.autoscale_penalty = autoscale_penalty
-        self.min_penalty = min_penalty
+        self.reward_function_params = reward_function_params if reward_function_params else {}
+        self.volt_pen = volt_pen_kwargs if volt_pen_kwargs else {}
+        self.line_pen = line_pen_kwargs if line_pen_kwargs else {}
+        self.trafo_pen = trafo_pen_kwargs if trafo_pen_kwargs else {}
+        self.ext_grid_pen = ext_grid_pen_kwargs if ext_grid_pen_kwargs else {}
+        self.only_worst_case_violations = only_worst_case_violations
+        self.autoscale_violations = autoscale_violations
+        self.clip_reward = clip_reward
         
+        # Action space details
         self.priority = autocorrect_prio
+        self.autoscale_actions = autoscale_actions
+        self.diff_action_step_size = diff_action_step_size
+        self.clipped_action_penalty = clipped_action_penalty
+        self.initial_action = initial_action
 
-        assert single_step, 'TODO: Multi-step episodes not implemented yet'
-        self.single_step = single_step
         self.steps_per_episode = steps_per_episode
 
         # Full state of the system (available in training, but not in testing)
@@ -133,62 +156,107 @@ class OpfEnv(gym.Env, abc.ABC):
                     self.pf_for_obs = True
                     break
 
-        self.diff_reward = diff_reward
-        if diff_reward:
+        self.diff_objective = diff_objective
+        if diff_objective:
+            # An initial power flow is required to compute the initial objective
             self.pf_for_obs = True
 
-        self.test_steps = define_test_steps(test_share)
+        self.test_steps, self.validation_steps, self.train_steps = define_test_train_split(**kwargs)
 
+        # Prepare reward scaling for later on 
+        self.reward_scaling = reward_scaling
         self.penalty_weight = penalty_weight
-        # Get rough estimation of the objective function to compute penalties later
-        if self.reward_scaling == 'minmax' and 'min_obj' in self.__dict__.keys():
-            pass
-        elif self.reward_scaling == 'normalization' and 'mean_obj' in self.__dict__.keys():
-            pass
-        elif self.reward_function == 'replacement' and 'mean_abs_obj' in self.__dict__.keys():
-            pass
-        elif self.reward_function in ('replacement', 'replacementA', 'multiplication', 'replacement_plus_summation') or self.reward_scaling in ('minmax', 'normalization'):
-            objs = []
-            pens = []
-            for _ in range(500):
-                self._sampling()
-                self._apply_actions(self.action_space.sample())
-                self._run_pf()
-                objs.append(self.calc_objective(self.net))
-                pens.append(self.calc_violations()[3])
-                
-            self.min_obj = np.array(objs).sum(axis=1).min()
-            self.max_obj = np.array(objs).sum(axis=1).max()
-            self.min_pen = np.array(pens).sum(axis=1).min()
-            self.max_pen = np.array(pens).sum(axis=1).max()
-            # Add some buffer to make sure we really have a worst-case
-            # self.min_obj -= 0.5 * abs(self.min_obj)
-            # Compute the mean absolute objective to compute penalty later
-            self.mean_obj = np.sum(objs, axis=1).mean()
-            self.mean_pen = np.sum(pens, axis=1).mean()
-            self.mean_abs_obj = np.abs(np.sum(objs, axis=1)).mean()
-            self.mean_abs_pen = np.abs(np.sum(pens, axis=1)).mean()
-            self.obj_std = np.std(np.sum(objs, axis=1))
-            self.pen_std = np.std(np.sum(pens, axis=1))
+        reward_scaling_params = reward_scaling_params if reward_scaling_params else {}
+        if reward_scaling_params == 'auto' or (
+                'num_samples' in reward_scaling_params) or (
+                not reward_scaling_params and reward_scaling):
+            # Find reward range by trial and error
+            params = get_normalization_params(self, **reward_scaling_params)
+        else:
+            params = reward_scaling_params
 
-            print(f'Min objective: {self.min_obj}')
-            print(f'Max objective: {self.max_obj}')
-            print(f'Min penalty: {self.min_pen}')
-            print(f'Max penalty: {self.max_pen}')
-            print(f'Mean objective: {self.mean_obj}')
-            print(f'Mean penalty: {self.mean_pen}')
-            print(f'Std objective: {self.obj_std}')
-            print(f'Std penalty: {self.pen_std}')
+        self.normalization_params = params
+        if not reward_scaling:
+            self.objective_factor = 1
+            self.objective_bias = 0
+            self.penalty_factor = 1
+            self.penalty_bias = 0
+        elif reward_scaling == 'minmax':
+            # Scale from range [min, max] to range [-1, 1]
+            # formula: (obj - min_obj) / (max_obj - min_obj) * 2 - 1
+            diff = (params['max_obj'] - params['min_obj']) / 2
+            self.objective_factor = 1 / diff
+            self.objective_bias = -(params['min_obj'] / diff + 1)
+            diff = 2 * (params['max_viol'] - params['min_viol'])
+            self.penalty_factor = 1 / diff
+            self.penalty_bias = -(params['min_viol'] / diff + 1)
+        elif reward_scaling == 'normalization':
+            # Scale so that mean is zero and standard deviation is one
+            # formula: (obj - mean_obj) / obj_std
+            self.objective_factor = 1 / params['std_obj']
+            self.objective_bias = -params['mean_obj'] / params['std_obj']
+            self.penalty_factor = 1 / params['std_viol']
+            self.penalty_bias = -params['mean_viol'] / params['std_viol']
+        else:
+            raise NotImplementedError('This reward scaling does not exist!')
 
-    def reset(self, step=None, test=False, seed=None, **options):
-        super().reset(seed=seed)
+        # Error handling
+        if np.isnan(self.penalty_bias):
+            self.penalty_bias = 0
+        if np.isinf(self.penalty_factor):
+            self.penalty_factor = 1
+
+        # Potentially overwrite scaling with user settings
+        if 'reward_factor' in params.keys():
+            self.objective_factor = params['reward_factor']
+        if 'objective_bias' in params.keys():
+            self.objective_bias = params['objective_bias']
+        if 'penalty_factor' in params.keys():
+            self.penalty_factor = params['penalty_factor']
+        if 'penalty_bias' in params.keys():
+            self.penalty_bias = params['penalty_bias']
+
+        if self.reward_function in ('replacement', 'parameterized'):
+            valid_reward = self.reward_function_params.get('valid_reward', 1)
+            # Standard variants: Use mean or worst case objective as reward
+            if isinstance(valid_reward, str):
+                if valid_reward == 'worst':
+                    valid_reward = self.normalization_params['min_obj']
+                elif valid_reward == 'mean':
+                    valid_reward = self.normalization_params['mean_obj']
+                valid_reward = valid_reward * self.objective_factor + self.objective_bias
+            self.valid_reward = valid_reward
+
+    def reset(self, seed=None, options=None):
+        super().reset(seed=seed, options=options)
         self.info = {}
+        self.current_simbench_step = None
         self.step_in_episode = 0
 
-        self._sampling(step, test)
-        if self.add_act_obs:
+        if not options:
+            options = {}
+
+        test = options.get('test', False)
+        step = options.get('step', None)
+        self.apply_action = options.get('new_action', True)
+
+        if self.penalty_obs_space:
+            # TODO: penalty obs currently only work with linear penalties
+            if test and self.test_penalty is not None:
+                self.linear_penalties = np.ones(
+                    len(self.penalty_obs_space.low)) * self.test_penalty
+            else:
+                self.linear_penalties = self.penalty_obs_space.sample()
+            self.volt_pen = {'linear_penalty': self.linear_penalties[0]}
+            self.line_pen = {'linear_penalty': self.linear_penalties[1]}
+            self.trafo_pen = {'linear_penalty': self.linear_penalties[2]}
+            self.ext_grid_pen = {'linear_penalty': self.linear_penalties[3]}
+            # TODO: How to deal with custom added penalties?!
+            
+        self._sampling(step, test, self.apply_action)
+        
+        if self.initial_action == 'random':
             # Use random actions as starting point so that agent learns to handle that
-            # TODO: Maybe better to combine this with multi-step?!
             act = self.action_space.sample()
         else:
             # Reset all actions to default values
@@ -202,41 +270,50 @@ class OpfEnv(gym.Env, abc.ABC):
                     'Failed powerflow calculcation in reset. Try again!')
                 return self.reset()
 
-            self.prev_obj = self.calc_objective(self.net)
-            self.prev_reward = self.calc_reward()
+            self.initial_obj = self.calc_objective(base_objective=True)
 
         return self._get_obs(self.obs_keys, self.add_time_obs), copy.deepcopy(self.info)
 
-    def _sampling(self, step, test, *args, **kwargs):
-        """ Default method: Set random and noisy simbench state. """
+    def _sampling(self, step=None, test=False, sample_new=True, *args, **kwargs):
         data_distr = self.test_data if test is True else self.train_data
         kwargs.update(self.sampling_kwargs)
 
         # Maybe also allow different kinds of noise and similar! with `**sampling_params`?
         if data_distr == 'noisy_simbench' or 'noise_factor' in kwargs.keys():
-            self._set_simbench_state(step, test, *args, **kwargs)
+            if sample_new:
+                self._set_simbench_state(step, test, *args, **kwargs)
         elif data_distr == 'simbench':
-            self._set_simbench_state(
-                step, test, noise_factor=0.0, *args, **kwargs)
+            if sample_new:
+                self._set_simbench_state(
+                    step, test, noise_factor=0.0, *args, **kwargs)
         elif data_distr == 'full_uniform':
-            self._sample_uniform()
+            self._sample_uniform(sample_new=sample_new)
         elif data_distr == 'normal_around_mean':
-            self._sample_normal(*args, **kwargs)
-        elif data_distr == 'noisy_baseline':
-            raise NotImplementedError
-
-    def _sample_uniform(self, sample_keys=None):
+            self._sample_normal(sample_new=sample_new, **kwargs)
+        elif data_distr == 'mixed':
+            # Use different data sources with different probabilities
+            r = np.random.random()
+            data_probs = kwargs.get('data_probabilities', (0.5, 0.75, 1.0))
+            if r < data_probs[0]:
+                self._set_simbench_state(step, test, *args, **kwargs)
+            elif r < data_probs[1]:
+                self._sample_uniform(sample_new=sample_new)
+            else:
+                self._sample_normal(sample_new=sample_new, **kwargs)
+            
+    def _sample_uniform(self, sample_keys=None, sample_new=True):
         """ Standard pre-implemented method to set power system to a new random
         state from uniform sampling. Uses the observation space as basis.
         Requirement: For every observations there must be "min_{obs}" and
         "max_{obs}" given as range to sample from.
         """
+        assert sample_new, 'Currently only implemented for sample_new=True'
         if not sample_keys:
             sample_keys = self.obs_keys
         for unit_type, column, idxs in sample_keys:
             if 'res_' not in unit_type:
                 self._sample_from_range(unit_type, column, idxs)
-
+        
     def _sample_from_range(self, unit_type, column, idxs):
         df = self.net[unit_type]
         # Make sure to sample from biggest possible range
@@ -251,32 +328,46 @@ class OpfEnv(gym.Env, abc.ABC):
 
         r = np.random.uniform(low, high, size=(len(idxs),))
         try:
-            self.net[unit_type][column].loc[idxs] = r / df.scaling
+            # Constraints are scaled, which is why we need to divide by scaling
+            self.net[unit_type][column].loc[idxs] = r / df.scaling[idxs]
         except AttributeError:
+            # If scaling factor is not defined, assume scaling=1
             self.net[unit_type][column].loc[idxs] = r
 
-    def _sample_normal(self, std=0.3, truncated=False):
+    def _sample_normal(self, relative_std=None, truncated=False, 
+                       sample_new=True, **kwargs):
         """ Sample data around mean values from simbench data. """
+        assert sample_new, 'Currently only implemented for sample_new=True'
         for unit_type, column, idxs in self.obs_keys:
-            if 'res_' not in unit_type and 'poly_cost' not in unit_type:
-                df = self.net[unit_type].loc[idxs]
-                mean = df[f'mean_{column}']
-                max_values = (df[f'max_max_{column}'] / df.scaling).to_numpy()
-                min_values = (df[f'min_min_{column}'] / df.scaling).to_numpy()
-                diff = max_values - min_values
-                if truncated:
-                    random_values = stats.truncnorm.rvs(
-                        min_values, max_values, mean, std * diff, len(mean))
-                else:
-                    random_values = np.random.normal(
-                        mean, std * diff, len(mean))
-                    random_values = np.clip(
-                        random_values, min_values, max_values)
-                self.net[unit_type][column].loc[idxs] = random_values
+            if 'res_' in unit_type or 'poly_cost' in unit_type:
+                continue 
+
+            df = self.net[unit_type].loc[idxs]
+            mean = df[f'mean_{column}']
+            
+            max_values = (df[f'max_max_{column}'] / df.scaling).to_numpy()
+            min_values = (df[f'min_min_{column}'] / df.scaling).to_numpy()
+            diff = max_values - min_values
+            if relative_std:
+                std = relative_std * diff
+            else:
+                std = df[f'std_dev_{column}']
+
+            if truncated:
+                # Make sure to re-distribute truncated values 
+                random_values = stats.truncnorm.rvs(
+                    min_values, max_values, mean, std * diff, len(mean))
+            else:
+                # Simply clip values to min/max range
+                random_values = np.random.normal(
+                    mean, std * diff, len(mean))
+                random_values = np.clip(
+                    random_values, min_values, max_values)
+            self.net[unit_type][column].loc[idxs] = random_values
 
     def _set_simbench_state(self, step: int=None, test=False,
                             noise_factor=0.1, noise_distribution='uniform',
-                            *args, **kwargs):
+                            in_between_steps=False, *args, **kwargs):
         """ Standard pre-implemented method to sample a random state from the
         simbench time-series data and set that state.
 
@@ -285,24 +376,28 @@ class OpfEnv(gym.Env, abc.ABC):
 
         total_n_steps = len(self.profiles[('load', 'q_mvar')])
         if step is None:
-            if test is True and self.train_test_split is True:
+            if test is True and self.evaluate_on == 'test':
                 step = np.random.choice(self.test_steps)
+            elif test is True and self.evaluate_on == 'validation':
+                step = np.random.choice(self.validation_steps)
             else:
-                while True:
-                    step = random.randint(0, total_n_steps - 1)
-                    if self.train_test_split and step in self.test_steps:
-                        continue
-                    break
+                step = np.random.choice(self.train_steps)
         else:
             assert step < total_n_steps
 
-        self.current_step = step
+        self.current_simbench_step = step
 
         for type_act in self.profiles.keys():
             if not self.profiles[type_act].shape[1]:
                 continue
             unit_type, actuator = type_act
             data = self.profiles[type_act].loc[step, self.net[unit_type].index]
+
+            if in_between_steps and step < total_n_steps - 1:
+                # Random linear interpolation between two steps
+                next_data = self.profiles[type_act].loc[step + 1, self.net[unit_type].index]
+                r = np.random.random()
+                data = data * r + next_data * (1 - r)
 
             # Add some noise to create unique data samples
             if noise_distribution == 'uniform':
@@ -329,90 +424,123 @@ class OpfEnv(gym.Env, abc.ABC):
 
         return True
 
-    def step(self, action, test=False):
+    def step(self, action, *args, **kwargs):
         assert not np.isnan(action).any()
         self.info = {}
         self.step_in_episode += 1
 
-        self._apply_actions(action)
+        if self.apply_action:
+            correction = self._apply_actions(action, self.diff_action_step_size)
+            success = self._run_pf()
 
-        success = self._run_pf()
+            if not success:
+                # Something went seriously wrong! Find out what!
+                # Maybe NAN in power setpoints?!
+                # Maybe simply catch this with a strong negative reward?!
+                logging.critical(f'\nPowerflow not converged and reason unknown! Run diagnostic tool to at least find out what went wrong: {pp.diagnostic(self.net)}')
+                
+                self.info['valids'] = np.array([False] * 5)
+                self.info['violations'] = np.array([1] * 5)
+                self.info['unscaled_penalties'] = np.array([1] * 5)
+                self.info['penalty'] = 5
+                return np.array([np.nan]), np.nan, True, False, copy.deepcopy(self.info)
 
-        if not success:
-            # Something went seriously wrong! Find out what!
-            # Maybe NAN in power setpoints?!
-            # Maybe simply catch this with a strong negative reward?!
-            raise pp.powerflow.LoadflowNotConverged()
+        reward = self.calc_reward()
 
-        reward = self.calc_reward(test)
+        if self.clipped_action_penalty and self.apply_action:
+            reward -= correction * self.clipped_action_penalty
 
-        if self.diff_reward:
-            # Do not use the objective as reward, but their diff instead
-            reward -= self.prev_reward
-
-        if self.single_step:
-            # Do not step to another time-series point!
-            if self.steps_per_episode == 1:
-                terminated = True
-                truncated = False
-            elif self.step_in_episode >= self.steps_per_episode:
-                terminated = False
-                truncated = True
-            else:
-                terminated = False
-                truncated = False
-        elif random.random() < 0.02:  # TODO! Better termination criterion
-            self._sampling(step=self.current_step + 1, test=test)
-            terminated = True  # TODO
+        if self.steps_per_episode == 1:
+            terminated = True
+            truncated = False
+        elif self.step_in_episode >= self.steps_per_episode:
+            terminated = False
+            truncated = True
         else:
-            terminated = not self._sampling(step=self.current_step + 1, test=test)
+            terminated = False
+            truncated = False
 
         obs = self._get_obs(self.obs_keys, self.add_time_obs)
         assert not np.isnan(obs).any()
 
         return obs, reward, terminated, truncated, copy.deepcopy(self.info)
 
-    def _apply_actions(self, action, autocorrect=False):
-        """ Apply agent actions to the power system at hand. """
-        counter = 0
-        # Clip invalid actions
-        action = np.clip(action,
-                         self.action_space.low[:len(action)],
-                         self.action_space.high[:len(action)])
-        for unit_type, actuator, idxs in self.act_keys:
-            df = self.net[unit_type]
-            a = action[counter:counter + len(idxs)]
-            # Actions are relative to the maximum possible (scaled) value
-            # Attention: The negative range is always equal to the pos range!
-            # TODO: maybe use action wrapper instead?!
-            max_action = df[f'max_max_{actuator}'].loc[idxs]
-            new_values = a * max_action
+    def _apply_actions(self, action, diff_action_step_size=None):
+        """ Apply agent actions as setpoints to the power system at hand. """
 
-            # Autocorrect impossible setpoints (however: no penalties this way)
-            if f'max_{actuator}' in df.columns:
-                mask = new_values > df[f'max_{actuator}'].loc[idxs]
-                new_values[mask] = df[f'max_{actuator}'].loc[idxs][mask]
-            if f'min_{actuator}' in df.columns:
-                mask = new_values < df[f'min_{actuator}'].loc[idxs]
-                new_values[mask] = df[f'min_{actuator}'].loc[idxs][mask]
+        # Clip invalid actions
+        action = np.clip(action, self.action_space.low, self.action_space.high)
+
+        counter = 0
+        for unit_type, actuator, idxs in self.act_keys:
+            if len(idxs) == 0:
+                continue
+
+            df = self.net[unit_type]
+            partial_act = action[counter:counter + len(idxs)]
+
+
+            if self.autoscale_actions:
+                # Ensure that actions are always valid by using the current range
+                min_action = df[f'min_{actuator}'].loc[idxs]
+                max_action = df[f'max_{actuator}'].loc[idxs]
+            else:
+                # Use the full action range instead (only different if min/max change during training)
+                min_action = df[f'min_min_{actuator}'].loc[idxs]
+                max_action = df[f'max_max_{actuator}'].loc[idxs]
+
+            delta_action = (max_action - min_action).values
+
+            # Always use continuous action space [0, 1]
+            if diff_action_step_size:
+                # Agent sets incremental setpoints instead of absolute ones.
+                previous_setpoints = self.net[unit_type][actuator].loc[idxs].values
+                if 'scaling' in df.columns:
+                    previous_setpoints *= df.scaling.loc[idxs]
+                # Make sure decreasing the setpoint is possible as well
+                partial_act = partial_act * 2 - 1
+                setpoints = partial_act * diff_action_step_size * delta_action + previous_setpoints
+            else:
+                # Agent sets absolute setpoints in range [min, max]
+                setpoints = partial_act * delta_action + min_action
+
+            # Autocorrect impossible setpoints
+            if not self.autoscale_actions or diff_action_step_size:
+                if f'max_{actuator}' in df.columns:
+                    mask = setpoints > df[f'max_{actuator}'].loc[idxs]
+                    setpoints[mask] = df[f'max_{actuator}'].loc[idxs][mask]
+                if f'min_{actuator}' in df.columns:
+                    mask = setpoints < df[f'min_{actuator}'].loc[idxs]
+                    setpoints[mask] = df[f'min_{actuator}'].loc[idxs][mask]
 
             if 'scaling' in df.columns:
-                new_values /= df.scaling.loc[idxs]
-            # Scaling sometimes not existing -> TODO: maybe catch this once in init
+                # Scaling column sometimes not existing
+                setpoints /= df.scaling.loc[idxs]
 
-            self.net[unit_type][actuator].loc[idxs] = new_values
+            if actuator == 'closed' or actuator == 'in_service':
+                # Special case: Only binary actions
+                setpoints = np.round(setpoints).astype(bool)
+            elif actuator == 'tap_pos' or actuator == 'step':
+                # Special case: Only discrete actions
+                setpoints = np.round(setpoints)
+
+            self.net[unit_type][actuator].loc[idxs] = setpoints
 
             counter += len(idxs)
 
-        if counter != len(action):
-            warnings.warn('More actions than action keys!')
+        # TODO: Not really relevant if active/reactive not optimized together
+        # self._autocorrect_apparent_power(self.priority)
 
-        self._autocorrect_apparent_power(self.priority)
+        # Did the action need to be corrected to be in bounds?
+        mean_correction = np.mean(abs(self.get_current_actions(False) - action))
+
+        return mean_correction
 
     def _autocorrect_apparent_power(self, priority='p_mw'):
         """ Autocorrect to maximum apparent power if necessary. Relevant for
         sgens, loads, and storages """
         not_prio = 'p_mw' if priority == 'q_mvar' else 'q_mvar'
+        correction = 0
         for unit_type in ('sgen', 'load', 'storage'):
             df = self.net[unit_type]
             if 'max_s_mva' in df.columns:
@@ -420,27 +548,35 @@ class OpfEnv(gym.Env, abc.ABC):
                 values2 = (df[priority] * df.scaling).to_numpy() ** 2
                 # Make sure to prevent negative values for sqare root
                 max_values = np.maximum(s_mva2 - values2, 0)**0.5 / df.scaling
-                # Reduce non-priority power column
-                self.net[unit_type][not_prio] = np.sign(df[not_prio]) * \
-                    np.minimum(df[not_prio].abs(), max_values)
+                # Reduce non-priority power setpoints
+                new_values = np.sign(df[not_prio]) * np.minimum(df[not_prio].abs(), max_values)
+                correction += (self.net[unit_type][not_prio] - new_values).abs().sum()
+                self.net[unit_type][not_prio] = new_values
 
-    def _run_pf(self):
+        return correction
+
+    def _run_pf(self, enforce_q_lims=True, calculate_voltage_angles=False, 
+                voltage_depend_loads=False, **kwargs):
         try:
             pp.runpp(self.net,
-                     voltage_depend_loads=False,
-                     enforce_q_lims=True,
-                     calculate_voltage_angles=False)
+                     voltage_depend_loads=voltage_depend_loads,
+                     enforce_q_lims=enforce_q_lims,
+                     calculate_voltage_angles=calculate_voltage_angles,
+                     **kwargs)
 
         except pp.powerflow.LoadflowNotConverged:
             logging.warning('Powerflow not converged!!!')
             return False
         return True
 
-    def calc_objective(self, net):
+    def calc_objective(self, base_objective=True):
         """ Default: Compute reward/costs from poly costs. Works only if
         defined as pandapower OPF problem and only for poly costs! If that is
         not the case, this method needs to be overwritten! """
-        return -min_pp_costs(net)
+        if base_objective or not self.diff_objective:
+            return -min_pp_costs(self.net)
+        else:
+            return -min_pp_costs(self.net) - self.initial_obj
 
     def calc_violations(self):
         """ Constraint violations result in a penalty that can be subtracted
@@ -448,108 +584,92 @@ class OpfEnv(gym.Env, abc.ABC):
         Standard penalties: voltage band, overload of lines & transformers. """
 
         valids_violations_penalties = [
-            voltage_violation(self.net, **self.volt_pen),
-            line_overload(self.net, **self.line_pen),
-            trafo_overload(self.net, **self.trafo_pen),
-            ext_grid_overpower(self.net, 'q_mvar', **self.ext_grid_pen),
-            ext_grid_overpower(self.net, 'p_mw', **self.ext_grid_pen)]
+            voltage_violation(self.net, self.autoscale_violations,
+                worst_case_only=self.only_worst_case_violations, **self.volt_pen),
+            line_overload(self.net, self.autoscale_violations,
+                worst_case_only=self.only_worst_case_violations, **self.line_pen),
+            trafo_overload(self.net, self.autoscale_violations,
+                worst_case_only=self.only_worst_case_violations, **self.trafo_pen),
+            ext_grid_overpower(self.net, 'q_mvar', self.autoscale_violations,
+                worst_case_only=self.only_worst_case_violations, **self.ext_grid_pen),
+            ext_grid_overpower(self.net, 'p_mw', self.autoscale_violations,
+                worst_case_only=self.only_worst_case_violations, **self.ext_grid_pen)]
 
-        valids, viol, perc_viol, penalties = zip(*valids_violations_penalties)
+        valids, viol, penalties = zip(*valids_violations_penalties)
 
-        return np.array(valids), np.array(viol), np.array(perc_viol), np.array(penalties)
+        return np.array(valids), np.array(viol), np.array(penalties)
 
-    def calc_reward(self, test=False):
+    def calc_reward(self):
         """ Combine objective function and the penalties together. """
-        objectives = self.calc_objective(self.net)
-        self.info['objectives'] = objectives
-        valids, viol, percentage_viol, penalties = self.calc_violations()
+        objective = sum(self.calc_objective(base_objective=False))
+        valids, violations, penalties = self.calc_violations()
+
+        penalty = sum(penalties)
+
+        # Perform potential reward clipping (e.g., to prevent exploding rewards)
+        try:
+            if self.normalization_params['clip_range_obj'][0] is not None:
+                objective = np.clip(objective,
+                                    self.normalization_params['clip_range_obj'][0],
+                                    self.normalization_params['clip_range_obj'][1])
+        except KeyError:
+            pass
+        try:
+            if self.normalization_params['clip_range_viol'][0] is not None:
+                penalty = np.clip(penalty,
+                                self.normalization_params['clip_range_viol'][0],
+                                self.normalization_params['clip_range_viol'][1])
+        except KeyError:
+            pass
+
+        # Perform reward scaling, e.g., to range [-1, 1] (if defined)
+        objective = objective * self.objective_factor + self.objective_bias
+        penalty = penalty * self.penalty_factor + self.penalty_bias
 
         self.info['valids'] = np.array(valids)
-        self.info['violations'] = np.array(viol)
-        self.info['percentage_violations'] = np.array(percentage_viol)
-        self.info['penalties'] = np.array(penalties)
+        self.info['violations'] = np.array(violations)  
+        self.info['unscaled_penalties'] = np.array(penalties)
+        self.info['penalty'] = penalty
+        # Standard cost definition in Safe RL (Do not use bias here to prevent sign flip)
+        if not valids.all():
+            self.info['cost'] = abs(penalty * self.penalty_factor - self.reward_function_params.get('invalid_penalty', 0.0))  
+        else:
+            self.info['cost'] = 0
 
-        # TODO: re-structure this whole reward calculation?!
         if self.reward_function == 'summation':
-            # Idea: Add penalty to objective function (no change required)
+            # Add penalty to objective function (no change required)
             pass
         elif self.reward_function == 'replacement':
-            # Idea: Only give objective as reward, if solution valid
-            if not valids.all():
-                objectives[:] = 0.0
+            # Only give objective as reward, if solution valid
+            if valids.all():
+                # Make sure that the valid reward is always higher
+                objective += self.valid_reward
             else:
-                # Make sure that the objective is always positive
-                # This way, even the worst-case results in zero reward
-                objectives += self.mean_abs_obj / len(objectives)
-        elif self.reward_function == 'replacementA':
-            # Idea: Only give objective as reward, if solution valid
-            if not valids.all():
-                objectives[:] = 0.0
+                objective = 0.0
+        elif self.reward_function == "parameterized":
+            # Parameterized combination of summation and replacement.
+            # If valid_reward==0 & objective_share==1: Summation reward
+            # If valid_reward>0 & objective_share==0: Replacement reward
+            # The range in between represents weighted combinations of both
+            # The invalid_penalty is added to allow for inverse replacement method
+            # (punish invalid states instead of rewarding valid ones)
+            if valids.all():
+                # Positive penalty may sound strange but the intution is that 
+                # the penalty reward term represents constraint satisfaction
+                penalty += self.reward_function_params.get('valid_reward', 0)
             else:
-                # Use the worst case objective instead here 
-                objectives += abs(self.min_obj) / len(objectives)
-        # elif self.reward_function == 'replacement_plus_summation':
-        #     # TODO Idea: can these two be combined?!
-        #     # If valid: Use objective as reward
-        #     # If invalid: Use penalties as reward + objective to make sure agent learns both at the same time (and not first only penalties and then only objective))
-        #     # But ensure that the reward is always higher if valid compared to invalid 
-        #     if valids.all():
-        #         objectives += abs(self.min_obj)
-        elif self.reward_function == 'relative':
-            # Multiply constraint violation with objective function as penalty
-            penalties = -(~valids + percentage_viol)
-            self.info['penalties'] = penalties
-            # TODO: Problem: Does not really work if constraint=0 because inf penalty
-        elif self.reward_function == "flat":
-            if not valids.all():
-                # Make sure the penalty is always bigger than the objective
-                penalties = 2 * -abs(sum(objectives))
-                self.info['penalties'] = penalties
+                objective *= self.reward_function_params.get('objective_share', 1)
+                penalty -= self.reward_function_params.get('invalid_penalty', 0.5)
         else:
             raise NotImplementedError('This reward definition does not exist!')
 
-        # full_obj = np.append(objectives, penalties)
-        
-        obj = sum(objectives)
-        pen = sum(penalties)
-        if self.reward_scaling == 'minmax':
-            # Scale reward to [-1, 1]
-            obj = (obj - self.min_obj) / (self.max_obj - self.min_obj) * 2 - 1 
-            pen = (pen - self.min_pen) / (self.max_pen - self.min_pen) * 2 - 1
-            reward = obj * (1 - self.penalty_weight) + pen * self.penalty_weight
-        elif self.reward_scaling == 'normalization':
-            # Scale reward so that the mean reward is zero and the std is 1
-            obj = (obj - self.mean_obj) / self.obj_std
-            pen = (pen - self.mean_pen) / self.pen_std
+        if self.penalty_weight is not None:
+            reward = objective * (1 - self.penalty_weight) + penalty * self.penalty_weight
         else:
-            # Scale reward with some user-defined factor
-            obj = obj * self.reward_scaling
-            pen = pen * self.reward_scaling
+            reward = objective + penalty
 
-        if self.autoscale_penalty:
-            # Scale the penalty with the objective function
-            if self.min_penalty:
-                # The min_penalty prevents the penalty to become ~0.0
-                # TODO: Maybe a simple sqrt is better?!
-                penalties *= max(abs(sum(objectives)), self.min_penalty)
-            else:
-                penalties *= abs(sum(objectives))
-            self.info['penalties'] = penalties
-
-        # if not self.vector_reward:
-        #     # Use scalar reward 
-        #     reward = sum(full_obj)
-        # else:
-        #     # Reward as a numpy array
-        #     reward = full_obj
-
-        reward = obj * (1 - self.penalty_weight) + pen * self.penalty_weight
-
-        if self.squash_reward and not test:
-            reward = np.sign(reward) * np.log(np.abs(reward) + 1)
-            if self.min_penalty and not valids.all():
-                # Prevent that the penalty gets completely squashed
-                reward -= self.min_penalty
+        if self.clip_reward:
+            reward = np.clip(reward, self.clip_reward[0], self.clip_reward[1])
 
         return reward
 
@@ -559,32 +679,63 @@ class OpfEnv(gym.Env, abc.ABC):
                 else get_bus_aggregated_obs(self.net, 'load', column, idxs)
                 for unit_type, column, idxs in obs_keys]
 
+        if self.penalty_obs_space:
+            obss = [self.linear_penalties] + obss
+
+        if self.add_mean_obs:
+            mean_obs = [np.mean(partial_obs) for partial_obs in obss 
+                        if len(partial_obs) > 1]
+            obss.append(mean_obs)
+
         if add_time_obs:
             time_obs = get_simbench_time_observation(
-                self.profiles, self.current_step)
+                self.profiles, self.current_simbench_step)
             obss = [time_obs] + obss
+
         return np.concatenate(obss)
 
-    def render(self):
-        logging.warning(f'Rendering not supported!')
+    def render(self, **kwargs):
+        """ Render the current state of the power system. Uses the `simple_plot` 
+        pandapower method. Overwrite for more sophisticated rendering. For 
+        kwargs, refer to the pandapower docs: 
+        https://pandapower.readthedocs.io/en/latest/plotting/matplotlib/simple_plot.html"""
+        ax = pp.plotting.simple_plot(self.net, **kwargs)
+        return ax
 
-    def get_current_actions(self):
+    def get_current_actions(self, results=True):
         # Attention: These are not necessarily the actions of the RL agent
         # because some re-scaling might have happened!
-        action = [(self.net[f'res_{unit_type}'][column].loc[idxs]
-                   / self.net[unit_type][f'max_max_{column}'].loc[idxs])
-                  for unit_type, column, idxs in self.act_keys]
-        return np.concatenate(action)
+        # These are the actions from the original action space [0, 1]
+        res_flag = 'res_' if results else ''
+        action = []
+        for unit_type, column, idxs in self.act_keys:
+            setpoints = self.net[f'{res_flag}{unit_type}'][column].loc[idxs]
 
-    def baseline_reward(self, **kwargs):
+            # If data not taken from res table, scaling required
+            if not results and 'scaling' in self.net[unit_type].columns:
+                setpoints *= self.net[unit_type].scaling.loc[idxs]
+
+            # Action space depends on autoscaling 
+            min_id = 'min_' if self.autoscale_actions else 'min_min_'
+            max_id = 'max_' if self.autoscale_actions else 'max_max_' 
+            min_values = self.net[unit_type][f'{min_id}{column}'].loc[idxs]
+            max_values = self.net[unit_type][f'{max_id}{column}'].loc[idxs]
+
+            action.append((setpoints - min_values) / (max_values - min_values))
+
+        action = np.concatenate(action)
+
+        return action
+
+    def baseline_objective(self, **kwargs):
         """ Compute some baseline to compare training performance with. In this
         case, use the optimal possible reward, which can be computed with the
         optimal power flow. """
         success = self._optimal_power_flow(**kwargs)
         if not success:
             return np.nan
-        objectives = self.calc_objective(self.net)
-        valids, violations, percentage_violations, penalties = self.calc_violations()
+        objectives = self.calc_objective(base_objective=True)
+        valids, violations, penalties = self.calc_violations()
         logging.info(f'Optimal violations: {violations}')
         logging.info(f'Baseline actions: {self.get_current_actions()}')
         if sum(penalties) > 0:
@@ -592,7 +743,6 @@ class OpfEnv(gym.Env, abc.ABC):
                             f' with violations: {violations}'
                             '(should normally not happen! Check if this is some'
                             'special case with soft constraints!')
-            
 
         return sum(np.append(objectives, penalties))
 
@@ -605,8 +755,9 @@ class OpfEnv(gym.Env, abc.ABC):
         return True
 
 
-def get_obs_space(net, obs_keys: list, add_time_obs: bool, seed: int,
-                  last_n_obs: int=1, bus_wise_obs=False):
+def get_obs_space(net, obs_keys: list, add_time_obs: bool, 
+                  add_mean_obs: bool=False, penalty_obs_space: gym.Space=None, 
+                  seed: int=None, last_n_obs: int=1, bus_wise_obs=False):
     """ Get observation space from the constraints of the power network. """
     lows, highs = [], []
 
@@ -616,39 +767,50 @@ def get_obs_space(net, obs_keys: list, add_time_obs: bool, seed: int,
         lows.append(-np.ones(6))
         highs.append(np.ones(6))
 
+    if penalty_obs_space:
+        # Add penalty observation space
+        lows.append(penalty_obs_space.low)
+        highs.append(penalty_obs_space.high)
+
     for unit_type, column, idxs in obs_keys:
         if 'res_' in unit_type:
             # The constraints are never defined in the results table
             unit_type = unit_type[4:]
 
-        try:
-            if f'min_min_{column}' in net[unit_type].columns:
-                l = net[unit_type][f'min_min_{column}'].loc[idxs].to_numpy()
-            else:
-                l = net[unit_type][f'min_{column}'].loc[idxs].to_numpy()
-            if f'max_max_{column}' in net[unit_type].columns:
-                h = net[unit_type][f'max_max_{column}'].loc[idxs].to_numpy()
-            else:
-                h = net[unit_type][f'max_{column}'].loc[idxs].to_numpy()
-        except KeyError:
-            # Special case: trafos and lines (have minimum constraint of zero)
-            l = np.zeros(len(idxs))
-            # Assumption: No lines with loading more than 150%
-            h = net[unit_type][f'max_{column}'].loc[idxs].to_numpy() * 1.5
+        if column == 'va_degree':
+            # Usually no constraints for voltage angles defined
+            # Assumption: [30, 30] degree range (experience)
+            l = np.full(len(idxs), -30)
+            h = np.full(len(idxs), +30)
+        else:
+            try:
+                if f'min_min_{column}' in net[unit_type].columns:
+                    l = net[unit_type][f'min_min_{column}'].loc[idxs].to_numpy()
+                else:
+                    l = net[unit_type][f'min_{column}'].loc[idxs].to_numpy()
+                if f'max_max_{column}' in net[unit_type].columns:
+                    h = net[unit_type][f'max_max_{column}'].loc[idxs].to_numpy()
+                else:
+                    h = net[unit_type][f'max_{column}'].loc[idxs].to_numpy()
+            except KeyError:
+                # Special case: trafos and lines (have minimum constraint of zero)
+                l = np.zeros(len(idxs))
+                # Assumption: No lines with loading more than 150%
+                h = net[unit_type][f'max_{column}'].loc[idxs].to_numpy() * 1.5
 
-        # Special case: voltages
-        if column == 'vm_pu' or unit_type == 'ext_grid':
-            diff = h - l
-            # Assumption: If [0.95, 1.05] voltage band, no voltage outside [0.875, 1.125] range
-            l = l - diff * 0.75
-            h = h + diff * 0.75
-
+            # Special case: voltages
+            if column == 'vm_pu' or unit_type == 'ext_grid':
+                diff = h - l
+                # Assumption: If [0.95, 1.05] voltage band, no voltage outside [0.875, 1.125] range
+                l = l - diff * 0.75
+                h = h + diff * 0.75
+            
         try:
             if 'min' in column or 'max' in column:
                 # Constraints need to remain scaled
                 raise AttributeError
-            l /= net[unit_type].scaling.loc[idxs].to_numpy()
-            h /= net[unit_type].scaling.loc[idxs].to_numpy()
+            l = l / net[unit_type].scaling.loc[idxs].to_numpy()
+            h = h / net[unit_type].scaling.loc[idxs].to_numpy()
         except AttributeError:
             logging.info(
                 f'Scaling for {unit_type} not defined: assume scaling=1')
@@ -663,6 +825,14 @@ def get_obs_space(net, obs_keys: list, add_time_obs: bool, seed: int,
             lows.append(l)
             highs.append(h)
 
+    if add_mean_obs:
+        # Add mean values of each category as additional observations
+        start_from = 1 if add_time_obs else 0
+        add_l = [np.mean(l) for l in lows[start_from:] if len(l) > 1]
+        add_h = [np.mean(h) for h in highs[start_from:] if len(h) > 1]
+        lows.append(np.array(add_l))
+        highs.append(np.array(add_h))
+
     assert not sum(pd.isna(l).any() for l in lows)
     assert not sum(pd.isna(h).any() for h in highs)
 
@@ -670,37 +840,61 @@ def get_obs_space(net, obs_keys: list, add_time_obs: bool, seed: int,
         np.concatenate(lows, axis=0), np.concatenate(highs, axis=0), seed=seed)
 
 
-def get_action_space(act_keys: list, seed: int):
-    """ Get RL action space from defined actuators. """
-    low = np.array([])
-    high = np.array([])
-    for unit_type, column, idxs in act_keys:
-        condition = (unit_type == 'storage' or column == 'q_mvar')
-        new_lows = -np.ones(len(idxs)) if condition else np.zeros(len(idxs))
+def define_test_train_split(test_share=0.2, random_test_steps=False, 
+                            validation_share=0.2, random_validation_steps=False,
+                            **kwargs):
+    """ Return the indices of the simbench test data points. """
+    assert test_share + validation_share <= 1.0
+    if random_test_steps:
+        assert random_validation_steps, 'Random test data does only make sense with also random validation data'
 
-        low = np.append(low, new_lows)
-        high = np.append(high, np.ones(len(idxs)))
+    n_data_points = 24 * 4 * 366
+    all_steps = np.arange(n_data_points)
 
-    return gym.spaces.Box(low, high, seed=seed)
-
-
-def define_test_steps(test_share=0.2):
-    """ Return the indices of the simbench test data points """
-    assert test_share > 0.0, 'Please set train_test_split=False if no separate test data should be used'
-
+    # Define test dataset
     if test_share == 1.0:
         # Special case: Use the full simbench data set as test set
-        return np.arange(24 * 4 * 366)
+        return all_steps, np.array([]), np.array([])
+    elif test_share == 0.0:
+        test_steps = np.array([])
+    elif random_test_steps:
+        # Randomly sample test data steps from the whole year
+        test_steps = np.random.choice(all_steps, int(n_data_points * test_share))
+    else:
+        # Use deterministic weekly blocks to ensure that all weekdays are equally represented
+        # TODO: Allow for arbitrary blocks? Like days or months?
+        n_test_weeks = int(52 * test_share)
+        # Sample equidistant weeks from the whole year
+        test_week_idxs = np.linspace(0, 51, num=n_test_weeks, dtype=int)
+        one_week = 7 * 24 * 4
+        test_steps = np.concatenate(
+            [np.arange(idx * one_week, (idx + 1) * one_week) for idx in test_week_idxs])
 
-    # Use weekly blocks to make sure that all weekdays are equally represented
-    n_weeks = int(52 * test_share)
-    # Sample equidistant weeks from the whole year
-    week_idxs = np.linspace(0, 52, num=n_weeks, endpoint=False, dtype=int)
+    # Define validation dataset
+    remaining_steps = np.array(tuple(set(all_steps) - set(test_steps)))
+    if validation_share == 1.0:
+        return np.array([]), all_steps, np.array([])
+    elif validation_share == 0.0:
+        validation_steps = np.array([])
+    elif random_validation_steps:
+        validation_steps = np.random.choice(remaining_steps, int(n_data_points * validation_share))
+    else:
+        if random_test_steps:
+            test_week_idxs = np.array([])
 
-    one_week = 7 * 24 * 4
-    return np.concatenate(
-        [np.arange(idx * one_week, (idx + 1) * one_week) for idx in week_idxs]
-    )
+        n_validation_weeks = int(52 * validation_share)
+        # Make sure to use only validation weeks that are not already test weeks
+        remaining_week_idxs = np.array(tuple(set(np.arange(52)) - set(test_week_idxs)))
+        week_pseudo_idxs = np.linspace(0, len(remaining_week_idxs)-1,
+                                       num=n_validation_weeks, dtype=int)
+        validation_week_idxs = remaining_week_idxs[week_pseudo_idxs]
+        validation_steps = np.concatenate(
+            [np.arange(idx * one_week, (idx + 1) * one_week) for idx in validation_week_idxs])
+
+    # Use remaining steps as training steps
+    train_steps = np.array(tuple(set(remaining_steps) - set(validation_steps)))
+
+    return test_steps, validation_steps, train_steps
 
 
 def get_simbench_time_observation(profiles: dict, current_step: int):
@@ -726,31 +920,3 @@ def get_bus_aggregated_obs(net, unit_type, column, idxs):
     state space. """
     df = net[unit_type].iloc[idxs]
     return df.groupby(['bus'])[column].sum().to_numpy()
-
-
-# def get_automatic_reward_scaling(net):
-#     cost_df = net.poly_cost
-
-#     active_power_mask = np.zeros(len(cost_df), dtype=bool)
-#     reactive_power_mask = np.zeros(len(cost_df), dtype=bool)
-#     for column in cost_df.columns:
-#         if 'mw' in column and 'max_' in column:
-#             active_power_mask = np.logical_or(
-#                 active_power_mask, cost_df[column] != 0)
-#         if 'mvar' in column and 'max_' in column:
-#             reactive_power_mask = np.logical_or(
-#                 reactive_power_mask, cost_df[column] != 0)
-
-#     scaling_factor = 0
-#     for unit_type in ('gen', 'sgen', 'ext_grid', 'storage'):
-#         unit_type_mask = cost_df.et == unit_type
-#         mask = np.logical_and(active_power_mask, unit_type_mask)
-#         if mask.any():
-#             scaling_factor += net[unit_type].loc[cost_df[mask]
-#                                                  .element].max_max_p_mw.abs().sum()
-#         mask = np.logical_and(reactive_power_mask, unit_type_mask)
-#         if mask.any():
-#             scaling_factor += net[unit_type].loc[cost_df[mask]
-#                                                  .element].max_max_q_mvar.abs().sum()
-
-#     return 1 / scaling_factor / 10

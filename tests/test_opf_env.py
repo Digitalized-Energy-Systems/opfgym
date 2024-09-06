@@ -2,17 +2,17 @@ import numpy as np
 import pytest
 
 
-from mlopf.envs.thesis_envs import SimpleOpfEnv
+from mlopf.envs import MaxRenewable
 import mlopf.opf_env as opf_env
 
 
-dummy_env = SimpleOpfEnv()
-
+dummy_env = MaxRenewable()
 
 def test_obs_space_def():
+    dummy_env.reset()
     obs_keys = (
-        ('sgen', 'q_mvar', np.array([0])),
-        ('sgen', 'p_mw', np.array([0])),
+        ('sgen', 'p_mw', np.array([46])),
+        ('sgen', 'q_mvar', np.array([46])),
         ('load', 'q_mvar', np.array([0])),
         ('load', 'p_mw', np.array([0])),
         ('res_bus', 'vm_pu', np.array([0])),
@@ -34,35 +34,44 @@ def test_obs_space_def():
     assert not np.isnan(obs_space.high).any()
 
 
-def test_action_space_def():
-    act_keys = (
-        ('sgen', 'p_mw', np.array([0])),
-        ('sgen', 'q_mvar', np.array([0])),
-        ('storage', 'p_mw', np.array([0])),
-        ('gen', 'p_mw', np.array([0])),
-    )
-
-    act_space = opf_env.get_action_space(act_keys, seed=42)
-    low = np.array([0.0, -1.0, -1.0, 0.0])
-    high = np.array([1.0, 1.0, 1.0, 1.0])
-    assert (act_space.low == low).all()
-    assert (act_space.high == high).all()
-
-
 def test_test_share_def():
     all_steps = dummy_env.profiles[('sgen', 'p_mw')].index
 
-    # Test if test data share is calculated correctly
-    # Some minor deviations are perfectly fine
-    test_steps = opf_env.define_test_steps(test_share=0.1)
+    # Test deterministic dataset creation
+    test_steps, validation_steps, train_steps = opf_env.define_test_train_split(test_share=0.1)
+    assert test_steps[0] == 0
+    assert validation_steps[0] == 672
+    test_steps2, validation_steps2, train_steps = opf_env.define_test_train_split(test_share=0.1)
+    assert (set(test_steps) == set(test_steps2))
+    assert (set(validation_steps) == set(validation_steps2))
+
+    # Make sure there is no overlap
+    assert set(validation_steps).isdisjoint(test_steps)
+    assert set(validation_steps).isdisjoint(train_steps)
+
+    # Test stochastic dataset creation
+    test_steps, validation_steps, train_steps = opf_env.define_test_train_split(test_share=0.1, random_validation_steps=True, random_test_steps=True)
+    test_steps2, validation_steps2, train_steps2 = opf_env.define_test_train_split(test_share=0.1, random_validation_steps=True, random_test_steps=True)
+    assert not (set(test_steps) == set(test_steps2))
+    assert not (set(validation_steps) == set(validation_steps2))
+
+    # Make sure (again) there is no overlap
+    assert set(validation_steps).isdisjoint(test_steps)
+    assert set(validation_steps).isdisjoint(train_steps)
+
+    # Size of the dataset (roughly) correct?
     assert len(all_steps) / 10.5 <= len(test_steps) <= len(all_steps) / 9.5
-    test_steps = opf_env.define_test_steps(test_share=0.5)
+    test_steps, validation_steps, train_steps = opf_env.define_test_train_split(test_share=0.5)
     assert len(all_steps) / 2.1 <= len(test_steps) <= len(all_steps) / 1.9
 
     # Edge case: All data is test data
-    test_steps = opf_env.define_test_steps(test_share=1.0)
-    assert (all_steps == all_steps).all()
+    test_steps, validation_steps, train_steps = opf_env.define_test_train_split(test_share=1.0, validation_share=0.0)
+    assert set(test_steps) == set(all_steps)
 
-    # Edge case: No test data -> should not be done with test_share
+    # Edge case: No validation data
+    test_steps, validation_steps, train_steps = opf_env.define_test_train_split(validation_share=0.0)
+    assert len(validation_steps) == 0
+
+    # Only 100% of the data can be used
     with pytest.raises(AssertionError):
-        opf_env.define_test_steps(test_share=0.0)
+        opf_env.define_test_train_split(test_share=0.6, validation_share=0.6)

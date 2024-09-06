@@ -53,7 +53,7 @@ def maximize_profit(net, units: dict):
     return profit
 
 
-def min_pp_costs(net, autoscale=False):
+def min_pp_costs(net):
     """ Minimize total costs as implemented in pandapower network.
     Useful if cost function is already implemented or for comparison with
     pandapower-OPF. Attention: Not equivalent to 'net.res_cost' after
@@ -74,21 +74,6 @@ def min_pp_costs(net, autoscale=False):
         quadr_active_price = poly_costs.cp2_eur_per_mw2.to_numpy()
         linear_reactive_price = poly_costs.cq1_eur_per_mvar.to_numpy()
         quadr_reactive_price = poly_costs.cq2_eur_per_mvar2.to_numpy()
-
-        if autoscale:
-            import pdb  # Check if original data changed!
-            pdb.set_trace()
-            df = net[unit_type]
-            p_mw /= (df.max_max_p_mw / df.scaling).loc[idxs]
-            q_mvar /= (df.max_max_q_mvar / df.scaling).loc[idxs]
-            if "max_cp1_eur_per_mw" in poly_costs.columns:
-                linear_active_price /= poly_costs.max_cp1_eur_per_mw
-            if "max_cp2_eur_per_mw2" in poly_costs.columns:
-                quadr_active_price /= poly_costs.max_cp2_eur_per_mw2
-            if "max_cq1_eur_per_mvar" in poly_costs.columns:
-                linear_reactive_price /= poly_costs.max_cq1_eur_per_mvar
-            if "max_cq2_eur_per_mvar2" in poly_costs.columns:
-                quadr_reactive_price /= poly_costs.max_cq2_eur_per_mvar2
 
         # TODO: Add const cost factor somehow like: poly_costs.cp0_eur[p_mw!=0]
         costs = (p_mw * linear_active_price
