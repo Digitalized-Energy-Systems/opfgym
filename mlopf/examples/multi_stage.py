@@ -107,7 +107,7 @@ class MultiStageOpf(opf_env.OpfEnv):
 
 
 if __name__ == '__main__':
-    env = NetworkReconfiguration()
+    env = MultiStageOpf()
     for _ in range(5):
         env.reset()
         env.step(env.action_space.sample())
