@@ -22,6 +22,21 @@ def test_net_reconfig_integration():
     assert env_sanity_check(dummy_env)
 
 
+def test_multi_stage_integration():
+    dummy_env = MultiStageOpf()
+    for _ in range(3):
+        dummy_env.reset()
+        terminated, truncated = (False, False)
+        while not terminated and not truncated:
+            act = dummy_env.action_space.sample()
+            obs, reward, terminated, truncated, info = dummy_env.step(act)
+
+    assert isinstance(obs, np.ndarray)
+    assert isinstance(reward, float)
+    assert isinstance(info, dict)
+    assert env_sanity_check(dummy_env)
+
+
 # Test benchmark environments
 def test_max_renewable_integration():
     dummy_env = MaxRenewable()
