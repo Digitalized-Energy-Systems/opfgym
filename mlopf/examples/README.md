@@ -10,5 +10,8 @@ Not solvable with pandapower OPF because it does not allow for discrete actions.
 * `MultiStageOpf`: Demonstrates how to implement an OPF over multiple time steps. 
 The agent now has to make long-term decisions regarding its actions and cannot 
 greedily optimize the current grid state. 
+* `NonSimbenchNet`: Demonstrates how to use non-Simbench power systems by the 
+example of the IEEE 30-bus case. (Simbench systems are used by all benchmark 
+environments because of their accompanying time-series data)
 
 To import the example environments, use `from mlopf.examples import <EnvironmentName>`.
