@@ -134,7 +134,7 @@ class OpfEnv(gym.Env, abc.ABC):
         self.only_worst_case_violations = only_worst_case_violations
         self.autoscale_violations = autoscale_violations
         self.clip_reward = clip_reward
-        
+
         # Action space details
         self.priority = autocorrect_prio
         self.autoscale_actions = autoscale_actions
@@ -236,7 +236,7 @@ class OpfEnv(gym.Env, abc.ABC):
         if not options:
             options = {}
 
-        test = options.get('test', False)
+        self.test = options.get('test', False)
         step = options.get('step', None)
         self.apply_action = options.get('new_action', True)
 
@@ -252,9 +252,9 @@ class OpfEnv(gym.Env, abc.ABC):
             self.trafo_pen = {'linear_penalty': self.linear_penalties[2]}
             self.ext_grid_pen = {'linear_penalty': self.linear_penalties[3]}
             # TODO: How to deal with custom added penalties?!
-            
-        self._sampling(step, test, self.apply_action)
-        
+
+        self._sampling(step, self.test, self.apply_action)
+
         if self.initial_action == 'random':
             # Use random actions as starting point so that agent learns to handle that
             act = self.action_space.sample()

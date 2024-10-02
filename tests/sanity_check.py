@@ -21,7 +21,8 @@ def check_action_space(net, act_keys: dict):
         df = net[unit_type]
 
         assert df.controllable[idxs].all(), f'Not all RL actuators can be used by the pandapower OPF! -> The OPF is not solvable with the pandapower OPF!'
-        assert df.in_service[idxs].all(), f'Not all RL actuators are in service! -> The OPF is not solvable with the pandapower OPF!'
+        if unit_type != 'switch':
+            assert df.in_service[idxs].all(), f'Not all RL actuators are in service! -> The OPF is not solvable with the pandapower OPF!'
         # Assert that constraints are set as well
         assert (df[f'min_{column}'] <= df[f'max_{column}']).all(), 'The min and max values of the OPF constraints are not consistent!'
 
