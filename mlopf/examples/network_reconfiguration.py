@@ -1,5 +1,8 @@
-""" Simple example that shows how to use switches as actuators for network
-reconfiguration. Warning: This environment is not solvable with the pandapower.
+""" Simple example that shows how to use switches and transformer tap changers
+as actuators for network reconfiguration and voltage control.
+Notice that the discrete settings are implemented as continuous RL actions,
+which requires RL algorithms like DDPG, TD3, SAC, PPO, etc.
+Warning: This environment is not solvable with the pandapower OPF.
 Also, it is only an example with arbitrary objective and actuators. """
 
 
@@ -28,7 +31,8 @@ class NetworkReconfiguration(opf_env.OpfEnv):
         ]
 
         # ... and control some selected switches in the system
-        self.act_keys = [('switch', 'closed', self.net.switch.index[self.net.switch.controllable])]
+        self.act_keys = [('switch', 'closed', self.net.switch.index[self.net.switch.controllable]),
+                         ('trafo', 'tap_pos', self.net.trafo.index[self.net.trafo.controllable])]
 
         super().__init__(*args, **kwargs)
 
@@ -46,6 +50,13 @@ class NetworkReconfiguration(opf_env.OpfEnv):
         # And overall (technical limit)
         net.switch['min_min_closed'] = 0
         net.switch['max_max_closed'] = 1
+
+        # Define the transformer tap positions as controllable
+        net.trafo['controllable'] = True
+        net.trafo['min_tap_pos'] = -1
+        net.trafo['max_tap_pos'] = 1
+        net.trafo['min_min_tap_pos'] = -1
+        net.trafo['max_max_tap_pos'] = 1
 
         # Set everything else to uncontrollable
         for unit_type in ('load', 'sgen', 'gen', 'storage'):
