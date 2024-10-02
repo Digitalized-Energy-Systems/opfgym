@@ -1,4 +1,4 @@
-""" Example how to implemente a multi-stage OPF over multiple time steps.
+""" Example how to implement a multi-stage OPF over multiple time steps.
 Warning: Works only for simbench network because it requires timeseries data.
 Warning: Creates only observation for the current time step, which means that
 the agent has no prediction of the future and can only react to the current
@@ -6,7 +6,8 @@ state. In other words, long-term optimal actions are not necessarily possible
 (and the Markov property is not fulfilled?).
 
 TODO: Add this to the base class as a general method to handle multi-stage OPF?
-TODO: Use all steps for observation? Essentially give the agent a prediction. 
+TODO: Use all steps for observation? Essentially give the agent a prediction.
+TODO: Add a storage system or something similar to actually make the multi-stage aspect relevant.
 
 """
 
@@ -75,6 +76,10 @@ class MultiStageOpf(opf_env.OpfEnv):
             # And do not accidentally train on test data!
             if new_step in self.validation_steps or new_step in self.test_steps:
                 truncated = True
+
+        # After n steps = end of episode
+        if self.step_in_episode >= self.steps_per_episode:
+            terminated = True
 
         if terminated or truncated:
             return obs, reward, terminated, truncated, info
