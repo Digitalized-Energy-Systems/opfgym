@@ -8,17 +8,19 @@ from mlopf.build_simbench_net import build_simbench_net
 class EcoDispatch(opf_env.OpfEnv):
     """
     Economic Dispatch/Active power market environment: The grid operator
-    procures active power from generators to minimize losses within its system.
+    procures active power from generators to satisfy all constraints at minimal
+    costs.
 
-    Actuators: Active power of all gens
+    Actuators: Active power of the larger generators in the system.
 
-    Sensors: active+reactive power of all loads; (TODO: active power of all other gens?);
-        active power prices of all gens
+    Sensors: active+reactive power of all loads/storages;
+        active power prices of the controllable generators;
+        active power setpoints of the non-controllable generators.
 
-    Objective: minimize active power costs
+    Objective: minimize active power costs.
 
     Constraints: Voltage band, line/trafo load, min/max active power limits
-        (automatically), active power exchange with external grid
+        (automatically considered), active power exchange with external grid.
 
     """
 
@@ -110,4 +112,3 @@ if __name__ == '__main__':
     print('Number of buses: ', len(env.net.bus))
     print('Observation space:', env.observation_space.shape)
     print('Action space:', env.action_space.shape)
-    

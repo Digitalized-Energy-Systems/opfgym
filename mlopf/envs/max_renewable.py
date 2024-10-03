@@ -7,26 +7,23 @@ from mlopf.build_simbench_net import build_simbench_net
 
 class MaxRenewable(opf_env.OpfEnv):
     """
-    The goal is to learn to set active power of the biggest generators and 
-    storage systems in the grid to maximize active power feed-in to the external 
-    grid.
-    Since this environment has an obvious solution to the optimization problem 
-    (set all gens to 100% power), it is well suited to investigate constraint 
-    satisfaction.
+    The goal is to learn to set active power of the biggest generators and
+    storage systems to maximize active power feed-in to the external grid.
 
-    Actuators: Active/reactive power of all generators
+    Actuators: Active/reactive power of the bigger generators and storages.
 
-    Sensors: active+reactive power of all loads; max active power of all gens
+    Sensors: Active+reactive power of all loads; max active power of all gens;
+        active power of non-controllable storages.
 
-    Objective: maximize active power feed-in to external grid
+    Objective: Maximize active power feed-in to external grid.
 
-    Constraints: Voltage band, line/trafo load, min/max reactive power,
-        constrained reactive power flow over slack bus
+    Constraints: Voltage band, line/trafo load, min/max active power limits
+        (automatically considered).
     """
 
     def __init__(self, simbench_network_name='1-HV-mixed--1-sw',
                  gen_scaling=0.8, load_scaling=0.8,
-                 min_storage_power=10, min_sgen_power=24, 
+                 min_storage_power=10, min_sgen_power=24,
                  seed=None, *args, **kwargs):
 
         self.min_sgen_power = min_sgen_power
@@ -68,7 +65,7 @@ class MaxRenewable(opf_env.OpfEnv):
         net.ext_grid['vm_pu'] = 1.0
 
         # Use sampled data for the non-controlled storage systems
-        net.storage['controllable'] = net.storage.max_max_p_mw > self.min_storage_power 
+        net.storage['controllable'] = net.storage.max_max_p_mw > self.min_storage_power
         net.storage['q_mvar'] = 0
         net.storage['max_q_mvar'] = 0
         net.storage['min_q_mvar'] = 0
@@ -76,8 +73,8 @@ class MaxRenewable(opf_env.OpfEnv):
         # (do not consider state of charge for example)
         net.storage['max_p_mw'] = net.storage['max_max_p_mw']
         net.storage['min_p_mw'] = net.storage['min_min_p_mw']
-        
-        net.sgen['controllable'] = net.sgen.max_max_p_mw > self.min_sgen_power 
+
+        net.sgen['controllable'] = net.sgen.max_max_p_mw > self.min_sgen_power
         net.sgen['min_p_mw'] = 0  # max will be set later in sampling
         net.sgen['q_mvar'] = 0
         net.sgen['max_q_mvar'] = 0
@@ -115,4 +112,3 @@ if __name__ == '__main__':
     print('Number of buses: ', len(env.net.bus))
     print('Observation space:', env.observation_space.shape)
     print('Action space:', env.action_space.shape, f'(Generators: {sum(env.net.sgen.controllable)}, Storage: {sum(env.net.storage.controllable)})')
-    

@@ -1,8 +1,3 @@
-""" 
-Load shedding environment: The agent learns to perform cost minimal load 
-shedding in case of a grid overload in a commercial area grid.
-
-"""
 
 import numpy as np
 import pandapower as pp
@@ -17,16 +12,18 @@ from mlopf.build_simbench_net import build_simbench_net
 
 class LoadShedding(opf_env.OpfEnv):
     """
-    Description: TODO
+    Load shedding environment to find the load active power setpoints that
+    satisfy all system constraints at minimal costs.
 
-    Actuators: Active/reactive (coupled) power of all loads, active and reactive 
-        power of all storages
+    Actuators: Active power of all bigger loads and storages.
 
-    Sensors: active+reactive power of all loads; active power of all gens
+    Sensors: active+reactive power of all loads; active power of all generators;
+        prices for load shedding and storage usage.
 
-    Objective: Minimize costs
+    Objective: Minimize costs (naive solution: no load shedding).
 
-    Constraints: Voltage band, line/trafo load, ext_grid max active power
+    Constraints: Voltage band, line/trafo load, min/max active power limits
+        (automatically considered), active power exchange with external grid.
 
     """
 
@@ -121,4 +118,3 @@ if __name__ == '__main__':
     print('Number of buses: ', len(env.net.bus))
     print('Observation space:', env.observation_space.shape)
     print('Action space:', env.action_space.shape, f'(Loads: {sum(env.net.load.controllable)}, Storage: {sum(env.net.storage.controllable)})')
-    

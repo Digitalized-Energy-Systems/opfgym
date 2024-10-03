@@ -1,5 +1,4 @@
 
-import numpy as np
 import pandapower as pp
 
 from mlopf import opf_env
@@ -7,6 +6,22 @@ from mlopf.build_simbench_net import build_simbench_net
 
 
 class VoltageControl(opf_env.OpfEnv):
+    """
+    Voltage control environment to find the optimal reactive power setpoints to
+    satisfy all constraints (especially voltage band) and to minimize losses
+    within the system.
+
+    Actuators: Reactive power of the bigger generators in the system.
+
+    Sensors: Active+reactive power of all loads; active power of all generators
+        and storages.
+
+    Objective: minimize reactive power costs + minimize loss costs
+
+    Constraints: Voltage band, line/trafo load, min/max reactive power,
+        constrained reactive power flow over slack bus.
+
+    """
     def __init__(self, simbench_network_name='1-MV-semiurb--1-sw',
                  load_scaling=1.3, gen_scaling=1.3, 
                  cos_phi=0.95, max_q_exchange=1.0, min_sgen_power=0.5, 
@@ -32,7 +47,7 @@ class VoltageControl(opf_env.OpfEnv):
         ]
 
         if market_based:
-            # Consider reactive power prices as well
+            # Consider reactive power prices in the objective function
             self.obs_keys.append(
                 ('poly_cost', 'cq2_eur_per_mvar2', self.net.poly_cost.index)
             )
@@ -123,4 +138,3 @@ if __name__ == '__main__':
     print('Number of buses: ', len(env.net.bus))
     print('Observation space:', env.observation_space.shape)
     print('Action space:', env.action_space.shape, f'(Generators: {sum(env.net.sgen.controllable)}, Storage: {sum(env.net.storage.controllable)})')
-    
