@@ -72,7 +72,7 @@ class NetworkReconfiguration(opf_env.OpfEnv):
         # Overwrite because not solvable with pandapower OPF solver
         return 0
 
-    def _optimal_power_flow(self, **kwargs):
+    def _run_optimal_power_flow(self, **kwargs):
         # Overwrite because not solvable with pandapower OPF solver
         return False
 

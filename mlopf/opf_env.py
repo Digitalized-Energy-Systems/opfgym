@@ -264,7 +264,7 @@ class OpfEnv(gym.Env, abc.ABC):
         self._apply_actions(act)
 
         if self.pf_for_obs is True:
-            success = self._run_pf()
+            success = self._run_power_flow()
             if not success:
                 logging.warning(
                     'Failed powerflow calculcation in reset. Try again!')
@@ -431,7 +431,7 @@ class OpfEnv(gym.Env, abc.ABC):
 
         if self.apply_action:
             correction = self._apply_actions(action, self.diff_action_step_size)
-            success = self._run_pf()
+            success = self._run_power_flow()
 
             if not success:
                 # Something went seriously wrong! Find out what!
@@ -555,8 +555,10 @@ class OpfEnv(gym.Env, abc.ABC):
 
         return correction
 
-    def _run_pf(self, enforce_q_lims=True, calculate_voltage_angles=False, 
-                voltage_depend_loads=False, **kwargs):
+    def _run_power_flow(self, enforce_q_lims=True,
+                        calculate_voltage_angles=False,
+                        voltage_depend_loads=False,
+                        **kwargs):
         try:
             pp.runpp(self.net,
                      voltage_depend_loads=voltage_depend_loads,
@@ -731,7 +733,7 @@ class OpfEnv(gym.Env, abc.ABC):
         """ Compute some baseline to compare training performance with. In this
         case, use the optimal possible reward, which can be computed with the
         optimal power flow. """
-        success = self._optimal_power_flow(**kwargs)
+        success = self._run_optimal_power_flow(**kwargs)
         if not success:
             return np.nan
         objectives = self.calc_objective(base_objective=True)
@@ -746,9 +748,11 @@ class OpfEnv(gym.Env, abc.ABC):
 
         return sum(np.append(objectives, penalties))
 
-    def _optimal_power_flow(self, **kwargs):
+    def _run_optimal_power_flow(self, calculate_voltage_angles=False, **kwargs):
         try:
-            pp.runopp(self.net, calculate_voltage_angles=False, **kwargs)
+            pp.runopp(self.net,
+                      calculate_voltage_angles=calculate_voltage_angles,
+                      **kwargs)
         except pp.optimal_powerflow.OPFNotConverged:
             logging.warning('OPF not converged!!!')
             return False
@@ -804,7 +808,7 @@ def get_obs_space(net, obs_keys: list, add_time_obs: bool,
                 # Assumption: If [0.95, 1.05] voltage band, no voltage outside [0.875, 1.125] range
                 l = l - diff * 0.75
                 h = h + diff * 0.75
-            
+
         try:
             if 'min' in column or 'max' in column:
                 # Constraints need to remain scaled
@@ -897,12 +901,15 @@ def define_test_train_split(test_share=0.2, random_test_steps=False,
     return test_steps, validation_steps, train_steps
 
 
-def get_simbench_time_observation(profiles: dict, current_step: int):
+def get_simbench_time_observation(current_step: int, total_n_steps: int=24*4*366):
     """ Return current time in sinus/cosinus form.
-    Example daytime: (0.0, 1.0) = 00:00 and (1.0, 0.0) = 06:00. Idea from
+    Example daytime: (0.0, 1.0) => 00:00 and (1.0, 0.0) => 06:00. Idea from
     https://ianlondon.github.io/blog/encoding-cyclical-features-24hour-time/
+
+    Results in overall 6 time observations: sin/cos for day, week, year.
+
+    Assumes 15 min step size.
     """
-    total_n_steps = len(profiles[('load', 'q_mvar')])
     # number of steps per timeframe
     dayly, weekly, yearly = (24 * 4, 7 * 24 * 4, total_n_steps)
     time_obs = []
