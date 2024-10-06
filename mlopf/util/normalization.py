@@ -1,3 +1,15 @@
+"""
+Problem: We want to normalize the rewards in the environment to make them 
+comparable across different environments. However, we do not have any knowledge
+about the reward distributions in the environments, like the minimum, maximum,
+mean, median, standard deviation, etc.
+
+Approach: We can sample the environment with random states and action pairs to
+get a distribution of the rewards. We can then use this distribution to
+normalize the rewards. Not perfect, but better than no normalization at all.
+"""
+
+
 
 import numpy as np
 
@@ -14,7 +26,7 @@ def get_normalization_params(env,
         env.reset()
         # Use _apply_actions() to ensure that the action space definition is kept outside (in contrast to step())
         env._apply_actions(env.action_space.sample())
-        env._run_pf()
+        env._run_power_flow()
         objectives.append(env.calc_objective(env.net))
         # TODO: These are the penalties, not the violations currently!
         # And probably this is the right way because we cannot consider discrete penalties when we look at violations only
@@ -65,9 +77,9 @@ def get_normalization_params(env,
 
 
 if __name__ == '__main__':
-    default_params = {'reward_factor': 1, 'reward_bias': 0, 
+    default_params = {'reward_factor': 1, 'reward_bias': 0,
                       'penalty_factor': 1, 'penalty_bias': 0}
-    
+
     print('Running normalization for QMarketeEnv')
     from mlopf.envs import QMarket
     env = QMarket(normalization_params_=default_params)
