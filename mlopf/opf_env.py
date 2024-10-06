@@ -2,7 +2,6 @@
 import abc
 import copy
 import logging
-import random
 import warnings
 
 import gymnasium as gym
@@ -21,6 +20,8 @@ from mlopf.simbench.time_observation import get_simbench_time_observation
 
 warnings.simplefilter('once')
 
+class PowerFlowNotAvailable(Exception):
+    pass
 
 class OpfEnv(gym.Env, abc.ABC):
     def __init__(self,
@@ -229,7 +230,7 @@ class OpfEnv(gym.Env, abc.ABC):
                 valid_reward = valid_reward * self.objective_factor + self.objective_bias
             self.valid_reward = valid_reward
 
-    def reset(self, seed=None, options=None):
+    def reset(self, seed=None, options=None) -> tuple:
         super().reset(seed=seed, options=options)
         self.info = {}
         self.current_simbench_step = None
@@ -256,6 +257,7 @@ class OpfEnv(gym.Env, abc.ABC):
             # TODO: How to deal with custom added penalties?!
 
         self._sampling(step, self.test, self.apply_action)
+        self.power_flow_available = False
 
         if self.initial_action == 'random':
             # Use random actions as starting point so that agent learns to handle that
@@ -276,7 +278,8 @@ class OpfEnv(gym.Env, abc.ABC):
 
         return self._get_obs(self.obs_keys, self.add_time_obs), copy.deepcopy(self.info)
 
-    def _sampling(self, step=None, test=False, sample_new=True, *args, **kwargs):
+    def _sampling(self, step=None, test=False, sample_new=True, 
+                  *args, **kwargs) -> None:
         data_distr = self.test_data if test is True else self.train_data
         kwargs.update(self.sampling_kwargs)
 
@@ -302,8 +305,8 @@ class OpfEnv(gym.Env, abc.ABC):
                 self._sample_uniform(sample_new=sample_new)
             else:
                 self._sample_normal(sample_new=sample_new, **kwargs)
-            
-    def _sample_uniform(self, sample_keys=None, sample_new=True):
+
+    def _sample_uniform(self, sample_keys=None, sample_new=True) -> None:
         """ Standard pre-implemented method to set power system to a new random
         state from uniform sampling. Uses the observation space as basis.
         Requirement: For every observations there must be "min_{obs}" and
@@ -315,8 +318,8 @@ class OpfEnv(gym.Env, abc.ABC):
         for unit_type, column, idxs in sample_keys:
             if 'res_' not in unit_type:
                 self._sample_from_range(unit_type, column, idxs)
-        
-    def _sample_from_range(self, unit_type, column, idxs):
+
+    def _sample_from_range(self, unit_type, column, idxs) -> None:
         df = self.net[unit_type]
         # Make sure to sample from biggest possible range
         try:
@@ -336,8 +339,8 @@ class OpfEnv(gym.Env, abc.ABC):
             # If scaling factor is not defined, assume scaling=1
             self.net[unit_type][column].loc[idxs] = r
 
-    def _sample_normal(self, relative_std=None, truncated=False, 
-                       sample_new=True, **kwargs):
+    def _sample_normal(self, relative_std=None, truncated=False,
+                       sample_new=True, **kwargs) -> None:
         """ Sample data around mean values from simbench data. """
         assert sample_new, 'Currently only implemented for sample_new=True'
         for unit_type, column, idxs in self.obs_keys:
@@ -346,7 +349,7 @@ class OpfEnv(gym.Env, abc.ABC):
 
             df = self.net[unit_type].loc[idxs]
             mean = df[f'mean_{column}']
-            
+
             max_values = (df[f'max_max_{column}'] / df.scaling).to_numpy()
             min_values = (df[f'min_min_{column}'] / df.scaling).to_numpy()
             diff = max_values - min_values
@@ -369,7 +372,7 @@ class OpfEnv(gym.Env, abc.ABC):
 
     def _set_simbench_state(self, step: int=None, test=False,
                             noise_factor=0.1, noise_distribution='uniform',
-                            in_between_steps=False, *args, **kwargs):
+                            in_between_steps=False, *args, **kwargs) -> None:
         """ Standard pre-implemented method to sample a random state from the
         simbench time-series data and set that state.
 
@@ -424,9 +427,7 @@ class OpfEnv(gym.Env, abc.ABC):
             self.net[unit_type].loc[self.net[unit_type].index,
                                     actuator] = new_values
 
-        return True
-
-    def step(self, action, *args, **kwargs):
+    def step(self, action, *args, **kwargs) -> tuple:
         assert not np.isnan(action).any()
         self.info = {}
         self.step_in_episode += 1
@@ -467,8 +468,10 @@ class OpfEnv(gym.Env, abc.ABC):
 
         return obs, reward, terminated, truncated, copy.deepcopy(self.info)
 
-    def _apply_actions(self, action, diff_action_step_size=None):
-        """ Apply agent actions as setpoints to the power system at hand. """
+    def _apply_actions(self, action, diff_action_step_size=None) -> float:
+        """ Apply agent actions as setpoints to the power system at hand. 
+        Returns the mean correction that was necessary to make the actions
+        valid."""
 
         # Clip invalid actions
         action = np.clip(action, self.action_space.low, self.action_space.high)
@@ -538,7 +541,7 @@ class OpfEnv(gym.Env, abc.ABC):
 
         return mean_correction
 
-    def _autocorrect_apparent_power(self, priority='p_mw'):
+    def _autocorrect_apparent_power(self, priority='p_mw') -> float:
         """ Autocorrect to maximum apparent power if necessary. Relevant for
         sgens, loads, and storages """
         not_prio = 'p_mw' if priority == 'q_mvar' else 'q_mvar'
@@ -557,23 +560,7 @@ class OpfEnv(gym.Env, abc.ABC):
 
         return correction
 
-    def _run_power_flow(self, enforce_q_lims=True,
-                        calculate_voltage_angles=False,
-                        voltage_depend_loads=False,
-                        **kwargs):
-        try:
-            pp.runpp(self.net,
-                     voltage_depend_loads=voltage_depend_loads,
-                     enforce_q_lims=enforce_q_lims,
-                     calculate_voltage_angles=calculate_voltage_angles,
-                     **kwargs)
-
-        except pp.powerflow.LoadflowNotConverged:
-            logging.warning('Powerflow not converged!!!')
-            return False
-        return True
-
-    def calc_objective(self, base_objective=True):
+    def calc_objective(self, base_objective=True) -> np.ndarray:
         """ Default: Compute reward/costs from poly costs. Works only if
         defined as pandapower OPF problem and only for poly costs! If that is
         not the case, this method needs to be overwritten! """
@@ -582,7 +569,7 @@ class OpfEnv(gym.Env, abc.ABC):
         else:
             return -min_pp_costs(self.net) - self.initial_obj
 
-    def calc_violations(self):
+    def calc_violations(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """ Constraint violations result in a penalty that can be subtracted
         from the reward.
         Standard penalties: voltage band, overload of lines & transformers. """
@@ -603,7 +590,7 @@ class OpfEnv(gym.Env, abc.ABC):
 
         return np.array(valids), np.array(viol), np.array(penalties)
 
-    def calc_reward(self):
+    def calc_reward(self) -> float:
         """ Combine objective function and the penalties together. """
         objective = sum(self.calc_objective(base_objective=False))
         valids, violations, penalties = self.calc_violations()
@@ -677,7 +664,7 @@ class OpfEnv(gym.Env, abc.ABC):
 
         return reward
 
-    def _get_obs(self, obs_keys, add_time_obs):
+    def _get_obs(self, obs_keys, add_time_obs) -> np.ndarray:
         obss = [(self.net[unit_type][column].loc[idxs].to_numpy())
                 if (unit_type != 'load' or not self.bus_wise_obs)
                 else get_bus_aggregated_obs(self.net, 'load', column, idxs)
@@ -706,7 +693,7 @@ class OpfEnv(gym.Env, abc.ABC):
         ax = pp.plotting.simple_plot(self.net, **kwargs)
         return ax
 
-    def get_current_actions(self, results=True):
+    def get_current_actions(self, results=True) -> np.ndarray:
         # Attention: These are not necessarily the actions of the RL agent
         # because some re-scaling might have happened!
         # These are the actions from the original action space [0, 1]
@@ -731,10 +718,17 @@ class OpfEnv(gym.Env, abc.ABC):
 
         return action
 
-    def baseline_objective(self, **kwargs):
-        """ Compute some baseline to compare training performance with. In this
-        case, use the optimal possible reward, which can be computed with the
-        optimal power flow. """
+    def is_valid(self) -> bool:
+        """ Return True if the current state satisfies all constraints. """
+        if not self.power_flow_available:
+            self._run_power_flow()
+        valids, _, _ = self.calc_violations()
+        return valids.all()
+
+    def baseline_objective(self, **kwargs) -> float:
+        """ Compute the optimal system state via pandapower optimal power flow
+        and return the objective function value of that state.
+        Warning: Changes the state of the underlying power system! """
         success = self._run_optimal_power_flow(**kwargs)
         if not success:
             return np.nan
@@ -751,6 +745,7 @@ class OpfEnv(gym.Env, abc.ABC):
         return sum(np.append(objectives, penalties))
 
     def _run_optimal_power_flow(self, calculate_voltage_angles=False, **kwargs):
+        self.power_flow_available = True
         try:
             pp.runopp(self.net,
                       calculate_voltage_angles=calculate_voltage_angles,
@@ -760,10 +755,28 @@ class OpfEnv(gym.Env, abc.ABC):
             return False
         return True
 
+    def _run_power_flow(self, enforce_q_lims=True,
+                        calculate_voltage_angles=False,
+                        voltage_depend_loads=False,
+                        **kwargs):
+        self.power_flow_available = True
+        try:
+            pp.runpp(self.net,
+                     voltage_depend_loads=voltage_depend_loads,
+                     enforce_q_lims=enforce_q_lims,
+                     calculate_voltage_angles=calculate_voltage_angles,
+                     **kwargs)
+
+        except pp.powerflow.LoadflowNotConverged:
+            logging.warning('Powerflow not converged!!!')
+            return False
+        return True
+
 
 def get_obs_space(net, obs_keys: list, add_time_obs: bool, 
                   add_mean_obs: bool=False, penalty_obs_space: gym.Space=None, 
-                  seed: int=None, last_n_obs: int=1, bus_wise_obs=False):
+                  seed: int=None, last_n_obs: int=1, bus_wise_obs=False
+                  ) -> gym.spaces.Box:
     """ Get observation space from the constraints of the power network. """
     lows, highs = [], []
 
@@ -846,7 +859,7 @@ def get_obs_space(net, obs_keys: list, add_time_obs: bool,
         np.concatenate(lows, axis=0), np.concatenate(highs, axis=0), seed=seed)
 
 
-def get_bus_aggregated_obs(net, unit_type, column, idxs):
+def get_bus_aggregated_obs(net, unit_type, column, idxs) -> np.ndarray:
     """ Aggregate power values that are connected to the same bus to reduce
     state space. """
     df = net[unit_type].iloc[idxs]
