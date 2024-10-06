@@ -1,7 +1,6 @@
 import numpy as np
 import pytest
 
-
 from mlopf.envs import MaxRenewable
 import mlopf.opf_env as opf_env
 

@@ -8,7 +8,6 @@ Warning: Still requires pandapower networks!"""
 import pandapower as pp
 
 from mlopf import opf_env
-from mlopf.build_simbench_net import build_simbench_net
 
 
 class NonSimbenchNet(opf_env.OpfEnv):

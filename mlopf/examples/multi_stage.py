@@ -15,7 +15,7 @@ TODO: Add a storage system or something similar to actually make the multi-stage
 import pandapower as pp
 
 from mlopf import opf_env
-from mlopf.build_simbench_net import build_simbench_net
+from mlopf.simbench.build_simbench_net import build_simbench_net
 
 
 class MultiStageOpf(opf_env.OpfEnv):

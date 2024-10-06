@@ -16,6 +16,8 @@ from mlopf.penalties import (voltage_violation, line_overload,
                              trafo_overload, ext_grid_overpower)
 from mlopf.objectives import min_pp_costs
 from mlopf.util.normalization import get_normalization_params
+from mlopf.simbench.data_split import define_test_train_split
+from mlopf.simbench.time_observation import get_simbench_time_observation
 
 warnings.simplefilter('once')
 
@@ -689,7 +691,7 @@ class OpfEnv(gym.Env, abc.ABC):
                         if len(partial_obs) > 1]
             obss.append(mean_obs)
 
-        if add_time_obs:
+        if add_time_obs and self.current_simbench_step is not None:
             time_obs = get_simbench_time_observation(
                 self.profiles, self.current_simbench_step)
             obss = [time_obs] + obss
@@ -842,84 +844,6 @@ def get_obs_space(net, obs_keys: list, add_time_obs: bool,
 
     return gym.spaces.Box(
         np.concatenate(lows, axis=0), np.concatenate(highs, axis=0), seed=seed)
-
-
-def define_test_train_split(test_share=0.2, random_test_steps=False, 
-                            validation_share=0.2, random_validation_steps=False,
-                            **kwargs):
-    """ Return the indices of the simbench test data points. """
-    assert test_share + validation_share <= 1.0
-    if random_test_steps:
-        assert random_validation_steps, 'Random test data does only make sense with also random validation data'
-
-    n_data_points = 24 * 4 * 366
-    all_steps = np.arange(n_data_points)
-
-    # Define test dataset
-    if test_share == 1.0:
-        # Special case: Use the full simbench data set as test set
-        return all_steps, np.array([]), np.array([])
-    elif test_share == 0.0:
-        test_steps = np.array([])
-    elif random_test_steps:
-        # Randomly sample test data steps from the whole year
-        test_steps = np.random.choice(all_steps, int(n_data_points * test_share))
-    else:
-        # Use deterministic weekly blocks to ensure that all weekdays are equally represented
-        # TODO: Allow for arbitrary blocks? Like days or months?
-        n_test_weeks = int(52 * test_share)
-        # Sample equidistant weeks from the whole year
-        test_week_idxs = np.linspace(0, 51, num=n_test_weeks, dtype=int)
-        one_week = 7 * 24 * 4
-        test_steps = np.concatenate(
-            [np.arange(idx * one_week, (idx + 1) * one_week) for idx in test_week_idxs])
-
-    # Define validation dataset
-    remaining_steps = np.array(tuple(set(all_steps) - set(test_steps)))
-    if validation_share == 1.0:
-        return np.array([]), all_steps, np.array([])
-    elif validation_share == 0.0:
-        validation_steps = np.array([])
-    elif random_validation_steps:
-        validation_steps = np.random.choice(remaining_steps, int(n_data_points * validation_share))
-    else:
-        if random_test_steps:
-            test_week_idxs = np.array([])
-
-        n_validation_weeks = int(52 * validation_share)
-        # Make sure to use only validation weeks that are not already test weeks
-        remaining_week_idxs = np.array(tuple(set(np.arange(52)) - set(test_week_idxs)))
-        week_pseudo_idxs = np.linspace(0, len(remaining_week_idxs)-1,
-                                       num=n_validation_weeks, dtype=int)
-        validation_week_idxs = remaining_week_idxs[week_pseudo_idxs]
-        validation_steps = np.concatenate(
-            [np.arange(idx * one_week, (idx + 1) * one_week) for idx in validation_week_idxs])
-
-    # Use remaining steps as training steps
-    train_steps = np.array(tuple(set(remaining_steps) - set(validation_steps)))
-
-    return test_steps, validation_steps, train_steps
-
-
-def get_simbench_time_observation(current_step: int, total_n_steps: int=24*4*366):
-    """ Return current time in sinus/cosinus form.
-    Example daytime: (0.0, 1.0) => 00:00 and (1.0, 0.0) => 06:00. Idea from
-    https://ianlondon.github.io/blog/encoding-cyclical-features-24hour-time/
-
-    Results in overall 6 time observations: sin/cos for day, week, year.
-
-    Assumes 15 min step size.
-    """
-    # number of steps per timeframe
-    dayly, weekly, yearly = (24 * 4, 7 * 24 * 4, total_n_steps)
-    time_obs = []
-    for timeframe in (dayly, weekly, yearly):
-        timestep = current_step % timeframe
-        cyclical_time = 2 * np.pi * timestep / timeframe
-        time_obs.append(np.sin(cyclical_time))
-        time_obs.append(np.cos(cyclical_time))
-
-    return np.array(time_obs)
 
 
 def get_bus_aggregated_obs(net, unit_type, column, idxs):

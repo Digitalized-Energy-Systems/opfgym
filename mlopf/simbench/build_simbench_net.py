@@ -90,6 +90,7 @@ def set_constraints_from_profiles(net, profiles):
     net.ext_grid['min_min_p_mw'] = load_gen_diff.min()
     net.ext_grid['mean_p_mw'] = load_gen_diff.mean()
     # Generators should normally not increase q imbalances further
+    # -> Only look at load reactive power!
     load_q_mvar = profiles[('load', 'q_mvar')].sum(axis=1)
     net.ext_grid['max_max_q_mvar'] = load_q_mvar.max()
     net.ext_grid['min_min_q_mvar'] = load_q_mvar.min()
