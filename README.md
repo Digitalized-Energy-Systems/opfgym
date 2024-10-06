@@ -69,7 +69,9 @@ On top, some additional OPF-specfic features are implemented:
 * Use `sum(env.calc_objective())` to compute the value of the objective function in the current state. (Remove the `sum()` to get a vector representation)
 * Use `env.get_current_actions()` to get the currently applied actions (e.g. generator setpoints). Warning: The actions are always scaled to range [0, 1] and not directly interpretable as power setpoints! 0 represents the minimum
 possible setpoint, while 1 represents the maximum setpoint. 
-* Work-in-progress (TODO: `env.is_valid()`, `env.get_current_setpoints()`, etc.)
+* `env.is_valid()` to check if the current power grid state contains any 
+constraint violations. 
+* Work-in-progress (TODO: `env.get_current_setpoints()`, `error_metrics` etc.)
 
 ### Minimal Code Example
 Loads one benchmark environment, performs a random action on that
@@ -158,6 +160,17 @@ that the OPF is not solvable anymore, e.g. because the constraints are too tight
 
 
 ### How to create a new environment?
-Work-in-progress: Please check how the benchmark environments are defined (`mlopf/envs/`)
+Work-in-progress: Please check how the benchmark and examples environments 
+are defined (`mlopf/envs/` and `mlopf/examples/`). 
 
 TODO: What needs to be done if you want to implement your own OPF environment? (action_space, observation_space, sampling, etc)
+
+
+### Contribution
+Any kind of contribution is welcome! Feel free to create issues or merge 
+requests. Also, additional benchmark environment are highly appreciated. For 
+example, the `examples` environments could be refined to difficult but solvable
+RL-OPF benchmarks. Here, it would be especially helpful to incorporate an OPF
+solver that is more capable than the very limited pandapower OPF. For example, it should be able to deal with multi-stage problems, discrete actuators like
+switches, and stochastic problems. 
+For contact, send an email to thomas.wolgast@uni-oldenburg.de.
