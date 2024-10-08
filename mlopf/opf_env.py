@@ -10,6 +10,7 @@ import pandapower as pp
 import pandas as pd
 import scipy
 from scipy import stats
+from typing import Tuple
 
 from mlopf.penalties import (voltage_violation, line_overload,
                              trafo_overload, ext_grid_overpower)
