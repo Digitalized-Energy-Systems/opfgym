@@ -1,5 +1,5 @@
 
-from mlopf.envs.voltage_control import VoltageControl
+from opfgym.envs.voltage_control import VoltageControl
 
 
 class QMarket(VoltageControl):

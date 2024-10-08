@@ -1,8 +1,8 @@
 
 import pytest
 
-from mlopf.util.normalization import get_normalization_params
-from mlopf.envs import MaxRenewable
+from opfgym.util.normalization import get_normalization_params
+from opfgym.envs import MaxRenewable
 
 
 def test_get_normalization_params():

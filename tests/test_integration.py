@@ -2,8 +2,8 @@
 
 import numpy as np
 
-from mlopf.envs import *
-from mlopf.examples import *
+from opfgym.envs import *
+from opfgym.examples import *
 from .sanity_check import env_sanity_check
 
 

@@ -1,7 +1,7 @@
 import pytest
 import simbench as sb
 
-import mlopf.simbench.build_simbench_net as build_simbench
+import opfgym.simbench.build_simbench_net as build_simbench
 
 
 @pytest.fixture

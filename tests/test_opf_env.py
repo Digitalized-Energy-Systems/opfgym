@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from mlopf.envs import MaxRenewable
-import mlopf.opf_env as opf_env
+from opfgym.envs import MaxRenewable
+import opfgym.opf_env as opf_env
 
 
 dummy_env = MaxRenewable()

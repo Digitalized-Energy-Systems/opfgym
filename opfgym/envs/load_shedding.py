@@ -2,8 +2,8 @@
 import numpy as np
 import pandapower as pp
 
-from mlopf import opf_env
-from mlopf.simbench.build_simbench_net import build_simbench_net
+from opfgym import opf_env
+from opfgym.simbench.build_simbench_net import build_simbench_net
 
 
 # Problem: Sadly pandapower cannot deal with coupled active/reactive power,

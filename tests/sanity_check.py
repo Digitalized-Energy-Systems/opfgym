@@ -66,7 +66,7 @@ def check_action_space(net, act_keys: dict):
 
 
 if __name__ == '__main__':
-    from mlopf.envs import MaxRenewable, EcoDispatch, QMarket, VoltageControl, LoadShedding
+    from opfgym.envs import MaxRenewable, EcoDispatch, QMarket, VoltageControl, LoadShedding
     for env_class in (MaxRenewable, EcoDispatch, QMarket, VoltageControl, LoadShedding):
         print('Test environment:', env_class.__name__)
         env = env_class()

@@ -14,4 +14,4 @@ greedily optimize the current grid state.
 example of the IEEE 30-bus case. (Simbench systems are used by all benchmark 
 environments because of their accompanying time-series data)
 
-To import the example environments, use `from mlopf.examples import <EnvironmentName>`.
+To import the example environments, use `from opfgym.examples import <EnvironmentName>`.

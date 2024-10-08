@@ -27,34 +27,34 @@ Tested for python 3.10.
 Currently, five OPF benchmark environments are available:
 
 #### Maximize Renewable Feed-In (MaxRenewable)
-Use `from mlopf.envs import MaxRenewable` to import this env.
+Use `from opfgym.envs import MaxRenewable` to import this env.
 The observation space has 172 dimensions and the action space 18 dimensions.
 This env is the simplest one to learn. The objective is to maximize renewable
 generation without violating the constraints.
 
 #### Woltage Control (VoltageControl)
-Use `from mlopf.envs import VoltageControl` to import this env.
+Use `from opfgym.envs import VoltageControl` to import this env.
 The observation space has 442 dimensions and the action space 14 dimensions.
 The goal is to find optimal reactive power setpoints to minimize losses in the 
 system subject to constraints (mainly voltage level). Early version first published in 
 https://doi.org/10.1016/j.egyai.2024.100410.
 
 #### Reactive Power Market (QMarket)
-Use `from mlopf.envs import QMarket` to import this env.
+Use `from opfgym.envs import QMarket` to import this env.
 The observation space has 305 dimensions and the action space 10 dimensions.
 The reactive power market is an extension of the voltage control problem. 
 The objective is to minimize loss costs and reactive power costs in a local 
 reactive power market subject to constraints. 
 
 #### Economic Dispatch (EcoDispatch)
-Use `from mlopf.envs import EcoDispatch` to import this env.
+Use `from opfgym.envs import EcoDispatch` to import this env.
 The observation space has 201 dimensions and the action space 42 dimensions.
 The goal is to perform an economic dispatch, i.e., to minimize active power 
 costs subject to constraints. Early version first published in 
 https://doi.org/10.1016/j.egyai.2024.100410.
 
 #### Load Shedding (LoadShedding)
-Use `from mlopf.envs import LoadShedding` to import this env. 
+Use `from opfgym.envs import LoadShedding` to import this env. 
 The observation space has 386 dimensions and the action space 16 dimensions.
 The goal is to perform cost-minimal load shedding subject to constraints.
 
@@ -79,7 +79,7 @@ environment,  computes the resulting percentage error relative to the
 optimal action, and prints both actions (the optimal and suboptimal one).
 Repeat three times. 
 ~~~
-from mlopf.envs import QMarket
+from opfgym.envs import QMarket
 env = QMarket()
 for _ in range(3):
     observation, info = env.reset()
@@ -161,7 +161,7 @@ that the OPF is not solvable anymore, e.g. because the constraints are too tight
 
 ### How to create a new environment?
 Work-in-progress: Please check how the benchmark and examples environments 
-are defined (`mlopf/envs/` and `mlopf/examples/`). 
+are defined (`opfgym/envs/` and `opfgym/examples/`). 
 
 TODO: What needs to be done if you want to implement your own OPF environment? (action_space, observation_space, sampling, etc)
 

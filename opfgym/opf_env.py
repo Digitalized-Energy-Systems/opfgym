@@ -12,12 +12,12 @@ import scipy
 from scipy import stats
 from typing import Tuple
 
-from mlopf.penalties import (voltage_violation, line_overload,
+from opfgym.penalties import (voltage_violation, line_overload,
                              trafo_overload, ext_grid_overpower)
-from mlopf.objectives import min_pp_costs
-from mlopf.util.normalization import get_normalization_params
-from mlopf.simbench.data_split import define_test_train_split
-from mlopf.simbench.time_observation import get_simbench_time_observation
+from opfgym.objectives import min_pp_costs
+from opfgym.util.normalization import get_normalization_params
+from opfgym.simbench.data_split import define_test_train_split
+from opfgym.simbench.time_observation import get_simbench_time_observation
 
 warnings.simplefilter('once')
 

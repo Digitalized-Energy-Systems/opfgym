@@ -1,8 +1,8 @@
 
 import pandapower as pp
 
-from mlopf import opf_env
-from mlopf.simbench.build_simbench_net import build_simbench_net
+from opfgym import opf_env
+from opfgym.simbench.build_simbench_net import build_simbench_net
 
 
 class VoltageControl(opf_env.OpfEnv):

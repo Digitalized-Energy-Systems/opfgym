@@ -3,7 +3,7 @@ import pytest
 import pandapower as pp
 import pandapower.networks as pn
 
-import mlopf.penalties as penalties
+import opfgym.penalties as penalties
 
 
 @pytest.fixture

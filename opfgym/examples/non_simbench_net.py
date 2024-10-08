@@ -7,7 +7,7 @@ Warning: Still requires pandapower networks!"""
 
 import pandapower as pp
 
-from mlopf import opf_env
+from opfgym import opf_env
 
 
 class NonSimbenchNet(opf_env.OpfEnv):
