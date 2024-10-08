@@ -569,7 +569,7 @@ class OpfEnv(gym.Env, abc.ABC):
         else:
             return -min_pp_costs(self.net) - self.initial_obj
 
-    def calc_violations(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def calc_violations(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """ Constraint violations result in a penalty that can be subtracted
         from the reward.
         Standard penalties: voltage band, overload of lines & transformers. """
