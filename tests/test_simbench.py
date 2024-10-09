@@ -2,7 +2,10 @@ import pytest
 import simbench as sb
 
 import opfgym.simbench.build_simbench_net as build_simbench
+from opfgym.simbench.data_split import define_test_train_split
+from opfgym.envs import MaxRenewable
 
+dummy_env = MaxRenewable()
 
 @pytest.fixture
 def net():
@@ -71,3 +74,46 @@ def test_unit_constraint_setting(net_profile):
             if not (unit_type == 'sgen' and column == 'q_mvar'):
                 assert f'max_max_{column}' in net[unit_type].columns
                 assert f'min_min_{column}' in net[unit_type].columns
+
+
+def test_test_share_def(net):
+    all_steps = dummy_env.profiles[('sgen', 'p_mw')].index
+
+    # Test deterministic dataset creation
+    test_steps, validation_steps, train_steps = define_test_train_split(test_share=0.1)
+    assert test_steps[0] == 0
+    assert validation_steps[0] == 672
+    test_steps2, validation_steps2, train_steps = define_test_train_split(test_share=0.1)
+    assert (set(test_steps) == set(test_steps2))
+    assert (set(validation_steps) == set(validation_steps2))
+
+    # Make sure there is no overlap
+    assert set(validation_steps).isdisjoint(test_steps)
+    assert set(validation_steps).isdisjoint(train_steps)
+
+    # Test stochastic dataset creation
+    test_steps, validation_steps, train_steps = define_test_train_split(test_share=0.1, random_validation_steps=True, random_test_steps=True)
+    test_steps2, validation_steps2, train_steps2 = define_test_train_split(test_share=0.1, random_validation_steps=True, random_test_steps=True)
+    assert not (set(test_steps) == set(test_steps2))
+    assert not (set(validation_steps) == set(validation_steps2))
+
+    # Make sure (again) there is no overlap
+    assert set(validation_steps).isdisjoint(test_steps)
+    assert set(validation_steps).isdisjoint(train_steps)
+
+    # Size of the dataset (roughly) correct?
+    assert len(all_steps) / 10.5 <= len(test_steps) <= len(all_steps) / 9.5
+    test_steps, validation_steps, train_steps = define_test_train_split(test_share=0.5)
+    assert len(all_steps) / 2.1 <= len(test_steps) <= len(all_steps) / 1.9
+
+    # Edge case: All data is test data
+    test_steps, validation_steps, train_steps = define_test_train_split(test_share=1.0, validation_share=0.0)
+    assert set(test_steps) == set(all_steps)
+
+    # Edge case: No validation data
+    test_steps, validation_steps, train_steps = define_test_train_split(validation_share=0.0)
+    assert len(validation_steps) == 0
+
+    # Only 100% of the data can be used
+    with pytest.raises(AssertionError):
+        define_test_train_split(test_share=0.6, validation_share=0.6)
