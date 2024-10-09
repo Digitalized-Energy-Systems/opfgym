@@ -11,8 +11,8 @@ from opfgym.simbench.build_simbench_net import build_simbench_net
 
 
 class PartiallyObservable(opf_env.OpfEnv):
-    def __init__(self, simbench_network_name='1-LV-semiurb4--0-sw',
-                 observable_loads=np.arange(20),  # First 20 loads are observable
+    def __init__(self, simbench_network_name='1-LV-rural1--0-sw',
+                 observable_loads=np.arange(10),  # First 20 loads are observable
                  *args, **kwargs):
 
         self.net = self._define_opf(
@@ -24,7 +24,6 @@ class PartiallyObservable(opf_env.OpfEnv):
         # Define the RL problem
         # Observe all load power values, sgen active power
         self.obs_keys = [
-            ('sgen', 'p_mw', self.net.sgen.index),
             ('load', 'p_mw', observable_loads),  # Only observe selected loads
             ('load', 'q_mvar', observable_loads),
         ]

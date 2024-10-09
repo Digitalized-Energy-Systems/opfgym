@@ -1,7 +1,8 @@
 # Examples
-Some example environments that show the capabilities of this framework. Since 
-not all these problems are solvable with the pandapower OPF, they are not part of
-the benchmark suite. The example environments are:
+Some example environments that show the capabilities of this framework. 
+The environmens serve only as examples and do not represent any useful use case.
+Since not all these problems are solvable with the pandapower OPF, they are not part of
+the benchmark suite.The example environments are:
 
 * `NetworkReconfiguration`: This example environment demonstrates how discrete 
 binary switches (closed/open) can be used for network reconfiguration tasks. 
