@@ -1,6 +1,6 @@
 # Examples
 Some example environments that show the capabilities of this framework. Since 
-these problems are not solvable with the pandapower OPF, they are not part of
+not all these problems are solvable with the pandapower OPF, they are not part of
 the benchmark suite. The example environments are:
 
 * `NetworkReconfiguration`: This example environment demonstrates how discrete 
@@ -13,5 +13,8 @@ greedily optimize the current grid state.
 * `NonSimbenchNet`: Demonstrates how to use non-Simbench power systems by the 
 example of the IEEE 30-bus case. (Simbench systems are used by all benchmark 
 environments because of their accompanying time-series data)
+* `PartialObs`: Demonstrates how to implement missing observation data to 
+create a partially observable environment. Therefore, the environment does 
+not have the Markov property. 
 
 To import the example environments, use `from opfgym.examples import <EnvironmentName>`.
