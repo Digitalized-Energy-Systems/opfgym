@@ -19,7 +19,8 @@ first mentioned (in an early stage): https://doi.org/10.1016/j.egyai.2024.100410
 
 
 ### Installation
-Clone the repository and run `pip install -e .` within some kind of virtual env.
+Run `pip install opfgym` within some kind of virtual env.
+For contributing, clone the repository and run `pip install -e .`.
 Tested for python 3.10.
 
 
@@ -33,7 +34,7 @@ The observation space has 172 dimensions and the action space 18 dimensions.
 This env is the simplest one to learn. The objective is to maximize renewable
 generation without violating the constraints.
 
-#### Woltage Control (VoltageControl)
+#### Voltage Control (VoltageControl)
 Use `from opfgym.envs import VoltageControl` to import this env.
 The observation space has 442 dimensions and the action space 14 dimensions.
 The goal is to find optimal reactive power setpoints to minimize losses in the 
