@@ -73,6 +73,7 @@ possible setpoint, while 1 represents the maximum setpoint.
 constraint violations. 
 * Work-in-progress (TODO: `env.get_current_setpoints()`, `error_metrics` etc.)
 
+
 ### Minimal Code Example
 Loads one benchmark environment, performs a random action on that
 environment,  computes the resulting percentage error relative to the
@@ -166,11 +167,27 @@ are defined (`opfgym/envs/` and `opfgym/examples/`).
 TODO: What needs to be done if you want to implement your own OPF environment? (action_space, observation_space, sampling, etc)
 
 
+### Supervised Learning Support
+While the provided framework and the benchmarks are mainly intended for 
+reinforcement learning, supervised learning is also possible. This way, it is 
+possible to compare supervised and reinforcement learning methods on the exact
+same OPF problem. To create a dataset for supervised learning, run:
+~~~
+from opfgym.util.labeled_data import create_labeled_dataset
+from opfgym.envs import SomeEnvironment
+
+create_labeled_dataset(SomeEnvironment(), num_samples=10, seed=42)
+~~~
+The dataset can be used to create an neural network in supervised fashion. 
+Assuming no data scaling, the outputs can directly be fed back to `env.step()`.
+
+
 ### Contribution
 Any kind of contribution is welcome! Feel free to create issues or merge 
 requests. Also, additional benchmark environment are highly appreciated. For 
 example, the `examples` environments could be refined to difficult but solvable
 RL-OPF benchmarks. Here, it would be especially helpful to incorporate an OPF
-solver that is more capable than the very limited pandapower OPF. For example, it should be able to deal with multi-stage problems, discrete actuators like
-switches, and stochastic problems. 
-For contact, send an email to thomas.wolgast@uni-oldenburg.de.
+solver that is more capable than the very limited pandapower OPF. For example, 
+it should be able to deal with multi-stage problems, discrete actuators like
+switches, and stochastic problems, which the pandapower OPF can't. 
+For questions, feedback, collaboration, etc., contact thomas.wolgast@uni-oldenburg.de.
