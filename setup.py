@@ -7,14 +7,14 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name='opfgym',
-    version='0.0.1',
+    version='0.1.0',
     author='Thomas Wolgast',
     author_email='thomas.wolgast@uol.de',
-    description='Some environments to learn the Optimal Power Flow with Reinforcement Learning',
+    description='Environment framework to learn the Optimal Power Flow with Reinforcement Learning, including multiple benchmark environments.',
     long_description=long_description,
     long_description_content_type="text/markdown",
     packages=find_packages(include=['opfgym', 'opfgym.*']),
-    url='https://gitlab.com/thomaswolgast/opfgym',
+    url='https://github.com/Digitalized-Energy-Systems/opfgym',
     license='MIT',
     install_requires=[
         'numpy==1.22.4',

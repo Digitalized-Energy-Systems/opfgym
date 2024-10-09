@@ -1,0 +1,41 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: OPF-Gym
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file. Additionally, please check out the publication
+  "Learning the optimal power flow: Environment design matters", where the 
+  library was first introduced. 
+  (https://www.sciencedirect.com/science/article/pii/S2666546824000764) 
+type: software
+authors:
+  - given-names: Thomas
+    family-names: Wolgast
+    email: thomas.wolgast@uni-oldenburg.de
+    affiliation: Carl von Ossietzky Universität Oldenburg
+    orcid: 'https://orcid.org/0000-0002-9042-9964'
+repository-code: 'https://github.com/Digitalized-Energy-Systems/opfgym'
+abstract: >-
+  The OPF-Gym library allows for easy creation of
+  reinforcement learning (RL) environments for solving the
+  optimal power flow (OPF) problem. OPF-Gym also provides
+  five benchmark environments to ensure comparability of
+  future RL-OPF research. Various kinds of OPF problems are
+  supported, for example, multi-stage OPF, discrete actions,
+  stochastic OPF, etc. Further, it is possible to generate
+  labeled training data for supervised learning, which again
+  improves comparability of research advances. 
+keywords:
+  - Optimal Power Flow
+  - Reinforcement Learning
+  - Gymnasium
+  - Supervised Learning
+  - Voltage Control
+  - Economic Dispatch
+  - Reactive Power Market
+  - Load Shedding
+  - Benchmark
+license: MIT
+version: 0.1.0

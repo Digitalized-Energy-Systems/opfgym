@@ -24,7 +24,8 @@ Tested for python 3.10.
 
 
 ### Environments
-Currently, five OPF benchmark environments are available:
+Currently, five OPF benchmark environments are available. Additionally, some 
+example environments for more advanced features can be found in `opfgym/examples`. 
 
 #### Maximize Renewable Feed-In (MaxRenewable)
 Use `from opfgym.envs import MaxRenewable` to import this env.

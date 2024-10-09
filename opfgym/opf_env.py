@@ -21,6 +21,7 @@ from opfgym.simbench.time_observation import get_simbench_time_observation
 
 warnings.simplefilter('once')
 
+
 class PowerFlowNotAvailable(Exception):
     pass
 
