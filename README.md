@@ -163,10 +163,26 @@ that the OPF is not solvable anymore, e.g. because the constraints are too tight
 
 
 ### How to create a new environment?
-Work-in-progress: Please check how the benchmark and examples environments 
-are defined (`opfgym/envs/` and `opfgym/examples/`). 
 
-TODO: What needs to be done if you want to implement your own OPF environment? (action_space, observation_space, sampling, etc)
+When creating a new RL-OPF environment with `opfgym` follow these steps:
+1. Create a new class that inherits from `opfgym.OpfEnv`.
+2. In `__init__`, define:
+  * `self.net`: A pandapower network object for which the OPF shall be learned. The OPF problem formulation is done within that net by using the [pandapower OPF definition](https://pandapower.readthedocs.io/en/latest/opf/formulation.html). It is also possible to define OPF problems that are not pandapower-compatible, see environments in `opfgym.examples`.
+  * `self.obs_keys`: A list of tuples with the structure `(pandapower_table_name, column_name, index_array)` that defines which parts of the environment the agent can observe. (Later automatically converted to `self.observation_space`)
+  * `self.act_keys`: A list of tuples with the same structure as `self.obs_keys` that defines which parts of the environment the agent can control. (Later automatically converted to `self.action_space`)
+3. Call `super().__init__(*args, **kwargs)` after defining the previous three variables. 
+4. If required, extend the `_sampling()` method to sample data that cannot be sampled from simbench (if simbench is used) or to change constraints dynamically depending on the current state (for example, see [VoltageControl](https://github.com/Digitalized-Energy-Systems/opfgym/blob/development/opfgym/envs/voltage_control.py) environment).
+5. If the OPF is not solvable with the pandapower OPF, overwrite the 
+`_run_optimal_power_flow` method to `return False`. Otherwise, it may fail or 
+return nonsense results.
+
+When defining the `net` object, it is important that the allowed data ranges
+are defined. Define the allowed range `net[unit_type][f'max_{column}']` (or 'min') for the 
+OPF actuators. Additionally, we need to the define the possible range of 
+observations and for data sampling, which is done by setting 
+`net[unit_type][f'max_max_{column}']` (or 'min'). If both are identical, it is 
+sufficient to define the first one only. Again, compare the `envs` and `examples` 
+for examples how to do this. 
 
 
 ### Supervised Learning Support

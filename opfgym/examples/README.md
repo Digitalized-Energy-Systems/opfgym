@@ -17,5 +17,9 @@ environments because of their accompanying time-series data)
 * `PartialObs`: Demonstrates how to implement missing observation data to 
 create a partially observable environment. Therefore, the environment does 
 not have the Markov property. 
+* `MixedContinuousDiscrete`: Demonstrates how continuous and discrete actuators
+in the same environment are easily possible. Also demonstrates how to overwrite
+the default pandapower objective function with a custom objective function
+(only advisable if OPF not solvable with pandapower).
 
 To import the example environments, use `from opfgym.examples import <EnvironmentName>`.
