@@ -276,7 +276,7 @@ class OpfEnv(gym.Env, abc.ABC):
                     'Failed powerflow calculcation in reset. Try again!')
                 return self.reset()
 
-            self.initial_obj = self.calc_objective(base_objective=True)
+            self.initial_obj = self.calculate_objective(base_objective=True)
 
         return self._get_obs(self.obs_keys, self.add_time_obs), copy.deepcopy(self.info)
 
@@ -450,7 +450,7 @@ class OpfEnv(gym.Env, abc.ABC):
                 self.info['penalty'] = 5
                 return np.array([np.nan]), np.nan, True, False, copy.deepcopy(self.info)
 
-        reward = self.calc_reward()
+        reward = self.calculate_reward()
 
         if self.clipped_action_penalty and self.apply_action:
             reward -= correction * self.clipped_action_penalty
@@ -562,16 +562,22 @@ class OpfEnv(gym.Env, abc.ABC):
 
         return correction
 
-    def calc_objective(self, base_objective=True) -> np.ndarray:
-        """ Default: Compute reward/costs from poly costs. Works only if
-        defined as pandapower OPF problem and only for poly costs! If that is
-        not the case, this method needs to be overwritten! """
+    def calculate_objective(self, base_objective=True) -> np.ndarray:
+        """ Serves as a wrapper around calculating the objective function
+        and adds some additional functionality. """
         if base_objective or not self.diff_objective:
-            return -min_pp_costs(self.net)
+            return self.calculate_base_objective()
         else:
-            return -min_pp_costs(self.net) - self.initial_obj
+            return self.calculate_base_objective() - self.initial_obj
 
-    def calc_violations(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def calculate_base_objective(self) -> np.ndarray:
+        """ Can be overwritten by the user. The default is to compute the
+        objective function that is defined in pandapower. This method should
+        return the objective function as array that is used as basis for the
+        rewardcalculation. """
+        return -min_pp_costs(self.net)
+
+    def calculate_violations(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """ Constraint violations result in a penalty that can be subtracted
         from the reward.
         Standard penalties: voltage band, overload of lines & transformers. """
@@ -592,10 +598,10 @@ class OpfEnv(gym.Env, abc.ABC):
 
         return np.array(valids), np.array(viol), np.array(penalties)
 
-    def calc_reward(self) -> float:
+    def calculate_reward(self) -> float:
         """ Combine objective function and the penalties together. """
-        objective = sum(self.calc_objective(base_objective=False))
-        valids, violations, penalties = self.calc_violations()
+        objective = sum(self.calculate_objective(base_objective=False))
+        valids, violations, penalties = self.calculate_violations()
 
         penalty = sum(penalties)
 
@@ -724,7 +730,7 @@ class OpfEnv(gym.Env, abc.ABC):
         """ Return True if the current state satisfies all constraints. """
         if not self.power_flow_available:
             self._run_power_flow()
-        valids, _, _ = self.calc_violations()
+        valids, _, _ = self.calculate_violations()
         return valids.all()
 
     def baseline_objective(self, **kwargs) -> float:
@@ -734,8 +740,8 @@ class OpfEnv(gym.Env, abc.ABC):
         success = self._run_optimal_power_flow(**kwargs)
         if not success:
             return np.nan
-        objectives = self.calc_objective(base_objective=True)
-        valids, violations, penalties = self.calc_violations()
+        objectives = self.calculate_objective(base_objective=True)
+        valids, violations, penalties = self.calculate_violations()
         logging.info(f'Optimal violations: {violations}')
         logging.info(f'Baseline actions: {self.get_current_actions()}')
         if sum(penalties) > 0:

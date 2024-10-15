@@ -68,7 +68,7 @@ All environments use the gymnasium API:
 
 On top, some additional OPF-specfic features are implemented: 
 * Use `env.baseline_objective()` to solve the OPF with a conventional OPF solver. Returns the optimal value of the objective function. Warning: Changes the state of the power system to the optimal state!
-* Use `sum(env.calc_objective())` to compute the value of the objective function in the current state. (Remove the `sum()` to get a vector representation)
+* Use `sum(env.calculate_objective())` to compute the value of the objective function in the current state. (Remove the `sum()` to get a vector representation)
 * Use `env.get_current_actions()` to get the currently applied actions (e.g. generator setpoints). Warning: The actions are always scaled to range [0, 1] and not directly interpretable as power setpoints! 0 represents the minimum
 possible setpoint, while 1 represents the maximum setpoint. 
 * `env.is_valid()` to check if the current power grid state contains any 
@@ -97,7 +97,7 @@ for _ in range(3):
         print(f"The grid satisfies all constraints: {valid}")
 
         # Compute the error
-        objective = sum(env.calc_objective())
+        objective = sum(env.calculate_objective())
         optimal_objective = env.baseline_objective()
         optimal_actions = env.get_current_actions()
         percentage_error = optimal_objective - objective / abs(optimal_objective) * 100
