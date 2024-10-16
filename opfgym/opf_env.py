@@ -621,6 +621,12 @@ class OpfEnv(gym.Env, abc.ABC):
         except KeyError:
             pass
 
+        # Standard cost definition in Safe RL (Do not use bias and valid_reward here to prevent sign flip)
+        if not valids.all():
+            self.info['cost'] = abs(penalty * self.penalty_factor - self.reward_function_params.get('invalid_penalty', 0.0))  
+        else:
+            self.info['cost'] = 0
+
         # Perform reward scaling, e.g., to range [-1, 1] (if defined)
         objective = objective * self.objective_factor + self.objective_bias
         penalty = penalty * self.penalty_factor + self.penalty_bias
@@ -629,11 +635,6 @@ class OpfEnv(gym.Env, abc.ABC):
         self.info['violations'] = np.array(violations)  
         self.info['unscaled_penalties'] = np.array(penalties)
         self.info['penalty'] = penalty
-        # Standard cost definition in Safe RL (Do not use bias here to prevent sign flip)
-        if not valids.all():
-            self.info['cost'] = abs(penalty * self.penalty_factor - self.reward_function_params.get('invalid_penalty', 0.0))  
-        else:
-            self.info['cost'] = 0
 
         if self.reward_function == 'summation':
             # Add penalty to objective function (no change required)
