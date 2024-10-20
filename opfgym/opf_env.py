@@ -53,8 +53,6 @@ class OpfEnv(gym.Env, abc.ABC):
                  only_worst_case_violations=False,
                  autoscale_violations=True,
                  penalty_weight=0.5,
-                 penalty_obs_range: tuple=None,
-                 test_penalty=None,
                  autoscale_actions=True,
                  diff_action_step_size=None,
                  clipped_action_penalty=0,
@@ -111,21 +109,11 @@ class OpfEnv(gym.Env, abc.ABC):
 
         self.add_mean_obs = add_mean_obs
 
-        if penalty_obs_range:
-            n_penalties = 4 # TODO
-            self.penalty_obs_space = gym.spaces.Box(
-                low=np.ones(n_penalties) * penalty_obs_range[0], 
-                high=np.ones(n_penalties) * penalty_obs_range[1], 
-                seed=seed)
-            self.test_penalty = test_penalty
-        else:
-            self.penalty_obs_space = None
-
         # Define observation and action space
         self.bus_wise_obs = bus_wise_obs
         self.observation_space = get_obs_space(
-            self.net, self.obs_keys, add_time_obs, add_mean_obs, 
-            self.penalty_obs_space, seed, bus_wise_obs=bus_wise_obs)
+            self.net, self.obs_keys, add_time_obs, add_mean_obs,
+            seed, bus_wise_obs=bus_wise_obs)
         n_actions = sum([len(idxs) for _, _, idxs in self.act_keys])
         self.action_space = gym.spaces.Box(0, 1, shape=(n_actions,), seed=seed)
 
@@ -244,19 +232,6 @@ class OpfEnv(gym.Env, abc.ABC):
         self.test = options.get('test', False)
         step = options.get('step', None)
         self.apply_action = options.get('new_action', True)
-
-        if self.penalty_obs_space:
-            # TODO: penalty obs currently only work with linear penalties
-            if test and self.test_penalty is not None:
-                self.linear_penalties = np.ones(
-                    len(self.penalty_obs_space.low)) * self.test_penalty
-            else:
-                self.linear_penalties = self.penalty_obs_space.sample()
-            self.volt_pen = {'linear_penalty': self.linear_penalties[0]}
-            self.line_pen = {'linear_penalty': self.linear_penalties[1]}
-            self.trafo_pen = {'linear_penalty': self.linear_penalties[2]}
-            self.ext_grid_pen = {'linear_penalty': self.linear_penalties[3]}
-            # TODO: How to deal with custom added penalties?!
 
         self._sampling(step, self.test, self.apply_action)
         self.power_flow_available = False
@@ -443,7 +418,6 @@ class OpfEnv(gym.Env, abc.ABC):
                 # Maybe NAN in power setpoints?!
                 # Maybe simply catch this with a strong negative reward?!
                 logging.critical(f'\nPowerflow not converged and reason unknown! Run diagnostic tool to at least find out what went wrong: {pp.diagnostic(self.net)}')
-                
                 self.info['valids'] = np.array([False] * 5)
                 self.info['violations'] = np.array([1] * 5)
                 self.info['unscaled_penalties'] = np.array([1] * 5)
@@ -679,9 +653,6 @@ class OpfEnv(gym.Env, abc.ABC):
                 else get_bus_aggregated_obs(self.net, 'load', column, idxs)
                 for unit_type, column, idxs in obs_keys]
 
-        if self.penalty_obs_space:
-            obss = [self.linear_penalties] + obss
-
         if self.add_mean_obs:
             mean_obs = [np.mean(partial_obs) for partial_obs in obss 
                         if len(partial_obs) > 1]
@@ -706,10 +677,10 @@ class OpfEnv(gym.Env, abc.ABC):
         # Attention: These are not necessarily the actions of the RL agent
         # because some re-scaling might have happened!
         # These are the actions from the original action space [0, 1]
-        res_flag = 'res_' if results else ''
+        res_prefix = 'res_' if results else ''
         action = []
         for unit_type, column, idxs in self.act_keys:
-            setpoints = self.net[f'{res_flag}{unit_type}'][column].loc[idxs]
+            setpoints = self.net[f'{res_prefix}{unit_type}'][column].loc[idxs]
 
             # If data not taken from res table, scaling required
             if not results and 'scaling' in self.net[unit_type].columns:
@@ -782,8 +753,8 @@ class OpfEnv(gym.Env, abc.ABC):
         return True
 
 
-def get_obs_space(net, obs_keys: list, add_time_obs: bool, 
-                  add_mean_obs: bool=False, penalty_obs_space: gym.Space=None, 
+def get_obs_space(net, obs_keys: list, add_time_obs: bool,
+                  add_mean_obs: bool=False,
                   seed: int=None, last_n_obs: int=1, bus_wise_obs=False
                   ) -> gym.spaces.Box:
     """ Get observation space from the constraints of the power network. """
@@ -794,11 +765,6 @@ def get_obs_space(net, obs_keys: list, add_time_obs: bool,
         # at the beginning of the observation!
         lows.append(-np.ones(6))
         highs.append(np.ones(6))
-
-    if penalty_obs_space:
-        # Add penalty observation space
-        lows.append(penalty_obs_space.low)
-        highs.append(penalty_obs_space.high)
 
     for unit_type, column, idxs in obs_keys:
         if 'res_' in unit_type:
