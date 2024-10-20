@@ -34,10 +34,6 @@ def create_labeled_dataset(
         tuple: (observations/inputs, actions/outputs, objectives)
     """
 
-    if seed is not None:
-        # TODO: This is not the best way to set the seed. Use the gymnasium seed instead. Requires change in the base class.
-        np.random.seed(seed)
-
     n_observations = env.observation_space.shape[0]
     n_actions = env.action_space.shape[0]
     inputs = np.zeros((num_samples, n_observations))

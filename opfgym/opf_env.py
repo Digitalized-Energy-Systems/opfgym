@@ -221,7 +221,7 @@ class OpfEnv(gym.Env, abc.ABC):
             self.valid_reward = valid_reward
 
     def reset(self, seed=None, options=None) -> tuple:
-        super().reset(seed=seed, options=options)
+        super().reset(seed=seed)
         self.info = {}
         self.current_simbench_step = None
         self.step_in_episode = 0
@@ -274,7 +274,7 @@ class OpfEnv(gym.Env, abc.ABC):
             self._sample_normal(sample_new=sample_new, **kwargs)
         elif data_distr == 'mixed':
             # Use different data sources with different probabilities
-            r = np.random.random()
+            r = self.np_random.random()
             data_probs = kwargs.get('data_probabilities', (0.5, 0.75, 1.0))
             if r < data_probs[0]:
                 self._set_simbench_state(step, test, *args, **kwargs)
@@ -308,7 +308,7 @@ class OpfEnv(gym.Env, abc.ABC):
         except KeyError:
             high = df[f'max_{column}'].loc[idxs]
 
-        r = np.random.uniform(low, high, size=(len(idxs),))
+        r = self.np_random.uniform(low, high, size=(len(idxs),))
         try:
             # Constraints are scaled, which is why we need to divide by scaling
             self.net[unit_type][column].loc[idxs] = r / df.scaling[idxs]
@@ -341,7 +341,7 @@ class OpfEnv(gym.Env, abc.ABC):
                     min_values, max_values, mean, std * diff, len(mean))
             else:
                 # Simply clip values to min/max range
-                random_values = np.random.normal(
+                random_values = self.np_random.normal(
                     mean, std * diff, len(mean))
                 random_values = np.clip(
                     random_values, min_values, max_values)
@@ -359,11 +359,11 @@ class OpfEnv(gym.Env, abc.ABC):
         total_n_steps = len(self.profiles[('load', 'q_mvar')])
         if step is None:
             if test is True and self.evaluate_on == 'test':
-                step = np.random.choice(self.test_steps)
+                step = self.np_random.choice(self.test_steps)
             elif test is True and self.evaluate_on == 'validation':
-                step = np.random.choice(self.validation_steps)
+                step = self.np_random.choice(self.validation_steps)
             else:
-                step = np.random.choice(self.train_steps)
+                step = self.np_random.choice(self.train_steps)
         else:
             assert step < total_n_steps
 
@@ -378,18 +378,18 @@ class OpfEnv(gym.Env, abc.ABC):
             if in_between_steps and step < total_n_steps - 1:
                 # Random linear interpolation between two steps
                 next_data = self.profiles[type_act].loc[step + 1, self.net[unit_type].index]
-                r = np.random.random()
+                r = self.np_random.random()
                 data = data * r + next_data * (1 - r)
 
             # Add some noise to create unique data samples
             if noise_distribution == 'uniform':
                 # Uniform distribution: noise_factor as relative sample range
-                noise = np.random.random(
+                noise = self.np_random.random(
                     len(self.net[unit_type].index)) * noise_factor * 2 + (1 - noise_factor)
                 new_values = (data * noise).to_numpy()
             elif noise_distribution == 'normal':
                 # Normal distribution: noise_factor as relative std deviation
-                new_values = np.random.normal(
+                new_values = self.np_random.normal(
                     loc=data, scale=data.abs() * noise_factor)
 
             # Make sure that the range of original data remains unchanged
@@ -459,7 +459,6 @@ class OpfEnv(gym.Env, abc.ABC):
 
             df = self.net[unit_type]
             partial_act = action[counter:counter + len(idxs)]
-
 
             if self.autoscale_actions:
                 # Ensure that actions are always valid by using the current range
@@ -548,7 +547,7 @@ class OpfEnv(gym.Env, abc.ABC):
         """ Can be overwritten by the user. The default is to compute the
         objective function that is defined in pandapower. This method should
         return the objective function as array that is used as basis for the
-        rewardcalculation. """
+        reward calculation. """
         return -min_pp_costs(self.net)
 
     def calculate_violations(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
