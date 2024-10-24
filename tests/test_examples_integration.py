@@ -19,7 +19,7 @@ def test_mixed_act_integration():
     assert isinstance(info, dict)
     assert env_sanity_check(dummy_env)
     # Not solvable with the pandapower OPF
-    assert not dummy_env._run_optimal_power_flow()
+    assert not dummy_env.run_optimal_power_flow()
 
 def test_partial_obs_integration():
     dummy_env = PartiallyObservable()
@@ -48,7 +48,7 @@ def test_net_reconfig_integration():
     assert isinstance(info, dict)
     assert env_sanity_check(dummy_env)
     # Not solvable with the pandapower OPF
-    assert not dummy_env._run_optimal_power_flow()
+    assert not dummy_env.run_optimal_power_flow()
 
 
 def test_multi_stage_integration():
@@ -65,7 +65,7 @@ def test_multi_stage_integration():
     assert isinstance(info, dict)
     assert env_sanity_check(dummy_env)
     # Not solvable with the pandapower OPF
-    assert not dummy_env._run_optimal_power_flow()
+    assert not dummy_env.run_optimal_power_flow()
 
 
 def test_non_simbench_integration():

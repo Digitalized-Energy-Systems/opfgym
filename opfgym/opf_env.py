@@ -234,7 +234,6 @@ class OpfEnv(gym.Env, abc.ABC):
         self.apply_action = options.get('new_action', True)
 
         self._sampling(step, self.test, self.apply_action)
-        self.power_flow_available = False
 
         if self.initial_action == 'random':
             # Use random actions as starting point so that agent learns to handle that
@@ -245,7 +244,7 @@ class OpfEnv(gym.Env, abc.ABC):
         self._apply_actions(act)
 
         if self.pf_for_obs is True:
-            success = self._run_power_flow()
+            success = self.run_power_flow()
             if not success:
                 logging.warning(
                     'Failed powerflow calculcation in reset. Try again!')
@@ -257,6 +256,10 @@ class OpfEnv(gym.Env, abc.ABC):
 
     def _sampling(self, step=None, test=False, sample_new=True, 
                   *args, **kwargs) -> None:
+
+        self.power_flow_available = False
+        self.optimal_power_flow_available = False
+
         data_distr = self.test_data if test is True else self.train_data
         kwargs.update(self.sampling_kwargs)
 
@@ -411,7 +414,7 @@ class OpfEnv(gym.Env, abc.ABC):
 
         if self.apply_action:
             correction = self._apply_actions(action, self.diff_action_step_size)
-            success = self._run_power_flow()
+            success = self.run_power_flow()
 
             if not success:
                 # Something went seriously wrong! Find out what!
@@ -512,7 +515,8 @@ class OpfEnv(gym.Env, abc.ABC):
         # self._autocorrect_apparent_power(self.priority)
 
         # Did the action need to be corrected to be in bounds?
-        mean_correction = np.mean(abs(self.get_current_actions(False) - action))
+        mean_correction = np.mean(abs(
+            self.get_current_actions(from_results_table=False) - action))
 
         return mean_correction
 
@@ -535,36 +539,38 @@ class OpfEnv(gym.Env, abc.ABC):
 
         return correction
 
-    def calculate_objective(self, base_objective=True) -> np.ndarray:
+    def calculate_objective(self, net=None, base_objective=True) -> np.ndarray:
         """ Serves as a wrapper around calculating the objective function
         and adds some additional functionality. """
+        net = net if net else self.net
         if base_objective or not self.diff_objective:
-            return self.calculate_base_objective()
+            return self.calculate_base_objective(net)
         else:
-            return self.calculate_base_objective() - self.initial_obj
+            return self.calculate_base_objective(net) - self.initial_obj
 
-    def calculate_base_objective(self) -> np.ndarray:
+    def calculate_base_objective(self, net) -> np.ndarray:
         """ Can be overwritten by the user. The default is to compute the
         objective function that is defined in pandapower. This method should
         return the objective function as array that is used as basis for the
         reward calculation. """
-        return -min_pp_costs(self.net)
+        return -min_pp_costs(net)
 
-    def calculate_violations(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def calculate_violations(self, net=None) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """ Constraint violations result in a penalty that can be subtracted
         from the reward.
         Standard penalties: voltage band, overload of lines & transformers. """
 
+        net = net if net else self.net
         valids_violations_penalties = [
-            voltage_violation(self.net, self.autoscale_violations,
+            voltage_violation(net, self.autoscale_violations,
                 worst_case_only=self.only_worst_case_violations, **self.volt_pen),
-            line_overload(self.net, self.autoscale_violations,
+            line_overload(net, self.autoscale_violations,
                 worst_case_only=self.only_worst_case_violations, **self.line_pen),
-            trafo_overload(self.net, self.autoscale_violations,
+            trafo_overload(net, self.autoscale_violations,
                 worst_case_only=self.only_worst_case_violations, **self.trafo_pen),
-            ext_grid_overpower(self.net, 'q_mvar', self.autoscale_violations,
+            ext_grid_overpower(net, 'q_mvar', self.autoscale_violations,
                 worst_case_only=self.only_worst_case_violations, **self.ext_grid_pen),
-            ext_grid_overpower(self.net, 'p_mw', self.autoscale_violations,
+            ext_grid_overpower(net, 'p_mw', self.autoscale_violations,
                 worst_case_only=self.only_worst_case_violations, **self.ext_grid_pen)]
 
         valids, viol, penalties = zip(*valids_violations_penalties)
@@ -672,84 +678,91 @@ class OpfEnv(gym.Env, abc.ABC):
         ax = pp.plotting.simple_plot(self.net, **kwargs)
         return ax
 
-    def get_current_actions(self, results=True) -> np.ndarray:
+    def get_current_actions(self, net=None, from_results_table=True) -> np.ndarray:
         # Attention: These are not necessarily the actions of the RL agent
         # because some re-scaling might have happened!
         # These are the actions from the original action space [0, 1]
-        res_prefix = 'res_' if results else ''
+        net = net if net else self.net
+        res_prefix = 'res_' if from_results_table else ''
         action = []
         for unit_type, column, idxs in self.act_keys:
-            setpoints = self.net[f'{res_prefix}{unit_type}'][column].loc[idxs]
+            setpoints = net[f'{res_prefix}{unit_type}'][column].loc[idxs]
 
-            # If data not taken from res table, scaling required
-            if not results and 'scaling' in self.net[unit_type].columns:
-                setpoints *= self.net[unit_type].scaling.loc[idxs]
+            # If data not taken from results table, scaling required
+            if not from_results_table and 'scaling' in net[unit_type].columns:
+                setpoints *= net[unit_type].scaling.loc[idxs]
 
             # Action space depends on autoscaling 
             min_id = 'min_' if self.autoscale_actions else 'min_min_'
             max_id = 'max_' if self.autoscale_actions else 'max_max_' 
-            min_values = self.net[unit_type][f'{min_id}{column}'].loc[idxs]
-            max_values = self.net[unit_type][f'{max_id}{column}'].loc[idxs]
+            min_values = net[unit_type][f'{min_id}{column}'].loc[idxs]
+            max_values = net[unit_type][f'{max_id}{column}'].loc[idxs]
 
             action.append((setpoints - min_values) / (max_values - min_values))
 
-        action = np.concatenate(action)
+        return np.concatenate(action)
 
-        return action
+    def get_optimal_actions(self) -> np.ndarray:
+        self.ensure_optimal_power_flow_available()
+        # The pandapower OPF stores the optimal settings only in the results table
+        return self.get_current_actions(self.optimal_net, from_results_table=True)
 
-    def is_valid(self) -> bool:
-        """ Return True if the current state satisfies all constraints. """
-        if not self.power_flow_available:
-            self._run_power_flow()
-        valids, _, _ = self.calculate_violations()
+    def is_state_valid(self) -> bool:
+        """ Returns True if the current state is valid. """
+        self.ensure_power_flow_available()
+        valids, _, _ = self.calculate_violations(self.net)
         return valids.all()
 
-    def baseline_objective(self, **kwargs) -> float:
-        """ Compute the optimal system state via pandapower optimal power flow
-        and return the objective function value of that state.
-        Warning: Changes the state of the underlying power system! """
-        success = self._run_optimal_power_flow(**kwargs)
-        if not success:
-            return np.nan
-        objectives = self.calculate_objective(base_objective=True)
-        valids, violations, penalties = self.calculate_violations()
-        logging.info(f'Optimal violations: {violations}')
-        logging.info(f'Baseline actions: {self.get_current_actions()}')
-        if sum(penalties) > 0:
-            logging.warning(f'There are baseline penalties: {penalties}'
-                            f' with violations: {violations}'
-                            '(should normally not happen! Check if this is some'
-                            'special case with soft constraints!')
+    def is_optimal_state_valid(self) -> bool:
+        """ Returns True if the state after OPF calculation is valid. """
+        self.ensure_optimal_power_flow_available()
+        valids, _, _ = self.calculate_violations(self.optimal_net)
+        return valids.all()
 
-        return sum(np.append(objectives, penalties))
+    def get_objective(self) -> float:
+        self.ensure_power_flow_available()
+        return sum(self.calculate_base_objective(self.net))
 
-    def _run_optimal_power_flow(self, calculate_voltage_angles=False, **kwargs):
-        self.power_flow_available = True
-        try:
-            pp.runopp(self.net,
-                      calculate_voltage_angles=calculate_voltage_angles,
-                      **kwargs)
-        except pp.optimal_powerflow.OPFNotConverged:
-            logging.warning('OPF not converged!!!')
-            return False
-        return True
+    def get_optimal_objective(self) -> float:
+        self.ensure_optimal_power_flow_available
+        return sum(self.calculate_base_objective(self.optimal_net))
 
-    def _run_power_flow(self, enforce_q_lims=True,
-                        calculate_voltage_angles=False,
-                        voltage_depend_loads=False,
-                        **kwargs):
-        self.power_flow_available = True
+    def run_power_flow(self,
+                       enforce_q_lims=True,
+                       calculate_voltage_angles=False,
+                       voltage_depend_loads=False,
+                       **kwargs):
         try:
             pp.runpp(self.net,
                      voltage_depend_loads=voltage_depend_loads,
                      enforce_q_lims=enforce_q_lims,
                      calculate_voltage_angles=calculate_voltage_angles,
                      **kwargs)
-
+            self.power_flow_available = True
         except pp.powerflow.LoadflowNotConverged:
             logging.warning('Powerflow not converged!!!')
             return False
         return True
+
+    def run_optimal_power_flow(self, calculate_voltage_angles=False, **kwargs):
+        self.optimal_net = copy.deepcopy(self.net)
+        try:
+            pp.runopp(self.optimal_net,
+                      calculate_voltage_angles=calculate_voltage_angles,
+                      **kwargs)
+            self.optimal_power_flow_available = True
+        except pp.optimal_powerflow.OPFNotConverged:
+            logging.warning('OPF not converged!!!')
+            return False
+        return True
+
+    def ensure_power_flow_available(self):
+        if not self.power_flow_available:
+            raise PowerFlowNotAvailable('Please run `run_power_flow` first!')
+
+    def ensure_optimal_power_flow_available(self):
+        if not self.optimal_power_flow_available:
+            raise PowerFlowNotAvailable('Please run `run_optimal_power_flow` first!')
 
 
 def get_obs_space(net, obs_keys: list, add_time_obs: bool,

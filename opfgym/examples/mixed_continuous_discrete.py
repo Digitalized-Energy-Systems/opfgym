@@ -78,15 +78,15 @@ class MixedContinuousDiscrete(opf_env.OpfEnv):
             self.net[unit_type]['max_p_mw'] = self.net[unit_type].p_mw * self.net[unit_type].scaling + 1e-9
             self.net[unit_type]['min_p_mw'] = self.net[unit_type].p_mw * self.net[unit_type].scaling - 1e-9
 
-    def calculate_base_objective(self) -> np.ndarray:
+    def calculate_base_objective(self, net) -> np.ndarray:
         """ Use quadratic voltage deviation from 1.0 pu as objective."""
-        return -(self.net.res_bus.vm_pu - 1)**2
+        return -(net.res_bus.vm_pu - 1)**2
 
-    def baseline_objective(self, **kwargs):
+    def get_optimal_objective(self):
         # Overwrite because not solvable with pandapower OPF solver
         return 0
 
-    def _run_optimal_power_flow(self, **kwargs):
+    def run_optimal_power_flow(self, **kwargs):
         # Overwrite because not solvable with pandapower OPF solver
         return False
 

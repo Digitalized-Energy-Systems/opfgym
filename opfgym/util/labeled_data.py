@@ -44,20 +44,19 @@ def create_labeled_dataset(
     while counter < num_samples:
         logger.info(f'Create sample {counter+1}/{num_samples}')
         obs, info = env.reset(seed=seed+counter)
-        optimal_objective = env.baseline_objective()
-
-        if np.isnan(optimal_objective):
+        success = env.run_optimal_power_flow()
+        if not success:
             continue
 
-        if not env.is_valid():
+        if not env.is_optimal_state_valid():
             if not keep_invalid_samples:
                 logger.warning(f'Invalid state in sample {counter}. Skip sample.')
                 continue
             logger.warning(f'Invalid state in sample {counter}. Please check if the OPF solver in the environment is working correctly.')
 
         inputs[counter] = obs
-        outputs[counter] = env.get_current_actions()
-        objectives[counter] = optimal_objective
+        outputs[counter] = env.get_optimal_actions()
+        objectives[counter] = env.get_optimal_objective()
         counter += 1
 
     if store_to_path is not None:

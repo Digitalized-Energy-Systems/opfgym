@@ -26,7 +26,7 @@ def get_normalization_params(env,
         env.reset()
         # Use _apply_actions() to ensure that the action space definition is kept outside (in contrast to step())
         env._apply_actions(env.action_space.sample())
-        env._run_power_flow()
+        env.run_power_flow()
         objectives.append(env.calculate_objective(env.net))
         # TODO: These are the penalties, not the violations currently!
         # And probably this is the right way because we cannot consider discrete penalties when we look at violations only

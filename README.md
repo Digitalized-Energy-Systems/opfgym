@@ -67,12 +67,15 @@ All environments use the gymnasium API:
 * Use `env.render()` to render the underlying power grid. For documentation of the usable keyword arguments, refer to the [pandapower documentation](https://pandapower.readthedocs.io/en/latest/plotting/matplotlib/simple_plot.html): 
 
 On top, some additional OPF-specfic features are implemented: 
-* Use `env.baseline_objective()` to solve the OPF with a conventional OPF solver. Returns the optimal value of the objective function. Warning: Changes the state of the power system to the optimal state!
+* Use `env.run_optimal_power_flow` to run an OPF on the current state. Returns True if successful, False otherwise. 
+* Use `env.get_optimal_objective()` to return the optimal value of the objective function. Warning: Run `env.run_optimal_power_flow()` beforehand!
 * Use `sum(env.calculate_objective())` to compute the value of the objective function in the current state. (Remove the `sum()` to get a vector representation)
 * Use `env.get_current_actions()` to get the currently applied actions (e.g. generator setpoints). Warning: The actions are always scaled to range [0, 1] and not directly interpretable as power setpoints! 0 represents the minimum
 possible setpoint, while 1 represents the maximum setpoint. 
-* `env.is_valid()` to check if the current power grid state contains any 
+* `env.is_state_valid()` to check if the current power grid state contains any 
 constraint violations. 
+* `env.is_optimal_state_valid()` to check if the power grid state contains any 
+constraint violations after running the OPF. 
 * Work-in-progress (TODO: `env.get_current_setpoints()`, `error_metrics` etc.)
 
 
@@ -93,15 +96,15 @@ for _ in range(3):
         observation, reward, terminated, truncated, info = env.step(action)
 
         # Check for constraint satisfaction
-        valid = info['valids'].all()
-        print(f"The grid satisfies all constraints: {valid}")
+        print(f"The grid satisfies all constraints: {env.is_state_valid()}")
 
         # Compute the error
         objective = sum(env.calculate_objective())
-        optimal_objective = env.baseline_objective()
-        optimal_actions = env.get_current_actions()
+        success = env.run_optimal_power_flow()
+        optimal_objective = env.get_optimal_objective()
+        optimal_actions = env.get_optimal_actions()
         percentage_error = optimal_objective - objective / abs(optimal_objective) * 100
-        print(f"Percentage error of the random action: {round(percentage_error, 2)}%")
+        print(f"Optimization error of the random action: {round(percentage_error, 2)}%")
         print(f"Optimal actions: {optimal_actions[:3]} (first three entries)")
         print(f"Agent actions: {action[:3]} (first three entries)")
         print("-------------------------------------")
@@ -192,9 +195,9 @@ possible to compare supervised and reinforcement learning methods on the exact
 same OPF problem. To create a dataset for supervised learning, run:
 ~~~
 from opfgym.util.labeled_data import create_labeled_dataset
-from opfgym.envs import SomeEnvironment
+from opfgym.envs import QMarket  # Or some other environment
 
-create_labeled_dataset(SomeEnvironment(), num_samples=10, seed=42)
+create_labeled_dataset(QMarket(), num_samples=10, seed=42)
 ~~~
 The dataset can be used to create an neural network in supervised fashion. 
 Assuming no data scaling, the outputs can directly be fed back to `env.step()`.
