@@ -21,5 +21,10 @@ not have the Markov property.
 in the same environment are easily possible. Also demonstrates how to overwrite
 the default pandapower objective function with a custom objective function
 (only advisable if OPF not solvable with pandapower).
+* `SecurityConstrained`: Demonstrates how a security constrained OPF can be 
+implemented as RL environment, similar to, for example 
+https://ieeexplore.ieee.org/abstract/document/9275611/. 
+Not only checks for constraint violations in the standard case but also for the 
+N-1 case of line outages. 
 
 To import the example environments, use `from opfgym.examples import <EnvironmentName>`.
