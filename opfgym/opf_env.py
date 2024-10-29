@@ -758,11 +758,11 @@ class OpfEnv(gym.Env, abc.ABC):
 
     def ensure_power_flow_available(self):
         if not self.power_flow_available:
-            raise PowerFlowNotAvailable('Please run `run_power_flow` first!')
+            raise PowerFlowNotAvailable('Please call `run_power_flow` first!')
 
     def ensure_optimal_power_flow_available(self):
         if not self.optimal_power_flow_available:
-            raise PowerFlowNotAvailable('Please run `run_optimal_power_flow` first!')
+            raise PowerFlowNotAvailable('Please call `run_optimal_power_flow` first!')
 
 
 def get_obs_space(net, obs_keys: list, add_time_obs: bool,

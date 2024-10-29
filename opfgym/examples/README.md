@@ -26,5 +26,7 @@ implemented as RL environment, similar to, for example
 https://ieeexplore.ieee.org/abstract/document/9275611/. 
 Not only checks for constraint violations in the standard case but also for the 
 N-1 case of line outages. 
+* `StochasticObs`: Shows how to use the pre-implemented `StochasticObservation` 
+wrapper to create a simple stochastic OPF by adding noise to the observations. 
 
 To import the example environments, use `from opfgym.examples import <EnvironmentName>`.
