@@ -7,7 +7,7 @@ message: >-
   If you use this software, please cite it using the
   metadata from this file. Additionally, please check out the publication
   "Learning the optimal power flow: Environment design matters", where the 
-  library was first introduced. 
+  first version of the library was introduced. 
   (https://www.sciencedirect.com/science/article/pii/S2666546824000764) 
 type: software
 authors:
@@ -30,12 +30,14 @@ abstract: >-
 keywords:
   - Optimal Power Flow
   - Reinforcement Learning
+  - Environment Design
   - Gymnasium
   - Supervised Learning
   - Voltage Control
   - Economic Dispatch
   - Reactive Power Market
   - Load Shedding
+  - Power System
   - Benchmark
 license: MIT
 version: 0.1.1
