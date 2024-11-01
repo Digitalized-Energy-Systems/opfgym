@@ -14,7 +14,7 @@ from typing import Tuple
 
 from opfgym.penalties import (voltage_violation, line_overload,
                              trafo_overload, ext_grid_overpower)
-from opfgym.objectives import min_pp_costs
+from opfgym.objective import get_pandapower_costs
 from opfgym.util.normalization import get_normalization_params
 from opfgym.simbench.data_split import define_test_train_split
 from opfgym.simbench.time_observation import get_simbench_time_observation
@@ -553,7 +553,7 @@ class OpfEnv(gym.Env, abc.ABC):
         objective function that is defined in pandapower. This method should
         return the objective function as array that is used as basis for the
         reward calculation. """
-        return -min_pp_costs(net)
+        return -get_pandapower_costs(net)
 
     def calculate_violations(self, net=None) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """ Constraint violations result in a penalty that can be subtracted
