@@ -12,8 +12,12 @@ import scipy
 from scipy import stats
 from typing import Tuple
 
-from opfgym.penalties import (voltage_violation, line_overload,
-                             trafo_overload, ext_grid_overpower)
+from opfgym.constraints import (VoltageConstraint,
+                                LineOverloadConstraint,
+                                TrafoOverloadConstraint,
+                                Trafo3wOverloadConstraint,
+                                ExtGridActivePowerConstraint,
+                                ExtGridReactivePowerConstraint)
 from opfgym.objective import get_pandapower_costs
 from opfgym.util.normalization import get_normalization_params
 from opfgym.simbench.data_split import define_test_train_split
@@ -46,12 +50,8 @@ class OpfEnv(gym.Env, abc.ABC):
                  train_data='simbench',
                  test_data='simbench',
                  sampling_kwargs: dict=None,
-                 volt_pen_kwargs: dict=None,
-                 line_pen_kwargs: dict=None,
-                 trafo_pen_kwargs: dict=None,
-                 ext_grid_pen_kwargs: dict=None,
-                 only_worst_case_violations=False,
-                 autoscale_violations=True,
+                 constraint_kwargs: dict={},
+                 custom_constraints: list=None,
                  penalty_weight=0.5,
                  autoscale_actions=True,
                  diff_action_step_size=None,
@@ -120,13 +120,14 @@ class OpfEnv(gym.Env, abc.ABC):
         # Reward function
         self.reward_function = reward_function
         self.reward_function_params = reward_function_params if reward_function_params else {}
-        self.volt_pen = volt_pen_kwargs if volt_pen_kwargs else {}
-        self.line_pen = line_pen_kwargs if line_pen_kwargs else {}
-        self.trafo_pen = trafo_pen_kwargs if trafo_pen_kwargs else {}
-        self.ext_grid_pen = ext_grid_pen_kwargs if ext_grid_pen_kwargs else {}
-        self.only_worst_case_violations = only_worst_case_violations
-        self.autoscale_violations = autoscale_violations
         self.clip_reward = clip_reward
+
+        # Constraints
+        if custom_constraints is None:
+            self.constraints = create_default_constraints(
+                self.net, constraint_kwargs)
+        else:
+            self.constraints = custom_constraints
 
         # Action space details
         self.priority = autocorrect_prio
@@ -556,26 +557,17 @@ class OpfEnv(gym.Env, abc.ABC):
         return -get_pandapower_costs(net)
 
     def calculate_violations(self, net=None) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """ Constraint violations result in a penalty that can be subtracted
-        from the reward.
-        Standard penalties: voltage band, overload of lines & transformers. """
-
         net = net if net else self.net
-        valids_violations_penalties = [
-            voltage_violation(net, self.autoscale_violations,
-                worst_case_only=self.only_worst_case_violations, **self.volt_pen),
-            line_overload(net, self.autoscale_violations,
-                worst_case_only=self.only_worst_case_violations, **self.line_pen),
-            trafo_overload(net, self.autoscale_violations,
-                worst_case_only=self.only_worst_case_violations, **self.trafo_pen),
-            ext_grid_overpower(net, 'q_mvar', self.autoscale_violations,
-                worst_case_only=self.only_worst_case_violations, **self.ext_grid_pen),
-            ext_grid_overpower(net, 'p_mw', self.autoscale_violations,
-                worst_case_only=self.only_worst_case_violations, **self.ext_grid_pen)]
+        valids = []
+        violations = []
+        penalties = []
+        for constraint in self.constraints:
+            result = constraint.get_violation_metrics(net)
+            valids.append(result['valid'])
+            violations.append(result['violation'])
+            penalties.append(result['penalty'])
 
-        valids, viol, penalties = zip(*valids_violations_penalties)
-
-        return np.array(valids), np.array(viol), np.array(penalties)
+        return np.array(valids), np.array(violations), np.array(penalties)
 
     def calculate_reward(self) -> float:
         """ Combine objective function and the penalties together. """
@@ -851,3 +843,24 @@ def get_bus_aggregated_obs(net, unit_type, column, idxs) -> np.ndarray:
     state space. """
     df = net[unit_type].iloc[idxs]
     return df.groupby(['bus'])[column].sum().to_numpy()
+
+
+def create_default_constraints(net, constraint_kwargs):
+    """ Extract and return default constraints from the pandapower network if
+    defined there.
+    (compare https://pandapower.readthedocs.io/en/latest/opf/formulation.html)
+    """
+    constraints = []
+    if net.bus.max_vm_pu.any() or net.bus.min_vm_pu.any():
+        constraints.append(VoltageConstraint(**constraint_kwargs))
+    if net.line.max_loading_percent.any():
+        constraints.append(LineOverloadConstraint(**constraint_kwargs))
+    if len(net.trafo) and net.trafo.max_loading_percent.any():
+        constraints.append(TrafoOverloadConstraint(**constraint_kwargs))
+    if len(net.trafo3w) and net.trafo3w.max_loading_percent.any():
+        constraints.append(Trafo3wOverloadConstraint(**constraint_kwargs))
+    if net.ext_grid.max_p_mw.any() or net.ext_grid.min_p_mw.any():
+        constraints.append(ExtGridActivePowerConstraint(**constraint_kwargs))
+    if net.ext_grid.max_q_mvar.any() or net.ext_grid.min_q_mvar.any():
+        constraints.append(ExtGridReactivePowerConstraint(**constraint_kwargs))
+    return constraints
