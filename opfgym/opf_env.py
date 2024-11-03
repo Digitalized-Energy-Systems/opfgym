@@ -12,12 +12,7 @@ import scipy
 from scipy import stats
 from typing import Tuple
 
-from opfgym.constraints import (VoltageConstraint,
-                                LineOverloadConstraint,
-                                TrafoOverloadConstraint,
-                                Trafo3wOverloadConstraint,
-                                ExtGridActivePowerConstraint,
-                                ExtGridReactivePowerConstraint)
+from opfgym import constraints
 from opfgym.objective import get_pandapower_costs
 from opfgym.util.normalization import get_normalization_params
 from opfgym.simbench.data_split import define_test_train_split
@@ -124,7 +119,7 @@ class OpfEnv(gym.Env, abc.ABC):
 
         # Constraints
         if custom_constraints is None:
-            self.constraints = create_default_constraints(
+            self.constraints = constraints.create_default_constraints(
                 self.net, constraint_kwargs)
         else:
             self.constraints = custom_constraints
@@ -843,24 +838,3 @@ def get_bus_aggregated_obs(net, unit_type, column, idxs) -> np.ndarray:
     state space. """
     df = net[unit_type].iloc[idxs]
     return df.groupby(['bus'])[column].sum().to_numpy()
-
-
-def create_default_constraints(net, constraint_kwargs):
-    """ Extract and return default constraints from the pandapower network if
-    defined there.
-    (compare https://pandapower.readthedocs.io/en/latest/opf/formulation.html)
-    """
-    constraints = []
-    if net.bus.max_vm_pu.any() or net.bus.min_vm_pu.any():
-        constraints.append(VoltageConstraint(**constraint_kwargs))
-    if net.line.max_loading_percent.any():
-        constraints.append(LineOverloadConstraint(**constraint_kwargs))
-    if len(net.trafo) and net.trafo.max_loading_percent.any():
-        constraints.append(TrafoOverloadConstraint(**constraint_kwargs))
-    if len(net.trafo3w) and net.trafo3w.max_loading_percent.any():
-        constraints.append(Trafo3wOverloadConstraint(**constraint_kwargs))
-    if net.ext_grid.max_p_mw.any() or net.ext_grid.min_p_mw.any():
-        constraints.append(ExtGridActivePowerConstraint(**constraint_kwargs))
-    if net.ext_grid.max_q_mvar.any() or net.ext_grid.min_q_mvar.any():
-        constraints.append(ExtGridReactivePowerConstraint(**constraint_kwargs))
-    return constraints

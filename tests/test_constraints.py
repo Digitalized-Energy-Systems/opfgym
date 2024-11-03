@@ -76,3 +76,53 @@ def test_ext_grid_reactive_power_constraint(net):
     assert not result['valid']
     assert result['violation'] == 0.25  # (0.5-0) * 0.5
     assert result['penalty'] == -0.25
+
+def test_create_default_constraints(net):
+    # This specific pandapower network has no constraints by default
+    extracted_constraints = constraints.create_default_constraints(net, {})
+    assert len(extracted_constraints) == 0
+
+    # Add Voltage constraint
+    net['bus']['min_vm_pu'] = 0.95
+    net['bus']['max_vm_pu'] = 1.05
+    extracted_constraints = constraints.create_default_constraints(net, {})
+    assert len(extracted_constraints) == 1
+    assert constraints.VoltageConstraint in [type(c) for c in extracted_constraints]
+
+    # Add line overload constraint
+    net['line']['max_loading_percent'] = 100
+    extracted_constraints = constraints.create_default_constraints(net, {})
+    assert len(extracted_constraints) == 2
+    assert constraints.LineOverloadConstraint in [type(c) for c in extracted_constraints]
+
+    # Add trafo overload constraint
+    net['trafo']['max_loading_percent'] = 100
+    extracted_constraints = constraints.create_default_constraints(net, {})
+    assert len(extracted_constraints) == 3
+    assert constraints.TrafoOverloadConstraint in [type(c) for c in extracted_constraints]
+
+    # Add ext grid active power constraint
+    net['ext_grid']['min_p_mw'] = 0
+    extracted_constraints = constraints.create_default_constraints(net, {})
+    assert len(extracted_constraints) == 4
+    assert constraints.ExtGridActivePowerConstraint in [type(c) for c in extracted_constraints]
+
+    # Add ext grid reactive power constraint
+    net['ext_grid']['min_q_mvar'] = 0
+    extracted_constraints = constraints.create_default_constraints(net, {})
+    assert len(extracted_constraints) == 5
+    assert constraints.ExtGridReactivePowerConstraint in [type(c) for c in extracted_constraints]
+
+    # Existing but unconstrained constraints should not be counted because 
+    # cannot result in violations anyway
+    net['ext_grid']['min_q_mvar'] = -np.inf
+    net['ext_grid']['max_q_mvar'] = np.inf
+    net['ext_grid']['min_p_mw'] = np.nan
+    net['ext_grid']['max_p_mw'] = np.nan
+    net['bus']['min_vm_pu'] = None
+    net['bus']['max_vm_pu'] = None
+    extracted_constraints = constraints.create_default_constraints(net, {})
+    assert len(extracted_constraints) == 2
+    assert constraints.ExtGridReactivePowerConstraint not in [type(c) for c in extracted_constraints]
+    assert constraints.ExtGridActivePowerConstraint not in [type(c) for c in extracted_constraints]
+    assert constraints.VoltageConstraint not in [type(c) for c in extracted_constraints]

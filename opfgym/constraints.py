@@ -4,6 +4,9 @@ Defines a general class to define new constraints in an RL-OPF environment.
 Also, pre-implements the standard pandapower constraints VoltageConstraint,
 LineOverloadConstraint, TrafoOverloadConstraint, ExtGridActivePowerConstraint,
 ExtGridReactivePowerConstraint, which are compatible with the pandapower OPF.
+
+Also, provides a function to extract the default constraints from a pandapower
+network.
 """
 
 import numpy as np
@@ -173,3 +176,49 @@ class ExtGridReactivePowerConstraint(Constraint):
         if not self.autoscale_violation:
             self.autoscale_violation = 1 / abs(net.ext_grid['mean_q_mvar'].sum())
         return super().get_violation_metrics(net)
+
+
+def create_default_constraints(net, constraint_kwargs: dict) -> list:
+    """ Extract and return default constraints from the pandapower network if
+    defined there.
+    (compare https://pandapower.readthedocs.io/en/latest/opf/formulation.html)
+    """
+    constraints = []
+
+    max_vm_pu_defined = is_constraint_defined(net, 'bus', 'max_vm_pu')
+    min_vm_pu_defined = is_constraint_defined(net, 'bus', 'min_vm_pu')
+    if max_vm_pu_defined or min_vm_pu_defined:
+        constraints.append(VoltageConstraint(**constraint_kwargs))
+
+    if is_constraint_defined(net, 'line', 'max_loading_percent'):
+        constraints.append(LineOverloadConstraint(**constraint_kwargs))
+
+    if len(net.trafo) and is_constraint_defined(net, 'trafo', 'max_loading_percent'):
+        constraints.append(TrafoOverloadConstraint(**constraint_kwargs))
+
+    if len(net.trafo3w) and is_constraint_defined(net, 'trafo3w', 'max_loading_percent'):
+        constraints.append(Trafo3wOverloadConstraint(**constraint_kwargs))
+
+    max_p_mw_defined = is_constraint_defined(net, 'ext_grid', 'max_p_mw')
+    min_p_mw_defined = is_constraint_defined(net, 'ext_grid', 'min_p_mw')
+    if max_p_mw_defined or min_p_mw_defined:
+        constraints.append(ExtGridActivePowerConstraint(**constraint_kwargs))
+
+    max_q_mvar_defined = is_constraint_defined(net, 'ext_grid', 'max_q_mvar')
+    min_q_mvar_defined = is_constraint_defined(net, 'ext_grid', 'min_q_mvar')
+    if max_q_mvar_defined or min_q_mvar_defined:
+        constraints.append(ExtGridReactivePowerConstraint(**constraint_kwargs))
+
+    return constraints
+
+
+def is_constraint_defined(net, unit_type: str, constraint_column: str) -> bool:
+    return (constraint_column in net[unit_type]
+            and has_numeric_finite_value(net[unit_type][constraint_column]))
+
+
+def has_numeric_finite_value(series):
+    # Set errors='coerce' to convert non-numeric to NaN
+    numeric_series = pd.to_numeric(series, errors='coerce')
+    # Check if at least one value is a finite number (not NaN or Inf)
+    return np.isfinite(numeric_series).any()
