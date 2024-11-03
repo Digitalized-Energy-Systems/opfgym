@@ -193,10 +193,10 @@ def create_default_constraints(net, constraint_kwargs: dict) -> list:
     if is_constraint_defined(net, 'line', 'max_loading_percent'):
         constraints.append(LineOverloadConstraint(**constraint_kwargs))
 
-    if len(net.trafo) and is_constraint_defined(net, 'trafo', 'max_loading_percent'):
+    if is_constraint_defined(net, 'trafo', 'max_loading_percent'):
         constraints.append(TrafoOverloadConstraint(**constraint_kwargs))
 
-    if len(net.trafo3w) and is_constraint_defined(net, 'trafo3w', 'max_loading_percent'):
+    if is_constraint_defined(net, 'trafo3w', 'max_loading_percent'):
         constraints.append(Trafo3wOverloadConstraint(**constraint_kwargs))
 
     max_p_mw_defined = is_constraint_defined(net, 'ext_grid', 'max_p_mw')
@@ -217,7 +217,7 @@ def is_constraint_defined(net, unit_type: str, constraint_column: str) -> bool:
             and has_numeric_finite_value(net[unit_type][constraint_column]))
 
 
-def has_numeric_finite_value(series):
+def has_numeric_finite_value(series: pd.Series) -> bool:
     # Set errors='coerce' to convert non-numeric to NaN
     numeric_series = pd.to_numeric(series, errors='coerce')
     # Check if at least one value is a finite number (not NaN or Inf)
