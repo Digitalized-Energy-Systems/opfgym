@@ -69,8 +69,8 @@ class MaxRenewable(opf_env.OpfEnv):
         net.storage['q_mvar'] = 0
         net.storage['max_q_mvar'] = 0
         net.storage['min_q_mvar'] = 0
-        # Assume that storage systems are completely usable 
-        # (do not consider state of charge for example)
+        # Assume that storage systems are completely usable
+        # (for example, do not consider state of charge)
         net.storage['max_p_mw'] = net.storage['max_max_p_mw']
         net.storage['min_p_mw'] = net.storage['min_min_p_mw']
 
@@ -87,9 +87,6 @@ class MaxRenewable(opf_env.OpfEnv):
         net.sgen['min_min_max_p_mw'] = net.sgen['min_min_p_mw']
         net.sgen['max_max_max_p_mw'] = net.sgen['max_max_p_mw']
 
-        # TODO: Maybe allow for gens here, if necessary
-        assert len(net.gen) == 0, 'gen not supported in this environment!'
-
         # OPF objective: Maximize active power feed-in to external grid
         active_power_costs = 30/1000  # /1000 to achieve smaller scale
         for idx in net.sgen.index:
@@ -100,9 +97,8 @@ class MaxRenewable(opf_env.OpfEnv):
 
     def _sampling(self, *args, **kwargs):
         super()._sampling(*args, **kwargs)
-        # TODO: Maybe add storage max power here, e.g., to consider the current state of charge?!
 
-        # Set constraints of current time step (also required for OPF)
+        # Set constraints of current time step (required for pandapower OPF)
         self.net.sgen['max_p_mw'] = self.net.sgen.p_mw * self.net.sgen.scaling + 1e-6
 
 

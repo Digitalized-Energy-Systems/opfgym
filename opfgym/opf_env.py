@@ -658,9 +658,9 @@ class OpfEnv(gym.Env, abc.ABC):
         return np.concatenate(obss)
 
     def render(self, **kwargs):
-        """ Render the current state of the power system. Uses the `simple_plot` 
-        pandapower method. Overwrite for more sophisticated rendering. For 
-        kwargs, refer to the pandapower docs: 
+        """ Render the current state of the power system. Uses the `simple_plot`
+        pandapower method. Overwrite for more sophisticated rendering. For
+        kwargs information, refer to the pandapower docs:
         https://pandapower.readthedocs.io/en/latest/plotting/matplotlib/simple_plot.html"""
         ax = pp.plotting.simple_plot(self.net, **kwargs)
         return ax

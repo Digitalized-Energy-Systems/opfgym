@@ -20,9 +20,9 @@ class QMarket(VoltageControl):
     """
 
     def __init__(self, simbench_network_name='1-MV-rural--0-sw',
-                 gen_scaling=1.0, load_scaling=1.3, seed=None, 
-                 min_sgen_power=0.2, cos_phi=0.95, max_q_exchange=0.2, 
-                 market_based=True, 
+                 gen_scaling=1.0, load_scaling=1.3,
+                 min_sgen_power=0.2, cos_phi=0.95, max_q_exchange=0.2,
+                 market_based=True,
                  *args, **kwargs):
 
         super().__init__(simbench_network_name=simbench_network_name,
@@ -32,7 +32,6 @@ class QMarket(VoltageControl):
                          max_q_exchange=max_q_exchange, 
                          market_based=market_based,
                          min_sgen_power=min_sgen_power,
-                         seed=seed,
                          *args, **kwargs)
 
 

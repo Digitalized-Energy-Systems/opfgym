@@ -26,7 +26,7 @@ class VoltageControl(opf_env.OpfEnv):
                  load_scaling=1.3, gen_scaling=1.3, 
                  cos_phi=0.95, max_q_exchange=1.0, min_sgen_power=0.5, 
                  min_storage_power=0.5, market_based=False,
-                 seed=None, *args, **kwargs):
+                 *args, **kwargs):
 
         self.min_sgen_power = min_sgen_power
         self.min_storage_power = min_storage_power
@@ -56,7 +56,7 @@ class VoltageControl(opf_env.OpfEnv):
         self.act_keys = [('sgen', 'q_mvar', self.net.sgen.index[self.net.sgen.controllable]),
                          ('storage', 'q_mvar', self.net.storage.index[self.net.storage.controllable])]
 
-        super().__init__(seed=seed, *args, **kwargs)
+        super().__init__(*args, **kwargs)
 
     def _define_opf(self, simbench_network_name, *args, **kwargs):
         net, self.profiles = build_simbench_net(

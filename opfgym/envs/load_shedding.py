@@ -6,9 +6,12 @@ from opfgym import opf_env
 from opfgym.simbench.build_simbench_net import build_simbench_net
 
 
-# Problem: Sadly pandapower cannot deal with coupled active/reactive power,
-# which would be necessary for this environment.
-# Current solution: Only active power shedding...
+"""
+Problem: Sadly pandapower cannot deal with coupled active/reactive power,
+which would be necessary for this environment.
+Current solution: Only active power shedding...
+"""
+
 
 class LoadShedding(opf_env.OpfEnv):
     """
@@ -29,11 +32,13 @@ class LoadShedding(opf_env.OpfEnv):
 
     def __init__(self, simbench_network_name='1-MV-comm--2-sw',
                  gen_scaling=1.6, load_scaling=2.2, min_load_power=0.6,
-                 min_storage_power=1.0, max_p_exchange=8.0, *args, **kwargs):
+                 min_storage_power=1.0, max_p_exchange=8.0, 
+                 storage_efficiency=0.95, *args, **kwargs):
 
         self.min_load_power = min_load_power
         self.min_storage_power = min_storage_power
         self.max_p_exchange = max_p_exchange
+        self.storage_efficiency = storage_efficiency
         self.net = self._define_opf(
             simbench_network_name, gen_scaling=gen_scaling,
             load_scaling=load_scaling, *args, **kwargs)
@@ -44,7 +49,8 @@ class LoadShedding(opf_env.OpfEnv):
                          ('load', 'p_mw', self.net.load.index),
                          ('load', 'q_mvar', self.net.load.index),
                          ('storage', 'p_mw', self.net.storage.index[~self.net.storage.controllable]),
-                         ('poly_cost', 'cp1_eur_per_mw', self.net.poly_cost.index)]
+                         ('poly_cost', 'cp1_eur_per_mw', self.net.poly_cost.index),
+                         ('pwl_cost', 'cp1_eur_per_mw', self.net.pwl_cost.index)]
 
         # Control active power of loads and storages
         self.act_keys = [('load', 'p_mw', self.net.load.index[self.net.load.controllable]),
@@ -76,9 +82,13 @@ class LoadShedding(opf_env.OpfEnv):
         net.ext_grid['max_p_mw'] = self.max_p_exchange
         net.ext_grid['min_p_mw'] = -np.inf
 
-        for unit_type in ('load', 'storage'):
-            for idx in net[unit_type].index[net[unit_type].controllable]:
-                pp.create_poly_cost(net, idx, unit_type, cp1_eur_per_mw=0)
+        for idx in net.load.index[net.load.controllable]:
+            pp.create_poly_cost(net, idx, 'load', cp1_eur_per_mw=0)
+
+        # Use piece-wise linear costs for storages to consider efficiency
+        for idx in net.storage.index[net.storage.controllable]:
+            pp.create_pwl_cost(net, idx, 'storage',
+                               points=[[-1000, 0, 1], [0, 1000, 1]])
 
         # Define range from which to sample load shedding prices
         # Negative costs, because higher=better (less load shedding)
@@ -86,10 +96,10 @@ class LoadShedding(opf_env.OpfEnv):
         net.poly_cost['min_cp1_eur_per_mw'] = -max_load_shedding_price
         net.poly_cost['max_cp1_eur_per_mw'] = 0
         # Assumption: using storage is far cheaper on average
-        # Assumption: Perfect storage efficiency
         max_storage_price = 2
-        net.poly_cost['min_cp1_eur_per_mw'][net.poly_cost.et == 'storage'] = 0
-        net.poly_cost['max_cp1_eur_per_mw'][net.poly_cost.et == 'storage'] = max_storage_price
+        net.pwl_cost['cp1_eur_per_mw'] = 0
+        net.pwl_cost['min_cp1_eur_per_mw'] = 0
+        net.pwl_cost['max_cp1_eur_per_mw'] = max_storage_price
 
         net.ext_grid['vm_pu'] = 1.0
 
@@ -99,9 +109,22 @@ class LoadShedding(opf_env.OpfEnv):
         super()._sampling(*args, **kwargs)
 
         # Sample prices for loads and storages
-        # The idea is that not always the same loads should be shedded
+        # The idea is that not always the same loads should be shedded. Instead,
+        # the current situation should be considered, represented by some price.
         self._sample_from_range(
             'poly_cost', 'cp1_eur_per_mw', self.net.poly_cost.index)
+        self._sample_from_range(
+            'pwl_cost', 'cp1_eur_per_mw', self.net.pwl_cost.index)
+
+        # Manually update the points of the piece-wise linear costs for storage
+        for idx in self.net.pwl_cost.index:
+            price = self.net.pwl_cost.cp1_eur_per_mw[idx]
+            positive_power_price = price / self.storage_efficiency
+            negative_power_price = price * self.storage_efficiency
+            self.net.pwl_cost.points[idx] = [
+                [-1000, 0, negative_power_price],
+                [0, 1000, positive_power_price]
+            ]
 
         # Current load power = maximum power (only reduction possible)
         self.net.load['max_p_mw'] = self.net.load['p_mw'] * self.net.load.scaling + 1e-9

@@ -44,6 +44,7 @@ class EcoDispatch(opf_env.OpfEnv):
         self.obs_keys = [('load', 'p_mw', self.net.load.index),
                          ('load', 'q_mvar', self.net.load.index),
                          ('poly_cost', 'cp1_eur_per_mw', self.net.poly_cost.index),
+                         ('pwl_cost', 'cp1_eur_per_mw', self.net.pwl_cost.index),
                          ('sgen', 'p_mw', self.net.sgen.index[~self.net.sgen.controllable]),
                          ('storage', 'p_mw', self.net.storage.index),
                          ('storage', 'q_mvar', self.net.storage.index)]
@@ -87,7 +88,9 @@ class EcoDispatch(opf_env.OpfEnv):
         # Add price params to the network (as poly cost so that the OPF works)
         # Note that the external grids are seen as normal power plants
         for idx in net.ext_grid.index:
-            pp.create_poly_cost(net, idx, 'ext_grid', cp1_eur_per_mw=0)
+            # Use piece-wise linear costs to prevent negative costs for negative
+            # power, which would incentivize a constraint violation (see above)
+            pp.create_pwl_cost(net, idx, 'ext_grid', points=[[0, 10000, 1]])
         for idx in net.sgen.index[net.sgen.controllable]:
             pp.create_poly_cost(net, idx, 'sgen', cp1_eur_per_mw=0)
         for idx in net.gen.index[net.gen.controllable]:
@@ -95,6 +98,11 @@ class EcoDispatch(opf_env.OpfEnv):
 
         net.poly_cost['min_cp1_eur_per_mw'] = 0
         net.poly_cost['max_cp1_eur_per_mw'] = self.max_price_eur_gwh
+
+        # Define extra column for easy access (for observations)
+        net.pwl_cost['cp1_eur_per_mw'] = 0
+        net.pwl_cost['min_cp1_eur_per_mw'] = 0
+        net.pwl_cost['max_cp1_eur_per_mw'] = self.max_price_eur_gwh
 
         return net
 
@@ -104,6 +112,13 @@ class EcoDispatch(opf_env.OpfEnv):
         # Sample prices uniformly from min/max range for gens/sgens/ext_grids
         self._sample_from_range(
             'poly_cost', 'cp1_eur_per_mw', self.net.poly_cost.index)
+        self._sample_from_range(
+            'pwl_cost', 'cp1_eur_per_mw', self.net.pwl_cost.index)
+
+        # Manually update the costs in the pwl 'points' definition
+        for idx in self.net.ext_grid.index:
+            price = self.net.pwl_cost.cp1_eur_per_mw[idx]
+            self.net.pwl_cost.points[idx] = [[0, 10000, price]]
 
 
 if __name__ == '__main__':
