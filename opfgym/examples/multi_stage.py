@@ -27,22 +27,23 @@ class MultiStageOpf(opf_env.OpfEnv):
         assert steps_per_episode > 1, "At least two steps required for a multi-stage OPF."
         assert 'simbench' in train_data and 'simbench' in test_data, "Only simbench networks are supported because time-series data required."
 
-        self.net = self._define_opf(
+        net, profiles = self._define_opf(
             simbench_network_name, *args, **kwargs)
 
         # Observe all load power values
         self.obs_keys = [
-            ('load', 'p_mw', self.net.load.index),
-            ('load', 'q_mvar', self.net.load.index),
+            ('load', 'p_mw', net.load.index),
+            ('load', 'q_mvar', net.load.index),
         ]
 
         # Control all generators in the system
-        self.act_keys = [('sgen', 'p_mw', self.net.sgen.index)]
+        self.act_keys = [('sgen', 'p_mw', net.sgen.index)]
 
-        super().__init__(steps_per_episode=steps_per_episode, *args, **kwargs)
+        super().__init__(net, profiles=profiles, 
+                         steps_per_episode=steps_per_episode, *args, **kwargs)
 
     def _define_opf(self, simbench_network_name, *args, **kwargs):
-        net, self.profiles = build_simbench_net(
+        net, profiles = build_simbench_net(
             simbench_network_name, *args, **kwargs)
 
         net.sgen['controllable'] = True
@@ -59,7 +60,7 @@ class MultiStageOpf(opf_env.OpfEnv):
         for idx in net.ext_grid.index:
             pp.create_poly_cost(net, idx, 'ext_grid', cp1_eur_per_mw=1)
 
-        return net
+        return net, profiles
 
     def step(self, action):
         """ Extend step method to sample the next time step of the simbench data. """

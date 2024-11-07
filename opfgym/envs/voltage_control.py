@@ -23,9 +23,9 @@ class VoltageControl(opf_env.OpfEnv):
 
     """
     def __init__(self, simbench_network_name='1-MV-semiurb--1-sw',
-                 load_scaling=1.3, gen_scaling=1.3, 
-                 cos_phi=0.95, max_q_exchange=1.0, min_sgen_power=0.5, 
-                 min_storage_power=0.5, market_based=False,
+                 load_scaling=1.3, gen_scaling=1.3,
+                 cos_phi=0.95, max_q_exchange=1.0, min_sgen_power=0.5,
+                 min_storage_power=0.5, market_based=False, sampling_kwargs={},
                  *args, **kwargs):
 
         self.min_sgen_power = min_sgen_power
@@ -33,33 +33,37 @@ class VoltageControl(opf_env.OpfEnv):
         self.cos_phi = cos_phi
         self.market_based = market_based
         self.max_q_exchange = max_q_exchange
-        self.net = self._define_opf(
+        net, profiles = self._define_opf(
             simbench_network_name, gen_scaling=gen_scaling,
             load_scaling=load_scaling, *args, **kwargs)
 
         # Define the RL problem
         # See all load power values, sgen/storage active power, and sgen prices...
         self.obs_keys = [
-            ('sgen', 'p_mw', self.net.sgen.index),
-            ('storage', 'p_mw', self.net.storage.index),
-            ('load', 'p_mw', self.net.load.index),
-            ('load', 'q_mvar', self.net.load.index),
+            ('sgen', 'p_mw', net.sgen.index),
+            ('storage', 'p_mw', net.storage.index),
+            ('load', 'p_mw', net.load.index),
+            ('load', 'q_mvar', net.load.index),
         ]
 
         if market_based:
             # Consider reactive power prices in the objective function
             self.obs_keys.append(
-                ('poly_cost', 'cq2_eur_per_mvar2', self.net.poly_cost.index)
+                ('poly_cost', 'cq2_eur_per_mvar2', net.poly_cost.index)
             )
 
         # ... and control all units' reactive power values
-        self.act_keys = [('sgen', 'q_mvar', self.net.sgen.index[self.net.sgen.controllable]),
-                         ('storage', 'q_mvar', self.net.storage.index[self.net.storage.controllable])]
+        self.act_keys = [('sgen', 'q_mvar', net.sgen.index[net.sgen.controllable]),
+                         ('storage', 'q_mvar', net.storage.index[net.storage.controllable])]
 
-        super().__init__(*args, **kwargs)
+        hooks = [constrain_active_power_hook, set_reactive_boundaries_hook]
+        sampling_kwargs.update({'after_sampling_hooks': hooks})
+
+        super().__init__(net, profiles=profiles,
+                         sampling_kwargs=sampling_kwargs, *args, **kwargs)
 
     def _define_opf(self, simbench_network_name, *args, **kwargs):
-        net, self.profiles = build_simbench_net(
+        net, profiles = build_simbench_net(
             simbench_network_name, *args, **kwargs)
 
         net.load['controllable'] = False
@@ -105,31 +109,25 @@ class VoltageControl(opf_env.OpfEnv):
         net.poly_cost['min_cq2_eur_per_mvar2'] = 0
         net.poly_cost['max_cq2_eur_per_mvar2'] = self.max_price
 
-        return net
+        return net, profiles
 
-    def _sampling(self, *args, **kwargs):
-        super()._sampling(*args, **kwargs)
 
-        # Sample reactive power prices uniformly from min/max range
-        if self.market_based:
-            for unit_type in ('sgen', 'ext_grid', 'storage'):
-                self._sample_from_range(
-                'poly_cost', 'cq2_eur_per_mvar2',
-                self.net.poly_cost[self.net.poly_cost.et == unit_type].index)
+def constrain_active_power_hook(net):
+    # Active power is not controllable (only relevant for OPF baseline)
+    # Set active power boundaries to current active power values
+    for unit_type in ('sgen', 'storage'):
+        net[unit_type]['max_p_mw'] = net[unit_type].p_mw * net[unit_type].scaling + 1e-9
+        net[unit_type]['min_p_mw'] = net[unit_type].p_mw * net[unit_type].scaling - 1e-9
 
-        # Active power is not controllable (only relevant for OPF baseline)
-        # Set active power boundaries to current active power values
-        for unit_type in ('sgen', 'storage'):
-            self.net[unit_type]['max_p_mw'] = self.net[unit_type].p_mw * self.net[unit_type].scaling + 1e-9
-            self.net[unit_type]['min_p_mw'] = self.net[unit_type].p_mw * self.net[unit_type].scaling - 1e-9
 
-        # Assumption: Generators offer all reactive power possible
-        for unit_type in ('sgen', 'storage'):
-            q_max = (self.net[unit_type].max_s_mva**2 - self.net[unit_type].max_p_mw**2)**0.5
-            self.net[unit_type]['min_q_mvar'] = -q_max  # No scaling required this way!
-            self.net[unit_type]['max_q_mvar'] = q_max
-            # Make sure that without any action, zero Q is provided
-            self.net[unit_type]['q_mvar'] = 0
+def set_reactive_boundaries_hook(net):
+    # Assumption: Generators offer all reactive power possible
+    for unit_type in ('sgen', 'storage'):
+        q_max = (net[unit_type].max_s_mva**2 - net[unit_type].max_p_mw**2)**0.5
+        net[unit_type]['min_q_mvar'] = -q_max  # No scaling required this way!
+        net[unit_type]['max_q_mvar'] = q_max
+        # Make sure that without any action, zero Q is provided
+        net[unit_type]['q_mvar'] = 0
 
 
 if __name__ == '__main__':

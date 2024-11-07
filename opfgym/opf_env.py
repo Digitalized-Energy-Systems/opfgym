@@ -13,6 +13,7 @@ from scipy import stats
 from typing import Tuple
 
 from opfgym import constraints
+from opfgym import data_sampling
 from opfgym.objective import get_pandapower_costs
 from opfgym.util.normalization import get_normalization_params
 from opfgym.simbench.data_split import define_test_train_split
@@ -26,6 +27,8 @@ class PowerFlowNotAvailable(Exception):
 
 class OpfEnv(gym.Env, abc.ABC):
     def __init__(self,
+                 net: pp.pandapowerNet,
+                 profiles: dict=None,
                  evaluate_on='validation',
                  steps_per_episode=1,
                  autocorrect_prio='p_mw',
@@ -42,9 +45,8 @@ class OpfEnv(gym.Env, abc.ABC):
                  add_time_obs=False,
                  add_act_obs=False,
                  add_mean_obs=False,
-                 train_data='simbench',
-                 test_data='simbench',
-                 sampling_kwargs: dict=None,
+                #  train_data='simbench',
+                #  test_data='simbench',
                  constraint_kwargs: dict={},
                  custom_constraints: list=None,
                  penalty_weight=0.5,
@@ -52,13 +54,45 @@ class OpfEnv(gym.Env, abc.ABC):
                  diff_action_step_size=None,
                  clipped_action_penalty=0,
                  initial_action='center',
+                 train_sampler='simbench',
+                 validation_sampler='simbench',
+                 sampling_kwargs: dict=None,
+                #  test_sampler='simbench',
                  seed=None,
                  *args, **kwargs):
 
+        self.net = net
+
         self.evaluate_on = evaluate_on
-        self.train_data = train_data
-        self.test_data = test_data
-        self.sampling_kwargs = sampling_kwargs if sampling_kwargs else {}
+        # self.train_data = train_data
+        # self.test_data = test_data
+
+        # Define the data sampling strategies (if None, default to simbench
+        # sampling for units, and uniform for costs)
+        sampling_kwargs = sampling_kwargs if sampling_kwargs else {}
+        test_steps, validation_steps, train_steps = define_test_train_split(**sampling_kwargs)
+        if isinstance(train_sampler, str):
+            sampling_kwargs['available_steps'] = train_steps
+            self.train_sampler = create_default_sampler(
+                train_sampler, self.obs_keys, profiles=profiles, seed=seed,
+                **sampling_kwargs)
+        else:
+            self.train_sampler = train_sampler
+
+        if isinstance(validation_sampler, str):
+            sampling_kwargs['available_steps'] = validation_steps
+            self.validation_sampler = create_default_sampler(
+                validation_sampler, self.obs_keys, profiles=profiles, seed=seed,
+                **sampling_kwargs)
+        else:
+            self.validation_sampler = validation_sampler
+
+        # if isinstance(test_sampler, str):
+        #     sampling_kwargs['available_steps'] = test_steps
+        #     self.test_sampler = create_default_sampler(
+        #         test_sampler, self.obs_keys, seed=seed, **sampling_kwargs)
+        # else:
+        #     self.test_sampler = test_sampler
 
         # Define the observation space
         if remove_normal_obs:
@@ -100,7 +134,7 @@ class OpfEnv(gym.Env, abc.ABC):
             if 'ext_grid_power' in add_res_obs:
                 add_obs.append(('res_ext_grid', 'p_mw', self.net.ext_grid.index))
                 add_obs.append(('res_ext_grid', 'q_mvar', self.net.ext_grid.index))
-            self.obs_keys.extend(add_obs)   
+            self.obs_keys.extend(add_obs)
 
         self.add_mean_obs = add_mean_obs
 
@@ -226,10 +260,10 @@ class OpfEnv(gym.Env, abc.ABC):
             options = {}
 
         self.test = options.get('test', False)
-        step = options.get('step', None)
-        self.apply_action = options.get('new_action', True)
+        # step = options.get('step', None)
+        # self.apply_action = options.get('new_action', True)
 
-        self._sampling(step, self.test, self.apply_action)
+        self._sampling(**options)
 
         if self.initial_action == 'random':
             # Use random actions as starting point so that agent learns to handle that
@@ -250,182 +284,42 @@ class OpfEnv(gym.Env, abc.ABC):
 
         return self._get_obs(self.obs_keys, self.add_time_obs), copy.deepcopy(self.info)
 
-    def _sampling(self, step=None, test=False, sample_new=True, 
-                  *args, **kwargs) -> None:
+    def _sampling(self, test=False, **kwargs) -> None:
 
         self.power_flow_available = False
         self.optimal_power_flow_available = False
 
-        data_distr = self.test_data if test is True else self.train_data
-        kwargs.update(self.sampling_kwargs)
-
-        # Maybe also allow different kinds of noise and similar! with `**sampling_params`?
-        if data_distr == 'noisy_simbench' or 'noise_factor' in kwargs.keys():
-            if sample_new:
-                self._set_simbench_state(step, test, *args, **kwargs)
-        elif data_distr == 'simbench':
-            if sample_new:
-                self._set_simbench_state(
-                    step, test, noise_factor=0.0, *args, **kwargs)
-        elif data_distr == 'full_uniform':
-            self._sample_uniform(sample_new=sample_new)
-        elif data_distr == 'normal_around_mean':
-            self._sample_normal(sample_new=sample_new, **kwargs)
-        elif data_distr == 'mixed':
-            # Use different data sources with different probabilities
-            r = self.np_random.random()
-            data_probs = kwargs.get('data_probabilities', (0.5, 0.75, 1.0))
-            if r < data_probs[0]:
-                self._set_simbench_state(step, test, *args, **kwargs)
-            elif r < data_probs[1]:
-                self._sample_uniform(sample_new=sample_new)
-            else:
-                self._sample_normal(sample_new=sample_new, **kwargs)
-
-    def _sample_uniform(self, sample_keys=None, sample_new=True) -> None:
-        """ Standard pre-implemented method to set power system to a new random
-        state from uniform sampling. Uses the observation space as basis.
-        Requirement: For every observations there must be "min_{obs}" and
-        "max_{obs}" given as range to sample from.
-        """
-        assert sample_new, 'Currently only implemented for sample_new=True'
-        if not sample_keys:
-            sample_keys = self.obs_keys
-        for unit_type, column, idxs in sample_keys:
-            if 'res_' not in unit_type:
-                self._sample_from_range(unit_type, column, idxs)
-
-    def _sample_from_range(self, unit_type, column, idxs) -> None:
-        df = self.net[unit_type]
-        # Make sure to sample from biggest possible range
-        try:
-            low = df[f'min_min_{column}'].loc[idxs]
-        except KeyError:
-            low = df[f'min_{column}'].loc[idxs]
-        try:
-            high = df[f'max_max_{column}'].loc[idxs]
-        except KeyError:
-            high = df[f'max_{column}'].loc[idxs]
-
-        r = self.np_random.uniform(low, high, size=(len(idxs),))
-        try:
-            # Constraints are scaled, which is why we need to divide by scaling
-            self.net[unit_type][column].loc[idxs] = r / df.scaling[idxs]
-        except AttributeError:
-            # If scaling factor is not defined, assume scaling=1
-            self.net[unit_type][column].loc[idxs] = r
-
-    def _sample_normal(self, relative_std=None, truncated=False,
-                       sample_new=True, **kwargs) -> None:
-        """ Sample data around mean values from simbench data. """
-        assert sample_new, 'Currently only implemented for sample_new=True'
-        for unit_type, column, idxs in self.obs_keys:
-            if 'res_' in unit_type or 'poly_cost' in unit_type:
-                continue 
-
-            df = self.net[unit_type].loc[idxs]
-            mean = df[f'mean_{column}']
-
-            max_values = (df[f'max_max_{column}'] / df.scaling).to_numpy()
-            min_values = (df[f'min_min_{column}'] / df.scaling).to_numpy()
-            diff = max_values - min_values
-            if relative_std:
-                std = relative_std * diff
-            else:
-                std = df[f'std_dev_{column}']
-
-            if truncated:
-                # Make sure to re-distribute truncated values 
-                random_values = stats.truncnorm.rvs(
-                    min_values, max_values, mean, std * diff, len(mean))
-            else:
-                # Simply clip values to min/max range
-                random_values = self.np_random.normal(
-                    mean, std * diff, len(mean))
-                random_values = np.clip(
-                    random_values, min_values, max_values)
-            self.net[unit_type][column].loc[idxs] = random_values
-
-    def _set_simbench_state(self, step: int=None, test=False,
-                            noise_factor=0.1, noise_distribution='uniform',
-                            in_between_steps=False, *args, **kwargs) -> None:
-        """ Standard pre-implemented method to sample a random state from the
-        simbench time-series data and set that state.
-
-        Works only for simbench systems!
-        """
-
-        total_n_steps = len(self.profiles[('load', 'q_mvar')])
-        if step is None:
-            if test is True and self.evaluate_on == 'test':
-                step = self.np_random.choice(self.test_steps)
-            elif test is True and self.evaluate_on == 'validation':
-                step = self.np_random.choice(self.validation_steps)
-            else:
-                step = self.np_random.choice(self.train_steps)
+        if not test:
+            self.train_sampler(self.net, **kwargs)
+        elif self.evaluate_on == 'validation':
+            self.validation_sampler(self.net, **kwargs)
+        elif self.evaluate_on == 'test':
+            self.test_sampler(self.net, **kwargs)
         else:
-            assert step < total_n_steps
-
-        self.current_simbench_step = step
-
-        for type_act in self.profiles.keys():
-            if not self.profiles[type_act].shape[1]:
-                continue
-            unit_type, actuator = type_act
-            data = self.profiles[type_act].loc[step, self.net[unit_type].index]
-
-            if in_between_steps and step < total_n_steps - 1:
-                # Random linear interpolation between two steps
-                next_data = self.profiles[type_act].loc[step + 1, self.net[unit_type].index]
-                r = self.np_random.random()
-                data = data * r + next_data * (1 - r)
-
-            # Add some noise to create unique data samples
-            if noise_distribution == 'uniform':
-                # Uniform distribution: noise_factor as relative sample range
-                noise = self.np_random.random(
-                    len(self.net[unit_type].index)) * noise_factor * 2 + (1 - noise_factor)
-                new_values = (data * noise).to_numpy()
-            elif noise_distribution == 'normal':
-                # Normal distribution: noise_factor as relative std deviation
-                new_values = self.np_random.normal(
-                    loc=data, scale=data.abs() * noise_factor)
-
-            # Make sure that the range of original data remains unchanged
-            # (Technical limits of the units remain the same)
-            new_values = np.clip(
-                new_values,
-                self.profiles[type_act].min(
-                )[self.net[unit_type].index].to_numpy(),
-                self.profiles[type_act].max(
-                )[self.net[unit_type].index].to_numpy())
-
-            self.net[unit_type].loc[self.net[unit_type].index,
-                                    actuator] = new_values
+            raise ValueError('Invalid evaluation mode! Chose either "validation" or "test".')
 
     def step(self, action, *args, **kwargs) -> tuple:
         assert not np.isnan(action).any()
         self.info = {}
         self.step_in_episode += 1
 
-        if self.apply_action:
-            correction = self._apply_actions(action, self.diff_action_step_size)
-            success = self.run_power_flow()
+        correction = self._apply_actions(action, self.diff_action_step_size)
+        success = self.run_power_flow()
 
-            if not success:
-                # Something went seriously wrong! Find out what!
-                # Maybe NAN in power setpoints?!
-                # Maybe simply catch this with a strong negative reward?!
-                logging.critical(f'\nPowerflow not converged and reason unknown! Run diagnostic tool to at least find out what went wrong: {pp.diagnostic(self.net)}')
-                self.info['valids'] = np.array([False] * 5)
-                self.info['violations'] = np.array([1] * 5)
-                self.info['unscaled_penalties'] = np.array([1] * 5)
-                self.info['penalty'] = 5
-                return np.array([np.nan]), np.nan, True, False, copy.deepcopy(self.info)
+        if not success:
+            # Something went seriously wrong! Find out what!
+            # Maybe NAN in power setpoints?!
+            # Maybe simply catch this with a strong negative reward?!
+            logging.critical(f'\nPowerflow not converged and reason unknown! Run diagnostic tool to at least find out what went wrong: {pp.diagnostic(self.net)}')
+            self.info['valids'] = np.array([False] * 5)
+            self.info['violations'] = np.array([1] * 5)
+            self.info['unscaled_penalties'] = np.array([1] * 5)
+            self.info['penalty'] = 5
+            return np.array([np.nan]), np.nan, True, False, copy.deepcopy(self.info)
 
         reward = self.calculate_reward()
 
-        if self.clipped_action_penalty and self.apply_action:
+        if self.clipped_action_penalty:
             reward -= correction * self.clipped_action_penalty
 
         if self.steps_per_episode == 1:
@@ -646,7 +540,7 @@ class OpfEnv(gym.Env, abc.ABC):
                 for unit_type, column, idxs in obs_keys]
 
         if self.add_mean_obs:
-            mean_obs = [np.mean(partial_obs) for partial_obs in obss 
+            mean_obs = [np.mean(partial_obs) for partial_obs in obss
                         if len(partial_obs) > 1]
             obss.append(mean_obs)
 
@@ -838,3 +732,34 @@ def get_bus_aggregated_obs(net, unit_type, column, idxs) -> np.ndarray:
     state space. """
     df = net[unit_type].iloc[idxs]
     return df.groupby(['bus'])[column].sum().to_numpy()
+
+
+def create_default_sampler(sampler_name: str, state_keys: tuple, **sampling_kwargs) -> data_sampling.DatasetSampler:
+    """ Select one of four default samplers: 'simbench', 'uniform', 'normal', 
+    or 'mixed'."""
+
+    if sampler_name == 'simbench':
+        sampler_class = data_sampling.SimbenchSampler
+    elif sampler_name == 'uniform':
+        sampler_class = data_sampling.UniformSampler
+    elif sampler_name == 'normal':
+        sampler_class = data_sampling.NormalSampler
+    elif sampler_name == 'mixed':
+        sampler_class = data_sampling.StandardMixedRandomSampler
+        assert 'sampler_probabilities_cumulated' in sampling_kwargs.keys()
+    else:
+        raise NotImplementedError(f'Sampler {sampler_name} not implemented! Use "simbench", "uniform", or "normal". Or use a custom sampler.')
+
+    samplers = []
+    for unit_type, column, idxs in state_keys:
+        if unit_type in ('gen', 'sgen', 'load', 'storage'):
+            samplers.append(sampler_class(
+                sample_keys=((unit_type, column, idxs),),
+                **sampling_kwargs))
+        else:
+            samplers.append(data_sampling.UniformSampler(
+                sample_keys=((unit_type, column, idxs),),
+                **sampling_kwargs))
+
+    return data_sampling.SequentialSampler(
+        samplers, remove_subsampler_hooks=True, **sampling_kwargs)

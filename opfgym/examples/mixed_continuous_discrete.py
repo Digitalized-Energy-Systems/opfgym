@@ -20,26 +20,26 @@ class MixedContinuousDiscrete(opf_env.OpfEnv):
                  cos_phi=0.95, *args, **kwargs):
 
         self.cos_phi = cos_phi
-        self.net = self._define_opf(
+        net, profiles = self._define_opf(
             simbench_network_name, *args, **kwargs)
 
         # Define the RL problem
         # Observe all load power values, sgen active power
         self.obs_keys = [
-            ('ext_grid', 'vm_pu', self.net.ext_grid.index),  # Slack voltage
-            ('sgen', 'p_mw', self.net.sgen.index),
-            ('load', 'p_mw', self.net.load.index),
-            ('load', 'q_mvar', self.net.load.index),
+            ('ext_grid', 'vm_pu', net.ext_grid.index),  # Slack voltage
+            ('sgen', 'p_mw', net.sgen.index),
+            ('load', 'p_mw', net.load.index),
+            ('load', 'q_mvar', net.load.index),
         ]
 
         # ... and control trafos and reactive power for voltage control
-        self.act_keys = [('sgen', 'q_mvar', self.net.sgen.index),
-                         ('trafo', 'tap_pos', self.net.trafo.index)]
+        self.act_keys = [('sgen', 'q_mvar', net.sgen.index),
+                         ('trafo', 'tap_pos', net.trafo.index)]
 
-        super().__init__(*args, **kwargs)
+        super().__init__(net, profiles=profiles, *args, **kwargs)
 
     def _define_opf(self, simbench_network_name, *args, **kwargs):
-        net, self.profiles = build_simbench_net(
+        net, profiles = build_simbench_net(
             simbench_network_name, *args, **kwargs)
 
         # Define the transformer tap positions as controllable
@@ -63,7 +63,7 @@ class MixedContinuousDiscrete(opf_env.OpfEnv):
         net.ext_grid['min_vm_pu'] = 0.95
         net.ext_grid['max_vm_pu'] = 1.05
 
-        return net
+        return net, profiles
 
     def _sampling(self, *args, **kwargs):
         super()._sampling(*args, **kwargs)

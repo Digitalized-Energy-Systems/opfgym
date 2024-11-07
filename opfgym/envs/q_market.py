@@ -26,10 +26,10 @@ class QMarket(VoltageControl):
                  *args, **kwargs):
 
         super().__init__(simbench_network_name=simbench_network_name,
-                         load_scaling=load_scaling, 
+                         load_scaling=load_scaling,
                          gen_scaling=gen_scaling,
                          cos_phi=cos_phi,
-                         max_q_exchange=max_q_exchange, 
+                         max_q_exchange=max_q_exchange,
                          market_based=market_based,
                          min_sgen_power=min_sgen_power,
                          *args, **kwargs)

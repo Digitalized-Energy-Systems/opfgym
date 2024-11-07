@@ -2,6 +2,9 @@
 import numpy as np
 
 
+# TODO: Allow for seeding!
+
+
 def define_test_train_split(test_share=0.2, random_test_steps=False, 
                             validation_share=0.2, random_validation_steps=False,
                             **kwargs):

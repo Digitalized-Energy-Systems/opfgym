@@ -17,20 +17,20 @@ class NonSimbenchNet(opf_env.OpfEnv):
 
         assert 'simbench' not in train_data and 'simbench' not in test_data, "Only non-simbench networks are supported."
 
-        self.net = self._define_opf()
+        net = self._define_opf()
 
         # Define the RL problem
         # Observe all load power values, sgen active power
         self.obs_keys = [
-            ('load', 'p_mw', self.net.load.index),
-            ('load', 'q_mvar', self.net.load.index),
+            ('load', 'p_mw', net.load.index),
+            ('load', 'q_mvar', net.load.index),
         ]
 
         # ... and control some selected switches in the system
-        self.act_keys = [('gen', 'p_mw', self.net.gen.index)]
+        self.act_keys = [('gen', 'p_mw', net.gen.index)]
 
-        super().__init__(train_data=train_data, test_data=test_data,
-                         *args, **kwargs)
+        super().__init__(net, train_data=train_data,
+                         test_data=test_data, *args, **kwargs)
 
     def _define_opf(self):
         # OPF problem already fully defined by pandapower

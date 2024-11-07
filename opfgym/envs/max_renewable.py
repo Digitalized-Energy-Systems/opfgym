@@ -23,35 +23,38 @@ class MaxRenewable(opf_env.OpfEnv):
 
     def __init__(self, simbench_network_name='1-HV-mixed--1-sw',
                  gen_scaling=0.8, load_scaling=0.8,
-                 min_storage_power=10, min_sgen_power=24,
-                 seed=None, *args, **kwargs):
+                 min_storage_power=10, min_sgen_power=24, sampling_kwargs={},
+                 *args, **kwargs):
 
         self.min_sgen_power = min_sgen_power
         self.min_storage_power = min_storage_power
 
-        self.net = self._define_opf(
+        net, profiles = self._define_opf(
             simbench_network_name, gen_scaling=gen_scaling,
             load_scaling=load_scaling, *args, **kwargs)
 
         # Define the RL problem
         # See all load power values, sgen max active power...
         self.obs_keys = [
-            ('sgen', 'max_p_mw', self.net.sgen.index),
-            ('load', 'p_mw', self.net.load.index),
-            ('load', 'q_mvar', self.net.load.index),
-            ('storage', 'p_mw', self.net.storage.index[~self.net.storage.controllable])
+            ('sgen', 'max_p_mw', net.sgen.index),
+            ('load', 'p_mw', net.load.index),
+            ('load', 'q_mvar', net.load.index),
+            ('storage', 'p_mw', net.storage.index[~net.storage.controllable])
         ]
 
         # ... and control all sgens' active power values + some storage systems
         self.act_keys = [
-            ('sgen', 'p_mw', self.net.sgen.index[self.net.sgen.controllable]),
-            ('storage', 'p_mw', self.net.storage.index[self.net.storage.controllable])
+            ('sgen', 'p_mw', net.sgen.index[net.sgen.controllable]),
+            ('storage', 'p_mw', net.storage.index[net.storage.controllable])
         ]
 
-        super().__init__(seed=seed, *args, **kwargs)
+        sampling_kwargs.update({'after_sampling_hooks': [set_current_power_as_max_hook]})
+
+        super().__init__(net, profiles=profiles, sampling_kwargs=sampling_kwargs,
+                         *args, **kwargs)
 
     def _define_opf(self, simbench_network_name, *args, **kwargs):
-        net, self.profiles = build_simbench_net(
+        net, profiles = build_simbench_net(
             simbench_network_name, *args, **kwargs)
 
         # Drop redundant ext grids (results in problems with OPF)
@@ -93,13 +96,12 @@ class MaxRenewable(opf_env.OpfEnv):
             pp.create_poly_cost(net, idx, 'sgen',
                                 cp1_eur_per_mw=-active_power_costs)
 
-        return net
+        return net, profiles
 
-    def _sampling(self, *args, **kwargs):
-        super()._sampling(*args, **kwargs)
 
-        # Set constraints of current time step (required for pandapower OPF)
-        self.net.sgen['max_p_mw'] = self.net.sgen.p_mw * self.net.sgen.scaling + 1e-6
+def set_current_power_as_max_hook(net):
+    # Set constraints of current time step (required for pandapower OPF)
+    net.sgen['max_p_mw'] = net.sgen.p_mw * net.sgen.scaling + 1e-6
 
 
 if __name__ == '__main__':

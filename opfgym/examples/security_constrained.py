@@ -61,7 +61,7 @@ class SecurityConstrained(opf_env.OpfEnv):
             pp.drop_lines(net, [line_idx])
             # Run the power flow (TODO: better use the build-in method -> change API)
             pp.runpp(net)
-            # Check for violations
+            # Check for violations in the updated copied network
             new_valids, new_viol, new_penalties = super().calculate_violations(net)
             # Update the violations
             valids = np.logical_and(valids, new_valids)
