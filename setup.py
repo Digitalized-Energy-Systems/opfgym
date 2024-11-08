@@ -26,4 +26,10 @@ setup(
         'simbench==1.4.0',
         'gymnasium==0.29.0',
     ],
+    extras_require={
+        'docs': [
+            'sphinx',
+            'furo',
+        ],
+    }
 )
