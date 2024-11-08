@@ -6,8 +6,24 @@
 OPF-Gym
 =======
 
-Getting Started
+*OPF-Gym* is a Python library that provides reinforcement learning (RL) environments 
+for learning the optimal power flow (OPF) problem. 
 
+It has three main contributions:
+
+* Five benchmark environments for the RL-OPF problem to enable comparability of research. (see :ref:`Benchmarks`)
+* Various pre-implemented environment design options for representing the OPF problem as an RL environment. (see :ref:`Environment Design Options`)
+* Convenient creation of custom RL-OPF environments with advanced features like multi-stage OPF, security-constrained OPF, etc. (see :ref:`Create Custom Environments`)
+
+The library uses the `gymnasium <https://gymnasium.farama.org/>`_ RL environment API, 
+`pandapower <https://pandapower.readthedocs.io/en/latest/>`_ 
+for grid modelling and power flow calculations, 
+and integrates the `SimBench <https://simbench.readthedocs.io/en/stable/>`_ 
+benchmarks power grids and time-series data by default. 
+
+Contact thomas.wolgagest@uol.de for questions, feedback, and collaboration.
+
+--------------------------------------------------------------------------
 
 .. toctree::
    :maxdepth: 2
@@ -17,7 +33,8 @@ Getting Started
    getting_started
    benchmarks
    api_base_class
-   environment_design
+   .. environment_design
+
    custom_envs
    advanced_features
    supervised_learning
