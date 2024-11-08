@@ -8,13 +8,11 @@ from typing import Tuple
 import pandas as pd
 import numpy as np
 
-from opfgym.opf_env import OpfEnv
-
 logger = logging.getLogger(__name__)
 
 
 def create_labeled_dataset(
-        env: OpfEnv,
+        env,
         num_samples: int,
         keep_invalid_samples: bool=False,
         store_to_path: str=None,

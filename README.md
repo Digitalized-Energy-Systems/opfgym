@@ -94,10 +94,8 @@ for _ in range(3):
         # Perform random action (replace with learning agent)
         action = env.action_space.sample()  
         observation, reward, terminated, truncated, info = env.step(action)
-
         # Check for constraint satisfaction
         print(f"The grid satisfies all constraints: {env.is_state_valid()}")
-
         # Compute the error
         objective = sum(env.calculate_objective())
         success = env.run_optimal_power_flow()
