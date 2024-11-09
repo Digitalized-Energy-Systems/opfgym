@@ -2,10 +2,10 @@ Advanced Features by Examples
 ===============================
 
 While the :ref:`Benchmarks` focus on the standard OPF that is deterministic, 
-single-time-step, has continuous actions, *OPF-Gym* also allows for more 
+single-time-step, and has continuous actions, *OPF-Gym* also allows for more 
 advanced OPF problems.
 
-Note that all the following examples are not solvable wit the conventional 
+Note that all the following examples are not solvable with the conventional 
 pandapower OPF solver anymore. Therefore, either a custom solver is required or
 a comparison with ground-truth solutions is not possible.
 
@@ -31,13 +31,15 @@ While conventional solvers have difficulties with discrete actions, adding
 discrete actions in *OPF-Gym* is straightforward and does not complicate the 
 learning problem nor the environment creation, as shown in the 
 `Mixed actuators example <https://github.com/Digitalized-Energy-Systems/opfgym/blob/development/opfgym/examples/mixed_continuous_discrete.py>`_. 
+Note that **all** actions in *OPF-Gym* are modelled as continuous RL actions and
+require continuous RL algorithms like DDPG or SAC, even when they are discrete
+from an energy system perspective.
 
 Stochastic OPF
 --------------
-
 The OPF problem can be extended to include stochasticity, for example, when the 
 measurement of the grid state (voltages, power flows) is uncertain or noisy. 
-An example of an stochastic OPF environment is shown in the 
+A simple example of an stochastic OPF environment is shown in the 
 `Stochastic OPF example <https://github.com/Digitalized-Energy-Systems/opfgym/blob/development/opfgym/examples/stochastic_obs.py>`_.
 
 Partial Observability
