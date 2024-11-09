@@ -14,6 +14,8 @@ Additionally, it provides the following main functionalities:
 All environments that inherit from the :class:`OpfEnv` base class will have these
 functionalities.
 
+TODO: Work in progress, more information will follow.
+
 .. TODO: Add list of methods
 
 .. Methods

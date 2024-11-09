@@ -1,11 +1,11 @@
 Support for Supervised Learning
 ==========
 
-While the focus of *OPF-Gym* is on RL environments, it is very difficult to 
-allow for comparability with other machine learning approaches like supervised 
-or unsupervised learning. 
+While the focus of *OPF-Gym* is on reinforcement learning and its environments, 
+it also enables comparability with other machine learning approaches like 
+supervised or unsupervised learning. 
 
-Therefore, we provide convenience function to create a labeled dataset for
+For that, we provide a convenience function to create a labeled dataset for
 supervised learning from any given *OPF-Gym* environment.
 
 .. code-block:: python
@@ -14,7 +14,7 @@ supervised learning from any given *OPF-Gym* environment.
     from opfgym.envs import QMarket  # Or some other environment
 
     env = QMarket()
-    # Set `store_to_path = path` to store the dataset to a directory
+    # Set `store_to_path = path` to store the dataset to a directory instead
     inputs, outputs, optimal_objs = create_labeled_dataset(env, num_samples=10)
 
     # Train your supervised learning algorithm with inputs and outputs

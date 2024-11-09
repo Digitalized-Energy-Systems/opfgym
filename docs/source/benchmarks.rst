@@ -1,7 +1,7 @@
 Benchmarks
 ==========
 
-This page lists all available RL-OPF benchmarks of opfgym.
+This page lists all available RL-OPF benchmarks of *OPF-Gym*.
 
 Ideally, the benchmarks should be loaded and used for benchmarking of new 
 RL-OPF algorithms without changing the underlying OPF problem formulation.
@@ -9,7 +9,7 @@ This way, comparability of research results across multiple publications
 is ensured. 
 
 The following table provides an overview of the benchmark environments, 
-including the utilized Simbench benchmark power system, the number of buses, 
+including the utilized SimBench benchmark system, the number of buses, 
 number of observations, number of actions, and the implemented actuator units,
 with information whether active (P) or reactive power (Q) is controlled:
 
@@ -38,7 +38,8 @@ that have only six actions on average.
 All benchmark problems represent standard OPF problems with different 
 objectives and actuators. Advanced OPF problems like multi-stage OPF or the 
 security-constrained OPF are not considered (yet). However, they are possible 
-in *OPF-Gym* by creating custom environments.
+in *OPF-Gym* by creating custom environments. 
+See :ref:`Create Custom Environments`.
 
 By default all benchmarks consider the voltage band constraints, power balance
 constraints, line overload constraints, and transformer loading constraints. 
@@ -51,6 +52,7 @@ Use :code:`from opfgym.envs import EcoDispatch` to import this environment.
 The environment represents an economic dispatch problem. The goal is to 
 find the optimal active power generator setpoints of a given state that 
 minimize the generation costs while satisfying the power balance constraints.
+With its 42 actions, this is the most difficult-to-solve environment.
 
 Voltage Control (:code:`VoltageControl`)
 ---------------------------------

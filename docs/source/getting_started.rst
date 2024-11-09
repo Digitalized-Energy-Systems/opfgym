@@ -24,21 +24,23 @@ it for three episodes, and computes some performance metrics.
         observation, info = env.reset()
         terminated, truncated = False, False
         while not terminated and not truncated: 
-            # Perform random action (replace with a learning agent)
+            # Perform random action (replace this with a learning agent!)
             action = env.action_space.sample()  
 
+            # Perform a step according to the gymnasium API
             observation, reward, terminated, truncated, info = env.step(action)
 
             # Check for constraint satisfaction
             print(f"The grid satisfies all constraints: {env.is_state_valid()}")
 
-            # Compute the error
-            objective = sum(env.calculate_objective())
+            # Perform conventional OPF for comparison
             success = env.run_optimal_power_flow()
             if not success:
                 print("The OPF calculation failed. Metrics cannot be computed.")
                 continue
 
+            # Compute the error compared to the optimal solution
+            objective = sum(env.calculate_objective())
             optimal_objective = env.get_optimal_objective()
             optimal_actions = env.get_optimal_actions()
             percentage_error = optimal_objective - objective / abs(optimal_objective) * 100
@@ -51,7 +53,6 @@ it for three episodes, and computes some performance metrics.
 Adjusting the environment design options
 ----------------------------------------
 
-
 The following code demonstrates how to utlize the pre-implemented environment 
 design options:
 
@@ -59,7 +60,7 @@ design options:
 
     from opfgym.envs import QMarket
 
-    # Define some selected environment design options
+    # Define some exemplary environment design options
     kwargs = {
         # Add the voltage magnitudes and angles to the observation space
         'add_res_obs': ('voltage_magnitude', 'voltage_angle'),
@@ -78,12 +79,16 @@ design options:
     # env.reset()
     # ...
 
-The full list of pre-implemented environment design options can be found in 
-:ref:`Environment Design Options`.
+For more information on environment design and why it is important, see
+`Wolgast and Nieße - Learning the optimal power flow: Environment design matters <https://www.sciencedirect.com/science/article/pii/S2666546824000764>`_.
+
+.. The full list of pre-implemented environment design options can be found in 
+.. :ref:`Environment Design Options`.
 
 Note that the environment design options do not change the underlying OPF
 problem formulation. They only change the representation of the OPF as an
-RL environment.
+RL environment. This way, they simplify or complicate the learning problem for
+the agent, but do not change the OPF problem itself.
 
 
 Define a custom RL-OPF environment
@@ -107,12 +112,12 @@ More details can be found in :ref:`Create Custom Environments`.
 
             # Define the observation space by providing the keys to the 
             # respective pandapower tables and columns to observe
-            # (get automatically transformed into a gymnasium space)
+            # (automatically transformed into a gymnasium space)
             self.obs_keys = (
                 # Observe all loads active and reactive power
-                # The structure is (unit_type, column_name, unit_indexes)
                 ('load', 'p_mw', self.net.load.index),
                 ('load', 'q_mvar', self.net.load.index),
+                # The structure is always (unit_type, column_name, unit_indexes)
             )
 
             # Define the action space in the same way
@@ -150,7 +155,7 @@ More details can be found in :ref:`Create Custom Environments`.
     # Note that by inheriting from `OpfEnv`, all env design options are available
     kwargs = {
         # Add current line load to the observation space
-        'add_res_obs': ('line_loading'),
+        'add_res_obs': ['line_loading'],
     }
 
     # Load the custom environment

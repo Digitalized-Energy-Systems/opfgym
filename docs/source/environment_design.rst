@@ -16,6 +16,8 @@ Overall, the RL environment design consists of the following main components:
 Most environment design options are described in detail in 
 `Wolgast and Nieße - Learning the optimal power flow: Environment design matters <https://www.sciencedirect.com/science/article/pii/S2666546824000764>`_.
 
+TODO: Work in progress, more information will follow.
+
 Reward function
 ---------------
 
@@ -58,3 +60,23 @@ Note that if the objective weight :math:`w` is set to zero, it is equivalent to
 the replacement reward. If it is set to one and both constants 
 :math:`C` are set to zero, it is equivalent to the summation reward. 
 
+
+Observation space
+-----------------
+
+TODO: Work in progress, more information will follow.
+
+Action space
+------------
+
+TODO: Work in progress, more information will follow.
+
+Episode definition
+------------------
+
+TODO: Work in progress, more information will follow.
+
+Training and test data
+----------------------
+
+TODO: Work in progress, more information will follow.

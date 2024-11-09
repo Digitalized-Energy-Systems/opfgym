@@ -2,7 +2,9 @@ Create Custom Environments
 ===========================
 
 By inheriting from the :code:`OpfEnv` base class, a wide variety of custom 
-environments can be created. In the process, some steps have to be considered:
+environments can be created. In the process, some steps have to be considered.
+
+For a full example, refer to :ref:`Define a custom RL-OPF environment`.
 
 Class Initialization
 --------------------
@@ -36,7 +38,7 @@ networks can be  loaded from
 `pandapower <https://pandapower.readthedocs.io/en/latest/networks.html>`_ 
 or `simbench <https://simbench.readthedocs.io/en/stable/networks.html>`_. 
 
-Pandapower:
+Load from pandapower:
 
 .. code-block:: python
 
@@ -51,19 +53,19 @@ Create a network from scratch:
     net = pp.create_empty_network()
     # Add buses, lines, loads, etc. to the network, see pandapower docs
 
-Simbench:
+Load from SimBench:
 
 .. code-block:: python
 
     import simbench as sb
     net = sb.get_simbench_net("1-LV-rural1--0-sw")
-    # Optional for data sampling, define the profiles attribute (only SimBench)
+    # Optional for data sampling, define the profiles attribute (only for SimBench)
     profiles = sb.get_absolute_values(
         net, profiles_instead_of_study_cases=True)
 
 After creating the network, define the constraints of the OPF problem, 
-in standard pandapower practice 
-(`compare pandapower docs <https://pandapower.readthedocs.io/en/latest/opf/formulation.html>`_).
+in standard pandapower practice. 
+(compare `pandapower docs <https://pandapower.readthedocs.io/en/latest/opf/formulation.html>`_).
 
 .. code-block:: python 
 
@@ -84,7 +86,7 @@ and elements the agent can observe. That is done by setting the
 
 The `obs_keys` are a list of tuples, where each tuple contains the three elements 
 `(unit_type, column, indices)`. The `unit_type` is the pandapower table name,
-the `column` is the column name of the table, and `indices` is a list of indices
+the `column` is the column name of the table, and `indices` is an array of indices
 of the elements in the table that the agent can manipulate.
 
 .. code-block:: python
@@ -104,9 +106,9 @@ prefixes :code:`'min_min_'` and :code:`'max_max_'` in front of the column name.
 .. code-block:: python
 
     # Example observation ranges
-    net.load['min_min__p_mw'] = 0
+    net.load['min_min_p_mw'] = 0
     net.load['max_max_p_mw'] = 100
-    net.load['min_min__q_mvar'] = -50
+    net.load['min_min_q_mvar'] = -50
     net.load['max_max_q_mvar'] = 50
 
 Action space definition
@@ -122,6 +124,8 @@ where each tuple contains the three elements
 
 .. code-block:: python
 
+    import numpy as np
+
     # Some example actions
     act_keys = [
         # Control active power of all generators
@@ -132,23 +136,25 @@ where each tuple contains the three elements
         ('switch', 'closed', np.array([1]))
     ]
 
-Additionally, it is reqiured that for each defined actuator, the corresponding 
+Additionally, it is required that for each defined actuator, the corresponding 
 action ranges are defined, which happens exactly as in pandapower. Simply add 
 the :code:`'min_'`/:code:`'max_'` prefix to the column name and set the values 
-accordingly.
+as desired.
 
 .. code-block:: python
 
     # Example action ranges
     net.sgen['min_p_mw'] = 0
     net.sgen['max_p_mw'] = 100
-    # Discrete and boolean actions are possible and get recognized automatically
+    # Discrete and boolean actions are possible, too, and get recognized automatically
     net.trafo['min_tap_pos'] = -2
     net.trafo['max_tap_pos'] = 2
     net.switch['min_closed'] = 0
     net.switch['max_closed'] = 1
 
 Further, make sure to set the units as controllable in the pandapower net.
+It is good practive to set all other units as not controllable explicitly to
+prevent errors.
 
 .. code-block:: python
 
@@ -164,7 +170,7 @@ Further, make sure to set the units as controllable in the pandapower net.
 Advanced concepts   
 -----------------
 
-In some cases, it is required to implement advanced features, which requires to 
+In some cases, it is required to implement advanced features, which require to 
 overwrite some methods of the base class.
 
 To set dynamic constraints that change with the state of the power network, 
@@ -179,7 +185,7 @@ overwrite the :meth:`_sampling` method.
         self.net.sgen['max_q_mvar'] = self.net.sgen.q_mvar
 
 If your OPF problem is not solvable with the standard pandapower OPF solver, 
-overwrite the :meth:`run_optimal_power_flow` method 
+overwrite the :meth:`run_optimal_power_flow` method with our own OPF solver
 (and potentially the :meth:`run_power_flow` method).
 
 .. code-block:: python

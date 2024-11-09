@@ -31,7 +31,7 @@ While conventional solvers have difficulties with discrete actions, adding
 discrete actions in *OPF-Gym* is straightforward and does not complicate the 
 learning problem nor the environment creation, as shown in the 
 `Mixed actuators example <https://github.com/Digitalized-Energy-Systems/opfgym/blob/development/opfgym/examples/mixed_continuous_discrete.py>`_. 
-Note that **all** actions in *OPF-Gym* are modelled as continuous RL actions and
+Note that internally **all** actions in *OPF-Gym* are modelled as continuous RL actions and
 require continuous RL algorithms like DDPG or SAC, even when they are discrete
 from an energy system perspective.
 

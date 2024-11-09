@@ -21,7 +21,12 @@ for grid modelling and power flow calculations,
 and integrates the `SimBench <https://simbench.readthedocs.io/en/stable/>`_ 
 benchmarks power grids and time-series data by default. 
 
-Contact thomas.wolgagest@uol.de for questions, feedback, and collaboration.
+All pandapower OPF variants can be represented as an RL environment by 
+*OPF-Gym*. Additionally, advanced OPF problems like multi-stage OPF,
+security-constrained OPF, mixed continuous and discrete actions, stochastic OPF,
+etc. are easily possible with *OPF-Gym*.
+
+Contact thomas.wolgast@uol.de for questions, feedback, and collaboration.
 
 --------------------------------------------------------------------------
 
@@ -33,8 +38,7 @@ Contact thomas.wolgagest@uol.de for questions, feedback, and collaboration.
    getting_started
    benchmarks
    api_base_class
-   .. environment_design
-
+   environment_design
    custom_envs
    advanced_features
    supervised_learning
