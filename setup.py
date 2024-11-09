@@ -7,7 +7,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name='opfgym',
-    version='0.1.1',
+    version='0.2.0',
     author='Thomas Wolgast',
     author_email='thomas.wolgast@uni-oldenburg.de',
     description='Environment framework to learn the Optimal Power Flow with Reinforcement Learning, including multiple benchmark environments.',
