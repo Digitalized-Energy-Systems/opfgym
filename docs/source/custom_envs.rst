@@ -180,20 +180,27 @@ overwrite the :meth:`_sampling` method.
 
     def _sampling(self):
         # Define dynamic constraints, for example, fixing reactive power of 
-        # sgens to the current state
+        # sgens to the current state so that pandapower OPF does not use them 
+        # as control variables
         self.net.sgen['min_q_mvar'] = self.net.sgen.q_mvar 
         self.net.sgen['max_q_mvar'] = self.net.sgen.q_mvar
 
 If your OPF problem is not solvable with the standard pandapower OPF solver, 
-overwrite the :meth:`run_optimal_power_flow` method with our own OPF solver
-(and potentially the :meth:`run_power_flow` method).
+provide a :func:`optimal_power_flow_solver` function to the base class 
+:meth:`__init__` method. The same is possible for the power flow solver.
 
 .. code-block:: python
 
-    def run_optimal_power_flow(self):
-        # Custom OPF solver
-        ...
+    class CustomEnv(OpfEnv):
+        def __init__(self):
+            ...
+            def custom_opf_solver(net, **kwargs):
+                # Custom power flow solver
+                ...
 
-    def run_power_flow(self):
-        # Custom power flow solver
-        ...
+            def custom_power_flow_solver(net, **kwargs):
+                # Custom power flow solver
+                ...
+
+            super().__init__(optimal_power_flow_solver=custom_opf_solver,
+                             power_flow_solver=custom_power_flow_solver)
