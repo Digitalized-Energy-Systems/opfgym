@@ -24,7 +24,11 @@ def get_pandapower_costs(net) -> np.ndarray:
     if len(net.pwl_cost) > 0:
         all_costs.append(get_piecewise_linear_costs(net))
 
-    return np.concatenate(all_costs)
+    try:
+        return np.concatenate(all_costs)
+    except ValueError:
+        # If no costs are defined, return empty array
+        return np.array([])
 
 
 def get_polynomial_costs(net) -> np.ndarray:

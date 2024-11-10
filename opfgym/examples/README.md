@@ -28,5 +28,7 @@ Not only checks for constraint violations in the standard case but also for the
 N-1 case of line outages. 
 * `StochasticObs`: Shows how to use the pre-implemented `StochasticObservation` 
 wrapper to create a simple stochastic OPF by adding noise to the observations. 
+* `ConstraintSatisfaction`: Example that demonstrates that the definition of 
+constraint satisfaction problems without objective function is possible as well.
 
 To import the example environments, use `from opfgym.examples import <EnvironmentName>`.
