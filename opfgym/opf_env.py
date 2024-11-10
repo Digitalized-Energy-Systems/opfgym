@@ -1,5 +1,6 @@
 
 import abc
+from collections.abc import Callable
 import copy
 import logging
 import warnings
@@ -23,6 +24,9 @@ warnings.simplefilter('once')
 
 class PowerFlowNotAvailable(Exception):
     pass
+
+
+
 
 class OpfEnv(gym.Env, abc.ABC):
     def __init__(self,
@@ -52,8 +56,20 @@ class OpfEnv(gym.Env, abc.ABC):
                  diff_action_step_size=None,
                  clipped_action_penalty=0,
                  initial_action='center',
+                 power_flow_solver: Callable=None,
+                 optimal_power_flow_solver: Callable=None,
                  seed=None,
                  *args, **kwargs):
+
+        # Define the power flow and OPF solvers (default to pandapower)
+        self._run_power_flow = power_flow_solver or self.default_power_flow
+        if optimal_power_flow_solver is None:
+            self._run_optimal_power_flow = self.default_optimal_power_flow
+        elif optimal_power_flow_solver is False:
+            # No optimal power flow solver available
+            self._run_optimal_power_flow = raise_opf_not_converged
+        else:
+            self._run_optimal_power_flow = optimal_power_flow_solver
 
         self.evaluate_on = evaluate_on
         self.train_data = train_data
@@ -241,7 +257,7 @@ class OpfEnv(gym.Env, abc.ABC):
 
         if self.pf_for_obs is True:
             success = self.run_power_flow()
-            if not success:
+            if not self.power_flow_available:
                 logging.warning(
                     'Failed powerflow calculcation in reset. Try again!')
                 return self.reset()
@@ -410,9 +426,9 @@ class OpfEnv(gym.Env, abc.ABC):
 
         if self.apply_action:
             correction = self._apply_actions(action, self.diff_action_step_size)
-            success = self.run_power_flow()
+            self.run_power_flow()
 
-            if not success:
+            if not self.power_flow_available:
                 # Something went seriously wrong! Find out what!
                 # Maybe NAN in power setpoints?!
                 # Maybe simply catch this with a strong negative reward?!
@@ -714,29 +730,22 @@ class OpfEnv(gym.Env, abc.ABC):
         self.ensure_optimal_power_flow_available
         return sum(self.calculate_base_objective(self.optimal_net))
 
-    def run_power_flow(self,
-                       enforce_q_lims=True,
-                       calculate_voltage_angles=False,
-                       voltage_depend_loads=False,
-                       **kwargs):
+    def run_power_flow(self, **kwargs):
+        """ Wrapper around power flow for error handling and to track success. 
+        """
         try:
-            pp.runpp(self.net,
-                     voltage_depend_loads=voltage_depend_loads,
-                     enforce_q_lims=enforce_q_lims,
-                     calculate_voltage_angles=calculate_voltage_angles,
-                     **kwargs)
+            self._run_power_flow(self.net, **kwargs)
             self.power_flow_available = True
         except pp.powerflow.LoadflowNotConverged:
             logging.warning('Powerflow not converged!!!')
             return False
         return True
 
-    def run_optimal_power_flow(self, calculate_voltage_angles=False, **kwargs):
+    def run_optimal_power_flow(self, **kwargs):
+        """ Wrapper around OPF for error handling and to track success. """
         self.optimal_net = copy.deepcopy(self.net)
         try:
-            pp.runopp(self.optimal_net,
-                      calculate_voltage_angles=calculate_voltage_angles,
-                      **kwargs)
+            self._run_optimal_power_flow(self.optimal_net, **kwargs)
             self.optimal_power_flow_available = True
         except pp.optimal_powerflow.OPFNotConverged:
             logging.warning('OPF not converged!!!')
@@ -750,6 +759,23 @@ class OpfEnv(gym.Env, abc.ABC):
     def ensure_optimal_power_flow_available(self):
         if not self.optimal_power_flow_available:
             raise PowerFlowNotAvailable('Please call `run_optimal_power_flow` first!')
+
+    @staticmethod
+    def default_power_flow(net, enforce_q_lims=True, **kwargs):
+        """ Default power flow: Use the pandapower power flow.
+
+        Default setting: Enforce q limits as automatic constraint satisfaction.
+        """
+        pp.runpp(net, enforce_q_lims=enforce_q_lims, **kwargs)
+
+    @staticmethod
+    def default_optimal_power_flow(net, calculate_voltage_angles=False, **kwargs):
+        """ Default OPF: Use the pandapower OPF.
+
+        Default setting: Do not calculate voltage angles because often results
+        in errors for SimBench nets. """
+        pp.runopp(net, calculate_voltage_angles=calculate_voltage_angles, **kwargs)
+
 
 
 def get_obs_space(net, obs_keys: list, add_time_obs: bool,
@@ -838,3 +864,8 @@ def get_bus_aggregated_obs(net, unit_type, column, idxs) -> np.ndarray:
     state space. """
     df = net[unit_type].iloc[idxs]
     return df.groupby(['bus'])[column].sum().to_numpy()
+
+
+def raise_opf_not_converged(net, **kwargs):
+    raise pp.optimal_powerflow.OPFNotConverged(
+        "OPF solver not available for this environment.")

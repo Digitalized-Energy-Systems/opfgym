@@ -39,7 +39,9 @@ class MultiStageOpf(opf_env.OpfEnv):
         # Control all generators in the system
         self.act_keys = [('sgen', 'p_mw', self.net.sgen.index)]
 
-        super().__init__(steps_per_episode=steps_per_episode, *args, **kwargs)
+        super().__init__(steps_per_episode=steps_per_episode,
+                         optimal_power_flow_solver=False,
+                         *args, **kwargs)
 
     def _define_opf(self, simbench_network_name, *args, **kwargs):
         net, self.profiles = build_simbench_net(
@@ -96,14 +98,6 @@ class MultiStageOpf(opf_env.OpfEnv):
         obs = self._get_obs(self.obs_keys, self.add_time_obs)
 
         return obs, reward, terminated, truncated, info
-
-    def get_optimal_objective(self):
-        # Overwrite because not solvable with pandapower OPF solver.
-        return 0
-
-    def run_optimal_power_flow(self, **kwargs):
-        # Overwrite because not solvable with pandapower OPF solver.
-        return False
 
 
 if __name__ == '__main__':

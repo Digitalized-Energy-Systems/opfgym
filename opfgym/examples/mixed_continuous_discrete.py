@@ -36,7 +36,7 @@ class MixedContinuousDiscrete(opf_env.OpfEnv):
         self.act_keys = [('sgen', 'q_mvar', self.net.sgen.index),
                          ('trafo', 'tap_pos', self.net.trafo.index)]
 
-        super().__init__(*args, **kwargs)
+        super().__init__(optimal_power_flow_solver=False, *args, **kwargs)
 
     def _define_opf(self, simbench_network_name, *args, **kwargs):
         net, self.profiles = build_simbench_net(
@@ -81,14 +81,6 @@ class MixedContinuousDiscrete(opf_env.OpfEnv):
     def calculate_base_objective(self, net) -> np.ndarray:
         """ Use quadratic voltage deviation from 1.0 pu as objective."""
         return -(net.res_bus.vm_pu - 1)**2
-
-    def get_optimal_objective(self):
-        # Overwrite because not solvable with pandapower OPF solver
-        return 0
-
-    def run_optimal_power_flow(self, **kwargs):
-        # Overwrite because not solvable with pandapower OPF solver
-        return False
 
 
 if __name__ == '__main__':

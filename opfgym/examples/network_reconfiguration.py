@@ -34,7 +34,7 @@ class NetworkReconfiguration(opf_env.OpfEnv):
         self.act_keys = [('switch', 'closed', self.net.switch.index[self.net.switch.controllable]),
                          ('trafo', 'tap_pos', self.net.trafo.index[self.net.trafo.controllable])]
 
-        super().__init__(*args, **kwargs)
+        super().__init__(optimal_power_flow_solver=False, *args, **kwargs)
 
     def _define_opf(self, simbench_network_name, *args, **kwargs):
         net, self.profiles = build_simbench_net(
@@ -67,14 +67,6 @@ class NetworkReconfiguration(opf_env.OpfEnv):
             pp.create_poly_cost(net, idx, 'ext_grid', cp1_eur_per_mw=1)
 
         return net
-
-    def get_optimal_objective(self):
-        # Overwrite because not solvable with pandapower OPF solver
-        return 0
-
-    def run_optimal_power_flow(self, **kwargs):
-        # Overwrite because not solvable with pandapower OPF solver
-        return False
 
 
 if __name__ == '__main__':

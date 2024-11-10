@@ -42,8 +42,8 @@ def create_labeled_dataset(
     while counter < num_samples:
         logger.info(f'Create sample {counter+1}/{num_samples}')
         obs, info = env.reset(seed=seed+counter)
-        success = env.run_optimal_power_flow()
-        if not success:
+        env.run_optimal_power_flow()
+        if not env.optimal_power_flow_available:
             continue
 
         if not env.is_optimal_state_valid():
