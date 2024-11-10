@@ -66,19 +66,19 @@ class MaxRenewable(opf_env.OpfEnv):
 
         # Use sampled data for the non-controlled storage systems
         net.storage['controllable'] = net.storage.max_max_p_mw > self.min_storage_power
-        net.storage['q_mvar'] = 0
-        net.storage['max_q_mvar'] = 0
-        net.storage['min_q_mvar'] = 0
+        net.storage['q_mvar'] = 0.0
+        net.storage['max_q_mvar'] = 0.0
+        net.storage['min_q_mvar'] = 0.0
         # Assume that storage systems are completely usable
         # (for example, do not consider state of charge)
         net.storage['max_p_mw'] = net.storage['max_max_p_mw']
         net.storage['min_p_mw'] = net.storage['min_min_p_mw']
 
         net.sgen['controllable'] = net.sgen.max_max_p_mw > self.min_sgen_power
-        net.sgen['min_p_mw'] = 0  # max will be set later in sampling
-        net.sgen['q_mvar'] = 0
-        net.sgen['max_q_mvar'] = 0
-        net.sgen['min_q_mvar'] = 0
+        net.sgen['min_p_mw'] = 0.0  # max will be set later in sampling
+        net.sgen['q_mvar'] = 0.0
+        net.sgen['max_q_mvar'] = 0.0
+        net.sgen['min_q_mvar'] = 0.0
 
         # Required for data sampling
         net.sgen['mean_max_p_mw'] = net.sgen['mean_p_mw']

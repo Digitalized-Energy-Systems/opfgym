@@ -129,7 +129,7 @@ class VoltageControl(opf_env.OpfEnv):
             self.net[unit_type]['min_q_mvar'] = -q_max  # No scaling required this way!
             self.net[unit_type]['max_q_mvar'] = q_max
             # Make sure that without any action, zero Q is provided
-            self.net[unit_type]['q_mvar'] = 0
+            self.net[unit_type]['q_mvar'] = 0.0
 
 
 if __name__ == '__main__':

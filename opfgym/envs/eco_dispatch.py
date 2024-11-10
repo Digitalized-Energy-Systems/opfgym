@@ -100,7 +100,7 @@ class EcoDispatch(opf_env.OpfEnv):
         net.poly_cost['max_cp1_eur_per_mw'] = self.max_price_eur_gwh
 
         # Define extra column for easy access (for observations)
-        net.pwl_cost['cp1_eur_per_mw'] = 0
+        net.pwl_cost['cp1_eur_per_mw'] = 0.0
         net.pwl_cost['min_cp1_eur_per_mw'] = 0
         net.pwl_cost['max_cp1_eur_per_mw'] = self.max_price_eur_gwh
 
@@ -117,8 +117,8 @@ class EcoDispatch(opf_env.OpfEnv):
 
         # Manually update the costs in the pwl 'points' definition
         for idx in self.net.ext_grid.index:
-            price = self.net.pwl_cost.cp1_eur_per_mw[idx]
-            self.net.pwl_cost.points[idx] = [[0, 10000, price]]
+            price = self.net.pwl_cost.at[idx, 'cp1_eur_per_mw']
+            self.net.pwl_cost.at[idx, 'points'] = [[0, 10000, price]]
 
 
 if __name__ == '__main__':

@@ -326,10 +326,10 @@ class OpfEnv(gym.Env, abc.ABC):
         r = self.np_random.uniform(low, high, size=(len(idxs),))
         try:
             # Constraints are scaled, which is why we need to divide by scaling
-            self.net[unit_type][column].loc[idxs] = r / df.scaling[idxs]
+            self.net[unit_type].loc[idxs, column] = r / df.scaling[idxs]
         except AttributeError:
             # If scaling factor is not defined, assume scaling=1
-            self.net[unit_type][column].loc[idxs] = r
+            self.net[unit_type].loc[idxs, column] = r
 
     def _sample_normal(self, relative_std=None, truncated=False,
                        sample_new=True, **kwargs) -> None:
@@ -360,7 +360,7 @@ class OpfEnv(gym.Env, abc.ABC):
                     mean, std * diff, len(mean))
                 random_values = np.clip(
                     random_values, min_values, max_values)
-            self.net[unit_type][column].loc[idxs] = random_values
+            self.net[unit_type].loc[idxs, column] = random_values
 
     def _set_simbench_state(self, step: int=None, test=False,
                             noise_factor=0.1, noise_distribution='uniform',
@@ -519,7 +519,7 @@ class OpfEnv(gym.Env, abc.ABC):
                 # Special case: Only discrete actions
                 setpoints = np.round(setpoints)
 
-            self.net[unit_type][actuator].loc[idxs] = setpoints
+            self.net[unit_type].loc[idxs, actuator] = setpoints
 
             counter += len(idxs)
 
@@ -656,7 +656,7 @@ class OpfEnv(gym.Env, abc.ABC):
         return reward
 
     def _get_obs(self, obs_keys, add_time_obs) -> np.ndarray:
-        obss = [(self.net[unit_type][column].loc[idxs].to_numpy())
+        obss = [(self.net[unit_type].loc[idxs, column].to_numpy())
                 if (unit_type != 'load' or not self.bus_wise_obs)
                 else get_bus_aggregated_obs(self.net, 'load', column, idxs)
                 for unit_type, column, idxs in obs_keys]
@@ -689,7 +689,7 @@ class OpfEnv(gym.Env, abc.ABC):
         res_prefix = 'res_' if from_results_table else ''
         action = []
         for unit_type, column, idxs in self.act_keys:
-            setpoints = net[f'{res_prefix}{unit_type}'][column].loc[idxs]
+            setpoints = net[f'{res_prefix}{unit_type}'].loc[idxs, column]
 
             # If data not taken from results table, scaling required
             if not from_results_table and 'scaling' in net[unit_type].columns:

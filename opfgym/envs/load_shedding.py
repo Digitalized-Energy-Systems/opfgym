@@ -118,10 +118,10 @@ class LoadShedding(opf_env.OpfEnv):
 
         # Manually update the points of the piece-wise linear costs for storage
         for idx in self.net.pwl_cost.index:
-            price = self.net.pwl_cost.cp1_eur_per_mw[idx]
+            price = self.net.pwl_cost.at[idx, 'cp1_eur_per_mw']
             positive_power_price = price / self.storage_efficiency
             negative_power_price = price * self.storage_efficiency
-            self.net.pwl_cost.points[idx] = [
+            self.net.pwl_cost.at[idx, 'points'] = [
                 [-1000, 0, negative_power_price],
                 [0, 1000, positive_power_price]
             ]

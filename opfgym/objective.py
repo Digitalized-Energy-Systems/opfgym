@@ -56,12 +56,12 @@ def get_powers_from_poly_cost(net, column: str) -> pd.Series:
 
 def get_piecewise_linear_costs(net) -> np.ndarray:
     powers = get_powers_from_pwl_cost(net)
-    costs = pd.Series(0, index=net.pwl_cost.index)
+    costs = pd.Series(0.0, index=net.pwl_cost.index)
     for points in zip(*net.pwl_cost.points):
         lower, higher, price = map(np.array, zip(*points))
 
         signs = np.sign(powers)
-        # Warning: Does not work if lower<0 and higher>0
+        # Warning: Does not work if lower<0 and higher>0, respectively
         same_sign_flag = (signs == np.sign(lower + higher))
         lower_abs = np.abs(lower)
         higher_abs = np.abs(higher)
