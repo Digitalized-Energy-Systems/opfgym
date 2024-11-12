@@ -26,7 +26,7 @@ class EcoDispatch(opf_env.OpfEnv):
 
     def __init__(self, simbench_network_name='1-HV-urban--0-sw', 
                  gen_scaling=1.0, load_scaling=1.5, max_price_eur_gwh=0.5,
-                 min_power=0, seed=None, *args, **kwargs):
+                 min_power=0, *args, **kwargs):
 
         # Define range from which to sample active power prices on market
         self.max_price_eur_gwh = max_price_eur_gwh
@@ -35,28 +35,28 @@ class EcoDispatch(opf_env.OpfEnv):
         # Minimal power to be considered as an actuator for the eco dispatch
         self.min_power = min_power
 
-        self.net = self._define_opf(
+        net, profiles = self._define_opf(
             simbench_network_name, gen_scaling=gen_scaling,
             load_scaling=load_scaling, *args, **kwargs)
 
         # Define the RL problem
         # See all load power values, non-controlled generators, and generator prices...
-        self.obs_keys = [('load', 'p_mw', self.net.load.index),
-                         ('load', 'q_mvar', self.net.load.index),
-                         ('poly_cost', 'cp1_eur_per_mw', self.net.poly_cost.index),
-                         ('pwl_cost', 'cp1_eur_per_mw', self.net.pwl_cost.index),
-                         ('sgen', 'p_mw', self.net.sgen.index[~self.net.sgen.controllable]),
-                         ('storage', 'p_mw', self.net.storage.index),
-                         ('storage', 'q_mvar', self.net.storage.index)]
+        obs_keys = [('load', 'p_mw', net.load.index),
+                    ('load', 'q_mvar', net.load.index),
+                    ('poly_cost', 'cp1_eur_per_mw', net.poly_cost.index),
+                    ('pwl_cost', 'cp1_eur_per_mw', net.pwl_cost.index),
+                    ('sgen', 'p_mw', net.sgen.index[~net.sgen.controllable]),
+                    ('storage', 'p_mw', net.storage.index),
+                    ('storage', 'q_mvar', net.storage.index)]
 
         # ... and control all generators' active power values
-        self.act_keys = [('sgen', 'p_mw', self.net.sgen.index[self.net.sgen.controllable]),
-                         ('gen', 'p_mw', self.net.gen.index[self.net.gen.controllable])]
+        act_keys = [('sgen', 'p_mw', net.sgen.index[net.sgen.controllable]),
+                    ('gen', 'p_mw', net.gen.index[net.gen.controllable])]
 
-        super().__init__(seed=seed, *args, **kwargs)
+        super().__init__(net, act_keys, obs_keys, profiles, *args, **kwargs)
 
     def _define_opf(self, simbench_network_name, *args, **kwargs):
-        net, self.profiles = build_simbench_net(
+        net, profiles = build_simbench_net(
             simbench_network_name, *args, **kwargs)
         # TODO: Set voltage setpoints a bit higher than 1.0 to consider voltage drop?
         net.ext_grid['vm_pu'] = 1.0
@@ -104,7 +104,7 @@ class EcoDispatch(opf_env.OpfEnv):
         net.pwl_cost['min_cp1_eur_per_mw'] = 0
         net.pwl_cost['max_cp1_eur_per_mw'] = self.max_price_eur_gwh
 
-        return net
+        return net, profiles
 
     def _sampling(self, *args, **kwargs):
         super()._sampling(*args, **kwargs)

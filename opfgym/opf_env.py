@@ -1,5 +1,4 @@
 
-import abc
 from collections.abc import Callable
 import copy
 import logging
@@ -19,47 +18,58 @@ from opfgym.util.normalization import get_normalization_params
 from opfgym.simbench.data_split import define_test_train_split
 from opfgym.simbench.time_observation import get_simbench_time_observation
 
-warnings.simplefilter('once')
+# warnings.simplefilter('once')
 
 
 class PowerFlowNotAvailable(Exception):
     pass
 
 
-
-
-class OpfEnv(gym.Env, abc.ABC):
+class OpfEnv(gym.Env):
     def __init__(self,
-                 evaluate_on='validation',
-                 steps_per_episode=1,
+                 net: pp.pandapowerNet,
+                 action_keys: tuple[tuple[str, str, np.ndarray], ...],
+                 observation_keys: tuple[tuple[str, str, np.ndarray], ...],
+                 profiles: dict[str, pd.DataFrame]=None,
+                 evaluate_on: str='validation',
+                 steps_per_episode: int=1,
                  autocorrect_prio='p_mw',
-                 pf_for_obs=None,
-                 bus_wise_obs=False,
-                 diff_objective=False,
+                 bus_wise_obs: bool=False,
+                 diff_objective: bool=False,
                  reward_function: str='summation',
                  reward_function_params: dict=None,
                  clip_reward: tuple=None,
                  reward_scaling: str=None,
                  reward_scaling_params: dict=None,
-                 remove_normal_obs=False,
-                 add_res_obs=False,
-                 add_time_obs=False,
-                 add_act_obs=False,
-                 add_mean_obs=False,
-                 train_data='simbench',
-                 test_data='simbench',
+                 remove_normal_obs: bool=False,
+                 add_res_obs: bool=False,
+                 add_time_obs: bool=False,
+                 add_act_obs: bool=False,
+                 add_mean_obs: bool=False,
+                 train_data: str='simbench',
+                 test_data: str='simbench',
                  sampling_kwargs: dict=None,
                  constraint_kwargs: dict={},
                  custom_constraints: list=None,
-                 penalty_weight=0.5,
-                 autoscale_actions=True,
-                 diff_action_step_size=None,
-                 clipped_action_penalty=0,
-                 initial_action='center',
+                 penalty_weight: float=0.5,
+                 autoscale_actions: bool=True,
+                 diff_action_step_size: float=None,
+                 clipped_action_penalty: float=0.0,
+                 initial_action: str='center',
                  power_flow_solver: Callable=None,
                  optimal_power_flow_solver: Callable=None,
-                 seed=None,
+                 seed: int=None,
                  *args, **kwargs):
+
+        self.net = net
+        self.obs_keys = observation_keys
+        self.act_keys = action_keys
+        self.profiles = profiles
+
+        if not profiles:
+            assert 'simbench' not in test_data
+            assert 'simbench' not in train_data
+            assert not add_time_obs
 
         # Define the power flow and OPF solvers (default to pandapower)
         self._run_power_flow = power_flow_solver or self.default_power_flow
@@ -153,13 +163,11 @@ class OpfEnv(gym.Env, abc.ABC):
         self.state = None  # TODO: Not implemented yet. Required only for partially observable envs
 
         # Is a powerflow calculation required to get new observations in reset?
-        self.pf_for_obs = pf_for_obs
-        if pf_for_obs is None:
-            # Automatic checking
-            for unit_type, _, _ in self.obs_keys:
-                if 'res_' in unit_type:
-                    self.pf_for_obs = True
-                    break
+        self.pf_for_obs = False
+        for unit_type, _, _ in self.obs_keys:
+            if 'res_' in unit_type:
+                self.pf_for_obs = True
+                break
 
         self.diff_objective = diff_objective
         if diff_objective:
@@ -256,7 +264,7 @@ class OpfEnv(gym.Env, abc.ABC):
         self._apply_actions(act)
 
         if self.pf_for_obs is True:
-            success = self.run_power_flow()
+            self.run_power_flow()
             if not self.power_flow_available:
                 logging.warning(
                     'Failed powerflow calculcation in reset. Try again!')

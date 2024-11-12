@@ -108,25 +108,25 @@ More details can be found in :ref:`Create Custom Environments`.
     class CustomEnv(OpfEnv):
         def __init__(self, **kwargs):
 
-            self.net, self.profiles = self._define_opf()
+            net, profiles = self._define_opf()
 
             # Define the observation space by providing the keys to the 
             # respective pandapower tables and columns to observe
             # (automatically transformed into a gymnasium space)
-            self.obs_keys = (
+            obs_keys = (
                 # Observe all loads active and reactive power
-                ('load', 'p_mw', self.net.load.index),
-                ('load', 'q_mvar', self.net.load.index),
+                ('load', 'p_mw', net.load.index),
+                ('load', 'q_mvar', net.load.index),
                 # The structure is always (unit_type, column_name, unit_indexes)
             )
 
             # Define the action space in the same way
-            self.act_keys = (
+            act_keys = (
                 # Control all sgens' active power
-                ('sgen', 'p_mw', self.net.sgen.index),
+                ('sgen', 'p_mw', net.sgen.index),
             )
 
-            super().__init__(**kwargs)
+            super().__init__(net, act_keys, obs_keys, profiles=profiles, **kwargs)
 
         def _define_opf(self):
             """ Define the OPF problem in a pandapower net. """

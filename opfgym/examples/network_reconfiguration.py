@@ -19,25 +19,26 @@ class NetworkReconfiguration(opf_env.OpfEnv):
                  *args, **kwargs):
         self.controllable_switch_idxs = np.array(controllable_switch_idxs)
 
-        self.net = self._define_opf(
+        net, profiles = self._define_opf(
             simbench_network_name, *args, **kwargs)
 
         # Define the RL problem
         # Observe all load power values, sgen active power
-        self.obs_keys = [
-            ('sgen', 'p_mw', self.net.sgen.index),
-            ('load', 'p_mw', self.net.load.index),
-            ('load', 'q_mvar', self.net.load.index),
+        obs_keys = [
+            ('sgen', 'p_mw', net.sgen.index),
+            ('load', 'p_mw', net.load.index),
+            ('load', 'q_mvar', net.load.index),
         ]
 
         # ... and control some selected switches in the system
-        self.act_keys = [('switch', 'closed', self.net.switch.index[self.net.switch.controllable]),
-                         ('trafo', 'tap_pos', self.net.trafo.index[self.net.trafo.controllable])]
+        act_keys = [('switch', 'closed', net.switch.index[net.switch.controllable]),
+                    ('trafo', 'tap_pos', net.trafo.index[net.trafo.controllable])]
 
-        super().__init__(optimal_power_flow_solver=False, *args, **kwargs)
+        super().__init__(net, act_keys, obs_keys, profiles,
+                         optimal_power_flow_solver=False, *args, **kwargs)
 
     def _define_opf(self, simbench_network_name, *args, **kwargs):
-        net, self.profiles = build_simbench_net(
+        net, profiles = build_simbench_net(
             simbench_network_name, *args, **kwargs)
 
         # Add additional column to the network that states which switches are controllable
@@ -66,7 +67,7 @@ class NetworkReconfiguration(opf_env.OpfEnv):
         for idx in net.ext_grid.index:
             pp.create_poly_cost(net, idx, 'ext_grid', cp1_eur_per_mw=1)
 
-        return net
+        return net, profiles
 
 
 if __name__ == '__main__':

@@ -39,27 +39,27 @@ class LoadShedding(opf_env.OpfEnv):
         self.min_storage_power = min_storage_power
         self.max_p_exchange = max_p_exchange
         self.storage_efficiency = storage_efficiency
-        self.net = self._define_opf(
+        net, profiles = self._define_opf(
             simbench_network_name, gen_scaling=gen_scaling,
             load_scaling=load_scaling, *args, **kwargs)
 
         # Define the RL problem
         # See all load power values, sgen max active power...
-        self.obs_keys = [('sgen', 'p_mw', self.net.sgen.index),
-                         ('load', 'p_mw', self.net.load.index),
-                         ('load', 'q_mvar', self.net.load.index),
-                         ('storage', 'p_mw', self.net.storage.index[~self.net.storage.controllable]),
-                         ('poly_cost', 'cp1_eur_per_mw', self.net.poly_cost.index),
-                         ('pwl_cost', 'cp1_eur_per_mw', self.net.pwl_cost.index)]
+        obs_keys = [('sgen', 'p_mw', net.sgen.index),
+                    ('load', 'p_mw', net.load.index),
+                    ('load', 'q_mvar', net.load.index),
+                    ('storage', 'p_mw', net.storage.index[~net.storage.controllable]),
+                    ('poly_cost', 'cp1_eur_per_mw', net.poly_cost.index),
+                    ('pwl_cost', 'cp1_eur_per_mw', net.pwl_cost.index)]
 
         # Control active power of loads and storages
-        self.act_keys = [('load', 'p_mw', self.net.load.index[self.net.load.controllable]),
-                         ('storage', 'p_mw', self.net.storage.index[self.net.storage.controllable])]
+        act_keys = [('load', 'p_mw', net.load.index[net.load.controllable]),
+                    ('storage', 'p_mw', net.storage.index[net.storage.controllable])]
 
-        super().__init__(*args, **kwargs)
+        super().__init__(net, act_keys, obs_keys, profiles, *args, **kwargs)
 
     def _define_opf(self, simbench_network_name, *args, **kwargs):
-        net, self.profiles = build_simbench_net(
+        net, profiles = build_simbench_net(
             simbench_network_name, *args, **kwargs)
 
         net.load['controllable'] = net.load.max_max_p_mw > self.min_load_power
@@ -103,7 +103,7 @@ class LoadShedding(opf_env.OpfEnv):
 
         net.ext_grid['vm_pu'] = 1.0
 
-        return net
+        return net, profiles
 
     def _sampling(self, *args, **kwargs):
         super()._sampling(*args, **kwargs)

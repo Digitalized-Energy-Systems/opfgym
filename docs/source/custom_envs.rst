@@ -8,28 +8,28 @@ For a full example, refer to :ref:`Define a custom RL-OPF environment`.
 
 Class Initialization
 --------------------
-In the :code:`__init__` method, multiple attributes have to be set to define 
-the OPF problem before calling :code:`super().__init__()`. 
+To define an *OPF-Gym* environment, multiple attributes have to be provided to
+the :meth:`super().__init__()`. 
 The relevant attributes are:
 
-* :code:`self.net` - The pandapower network object, including constraints.
-* :code:`self.obs_keys` - The observation space definition.
-* :code:`self.act_keys` - The action space definition.
+* :code:`net` - The pandapower network object, including constraints and costs.
+* :code:`obs_keys` - The observation space definition.
+* :code:`act_keys` - The action space definition.
 
 .. code-block:: python
 
     from opfgym import OpfEnv
 
     class CustomEnv(OpfEnv):
-        def __init__(self):
+        def __init__(self, **kwargs):
             # Define the pandapower network
-            self.net = ...
-            # Define the observation space
-            self.obs_keys = ...
-            # Define the action space
-            self.act_keys = ...
+            net = ...
+            # Define observation space (which pandapower cells to observe)
+            obs_keys = ...
+            # Define action space (which pandapower cells to manipulate)
+            act_keys = ...
 
-            super().__init__()
+            super().__init__(net, act_keys, obs_keys, **kwargs)
 
 Pandapower network definition
 -----------------------------

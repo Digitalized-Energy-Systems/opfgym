@@ -15,26 +15,26 @@ class PartiallyObservable(opf_env.OpfEnv):
                  observable_loads=np.arange(10),  # First 10 loads are observable
                  *args, **kwargs):
 
-        self.net = self._define_opf(
+        net, profiles = self._define_opf(
             simbench_network_name, *args, **kwargs)
 
         if isinstance(observable_loads, str) and observable_loads == 'all':
-            observable_loads = self.net.load.index
+            observable_loads = net.load.index
 
         # Define the RL problem
         # Observe all load power values, sgen active power
-        self.obs_keys = [
+        obs_keys = [
             ('load', 'p_mw', observable_loads),  # Only observe selected loads
             ('load', 'q_mvar', observable_loads),
         ]
 
         # ... and control some selected switches in the system
-        self.act_keys = [('sgen', 'p_mw', self.net.sgen.index)]
+        act_keys = [('sgen', 'p_mw', net.sgen.index)]
 
-        super().__init__(*args, **kwargs)
+        super().__init__(net, act_keys, obs_keys, profiles, *args, **kwargs)
 
     def _define_opf(self, simbench_network_name, *args, **kwargs):
-        net, self.profiles = build_simbench_net(
+        net, profiles = build_simbench_net(
             simbench_network_name, *args, **kwargs)
 
         net.sgen['controllable'] = True
@@ -51,7 +51,7 @@ class PartiallyObservable(opf_env.OpfEnv):
         for idx in net.ext_grid.index:
             pp.create_poly_cost(net, idx, 'ext_grid', cp1_eur_per_mw=1)
 
-        return net
+        return net, profiles
 
 
 if __name__ == '__main__':
