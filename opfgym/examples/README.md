@@ -30,5 +30,7 @@ N-1 case of line outages.
 wrapper to create a simple stochastic OPF by adding noise to the observations. 
 * `ConstraintSatisfaction`: Example that demonstrates that the definition of 
 constraint satisfaction problems without objective function is possible as well.
+* `AddCustomConstraint`: Example that demonstrates how to define and add a 
+custom constraint, in this case, bounded generators' apparent power. 
 
 To import the example environments, use `from opfgym.examples import <EnvironmentName>`.
