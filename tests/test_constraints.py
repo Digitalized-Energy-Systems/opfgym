@@ -126,3 +126,22 @@ def test_create_default_constraints(net):
     assert constraints.ExtGridReactivePowerConstraint not in [type(c) for c in extracted_constraints]
     assert constraints.ExtGridActivePowerConstraint not in [type(c) for c in extracted_constraints]
     assert constraints.VoltageConstraint not in [type(c) for c in extracted_constraints]
+
+
+def test_custom_constraint_def(net):
+    get_values = lambda net: net.res_sgen.p_mw / 2
+    get_boundaries = lambda net: {'min': 0, 'max': net.sgen.max_p_mw}
+
+    custom_constraint = constraints.Constraint(
+        'sgen', 'p_mw', get_values=get_values, get_boundaries=get_boundaries)
+
+    net['sgen']['min_p_mw'] = 0.8  # Should be ignored (see get_boundaries)
+    net['sgen']['max_p_mw'] = 1
+    net.res_sgen['p_mw'] = 1.5  # Should be interpreted as 1.5/2 = 0.75
+    result = custom_constraint(net)
+    assert result['valid']
+
+    net.res_sgen['p_mw'] = 3.0
+    result = custom_constraint(net)
+    assert not result['valid']
+    assert result['violation'] == 0.5  # 3/2 - 1

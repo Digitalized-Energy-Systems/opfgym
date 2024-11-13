@@ -9,8 +9,11 @@ Also, provides a function to extract the default constraints from a pandapower
 network.
 """
 
+from collections.abc import Callable
+
 import numpy as np
 import pandas as pd
+import pandapower as pp
 
 
 class Constraint():
@@ -23,7 +26,9 @@ class Constraint():
 
     Attributes:
         unit_type: Which pandapower table to look at for constraint data.
-        values_column : Which column in the previous table?
+        values_column: Which column in the previous table?
+        get_values: Function to extract the values from the pandapower network.
+            (def get_values(net) -> np.ndarray)
         only_worst_case_violations: Only compute the worst-case violations? (instead of the sum of all)
         auto_scale_violation: Scale violations to be of similar magnitude?
         scale_bounded_values: Apply the scaling column to the bounded values? Required if the constraint is scaled as well, for example, for apparent power s_mva)
@@ -34,6 +39,8 @@ class Constraint():
     def __init__(self,
                  unit_type: str,
                  values_column: str,
+                 get_values: Callable[[pp.pandapowerNet], pd.Series]=None,
+                 get_boundaries: Callable[[pp.pandapowerNet], dict[str, pd.Series]]=None,
                  only_worst_case_violations: bool=False,
                  autoscale_violation: bool=True,
                  scale_bounded_values: bool=False,
@@ -50,10 +57,15 @@ class Constraint():
         self.penalty_power = penalty_power
         self.violation_count_penalty = violation_count_penalty
 
-    def __call__(self, net) -> dict:
+        if get_values:
+            self.get_bounded_values = get_values
+        if get_boundaries:
+            self.get_boundaries = get_boundaries
+
+    def __call__(self, net: pp.pandapowerNet) -> dict:
         return self.get_violation_metrics(net)
 
-    def get_violation_metrics(self, net) -> dict:
+    def get_violation_metrics(self, net: pp.pandapowerNet) -> dict:
         values = self.get_bounded_values(net)
         boundaries = self.get_boundaries(net)
 
@@ -73,21 +85,21 @@ class Constraint():
 
         return {'valid': valid, 'violation': violation, 'penalty': penalty}
 
-    def get_bounded_values(self, net):
+    def get_bounded_values(self, net: pp.pandapowerNet) -> pd.Series:
         return net['res_' + self.unit_type][self.values_column]
 
-    def get_boundaries(self, net):
+    def get_boundaries(self, net) -> dict[str, pd.Series]:
         return {
             min_or_max: self.get_single_boundary(net, min_or_max)
             for min_or_max in ('min', 'max')
             if f'{min_or_max}_{self.values_column}' in net[self.unit_type]
         }
 
-    def get_single_boundary(self, net, min_or_max):
+    def get_single_boundary(self, net, min_or_max: str) -> pd.Series:
         boundary = net[self.unit_type][f'{min_or_max}_{self.values_column}']
         return self.scale_boundary(net, boundary)
 
-    def scale_boundary(self, net, boundary):
+    def scale_boundary(self, net, boundary) -> pd.Series:
         if self.scale_bounded_values or ('scaling' in net[self.unit_type]
                 and self.values_column in ('p_mw', 'q_mvar')):
             return boundary * net[self.unit_type].scaling
