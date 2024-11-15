@@ -18,8 +18,6 @@ from opfgym.util.normalization import get_normalization_params
 from opfgym.simbench.data_split import define_test_train_split
 from opfgym.simbench.time_observation import get_simbench_time_observation
 
-# warnings.simplefilter('once')
-
 
 class PowerFlowNotAvailable(Exception):
     pass
@@ -56,10 +54,10 @@ class OpfEnv(gym.Env):
                  diff_action_step_size: float=None,
                  clipped_action_penalty: float=0.0,
                  initial_action: str='center',
-                 power_flow_solver: Callable=None,
-                 optimal_power_flow_solver: Callable=None,
+                 power_flow_solver: Callable[[pp.pandapowerNet], None]=None,
+                 optimal_power_flow_solver: Callable[[pp.pandapowerNet], None]=None,
                  seed: int=None,
-                 *args, **kwargs):
+                 **kwargs):
 
         self.net = net
         self.obs_keys = observation_keys
@@ -849,8 +847,9 @@ def get_obs_space(net, obs_keys: list, add_time_obs: bool,
             h = [sum(h[net[unit_type].bus == bus]) for bus in buses]
 
         for _ in range(last_n_obs):
-            lows.append(l)
-            highs.append(h)
+            if len(l) > 0 and len(l) == len(h):
+                lows.append(l)
+                highs.append(h)
 
     if add_mean_obs:
         # Add mean values of each category as additional observations
