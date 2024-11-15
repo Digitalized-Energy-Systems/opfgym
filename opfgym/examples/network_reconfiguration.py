@@ -42,8 +42,8 @@ class NetworkReconfiguration(opf_env.OpfEnv):
             simbench_network_name, *args, **kwargs)
 
         # Add additional column to the network that states which switches are controllable
-        net.switch['controllable'] = False
-        net.switch['controllable'].loc[self.controllable_switch_idxs] = True
+        net.switch.loc[:, 'controllable'] = False
+        net.switch.loc[self.controllable_switch_idxs, 'controllable'] = True
         # Define the maximum and minimum values of the switches (action constraints)
         # In the current state
         net.switch['min_closed'] = 0
