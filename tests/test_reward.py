@@ -1,9 +1,8 @@
 
 import pytest
 
-import numpy as np
-
 import opfgym.reward as reward
+import opfgym.examples as examples
 
 
 def test_reward_class():
@@ -73,7 +72,15 @@ def test_replacement_reward():
 def test_parameterized_reward():
     reward_fct = reward.Parameterized(valid_reward=0.7,
                                       invalid_penalty=0.3,
-                                      objective_share=0.5,
+                                      invalid_objective_share=0.5,
                                       penalty_weight=None)
     assert reward_fct(penalty=0.0, objective=0.2, valid=True) == 0.2 + 0.7
     assert reward_fct(penalty=-0.3, objective=0.2, valid=False) == -0.3 - 0.3 + 0.2/2
+
+def test_estimate_reward_distribution():
+    env = examples.NonSimbenchNet()
+    distribution_params = reward.estimate_reward_distribution(env, num_samples=3)
+    assert isinstance(distribution_params, dict)
+    assert 'min_objective' in distribution_params
+    assert isinstance(distribution_params['min_objective'], (int, float))
+    assert distribution_params['min_objective'] < distribution_params['max_objective']

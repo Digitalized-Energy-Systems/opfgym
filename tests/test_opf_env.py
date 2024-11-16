@@ -1,4 +1,6 @@
+
 import numpy as np
+import pandapower as pp
 import pytest
 
 from opfgym.envs import MaxRenewable
@@ -6,6 +8,26 @@ import opfgym.opf_env as opf_env
 
 
 dummy_env = MaxRenewable()
+
+def test_base_class_API():
+    net = pp.networks.simple_four_bus_system()
+
+    # Define observation space
+    obs_keys = [('load', 'p_mw', net.load.index)]
+    net.load.loc[:, 'min_min_p_mw'] = 0
+    net.load.loc[:, 'max_max_p_mw'] = 3
+
+    # Define action space
+    act_keys = [('load', 'q_mvar', net.load.index)]
+    net.load.loc[:, 'min_q_mvar'] = -1
+    net.load.loc[:, 'max_q_mvar'] = 1
+
+    env = opf_env.OpfEnv(net, act_keys, obs_keys, 
+                         test_data='full_uniform', train_data='full_uniform',
+                         seed=42)
+    env.reset()
+    env.step(env.action_space.sample())
+
 
 def test_obs_space_def():
     dummy_env.reset()

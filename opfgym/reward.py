@@ -3,8 +3,6 @@ import abc
 
 import numpy as np
 
-from opfgym import OpfEnv
-
 
 class RewardFunction(abc.ABC):
     def __init__(self,
@@ -12,7 +10,7 @@ class RewardFunction(abc.ABC):
                  clip_range: tuple[float, float] = None,
                  reward_scaling: str = None,
                  reward_scaling_params: dict = None,
-                 env: OpfEnv = None):
+                 env = None):
         self.penalty_weight = penalty_weight
         self.clip_range = clip_range
 
@@ -21,43 +19,42 @@ class RewardFunction(abc.ABC):
     def prepare_reward_scaling(self,
                                reward_scaling: str,
                                reward_scaling_params: dict,
-                               env: OpfEnv) -> None:
+                               env) -> None:
         """ Prepare the reward scaling parameters for later use. """
         reward_scaling_params = reward_scaling_params or {}
         if reward_scaling_params == 'auto' or (
                 'num_samples' in reward_scaling_params) or (
                 not reward_scaling_params and reward_scaling):
-            params = find_reward_distribution(env, **reward_scaling_params)
+            scaling_params = estimate_reward_distribution(env, **reward_scaling_params)
         else:
-            params = reward_scaling_params
-
-        # self.normalization_params = params
+            scaling_params = reward_scaling_params
 
         if not reward_scaling:
-            self.scaling_params = None
+            scaling_params.update({'penalty_factor': 1, 'penalty_bias': 0,
+                                   'objective_factor': 1, 'objective_bias': 0})
         elif reward_scaling == 'minmax11':
-            self.scaling_params = calculate_minmax_11_params(**params)
+            scaling_params.update(calculate_minmax_11_params(**scaling_params))
         elif reward_scaling == 'minmax01':
-            self.scaling_params = calculate_minmax_01_params(**params)
+            scaling_params.update(calculate_minmax_01_params(**scaling_params))
         elif reward_scaling == 'normalization':
-            self.scaling_params = calculate_normalization_params(**params)
+            scaling_params.update(calculate_normalization_params(**scaling_params))
         else:
             raise NotImplementedError('This reward scaling does not exist!')
 
         # Error handling if there were no constraint violations
-        if self.scaling_params is not None:
-            if np.isnan(self.scaling_params['penalty_bias']):
-                self.scaling_params['penalty_bias'] = 0
-            if np.isinf(self.scaling_params['penalty_factor']):
-                self.scaling_params['penalty_factor'] = 1
+        if np.isnan(scaling_params['penalty_bias']):
+            scaling_params['penalty_bias'] = 0
+        if np.isinf(scaling_params['penalty_factor']):
+            scaling_params['penalty_factor'] = 1
+
+        self.scaling_params = scaling_params
 
     def __call__(self, objective: float, penalty: float, valid: bool) -> float:
         objective = self.adjust_objective(objective, valid)
         penalty = self.adjust_penalty(penalty, valid)
 
-        if self.scaling_params is not None:
-            objective = self.scale_objective(objective)
-            penalty = self.scale_penalty(penalty)
+        objective = self.scale_objective(objective)
+        penalty = self.scale_penalty(penalty)
 
         reward = self.compute_total_reward(objective, penalty)
 
@@ -83,6 +80,13 @@ class RewardFunction(abc.ABC):
         penalty *= self.scaling_params['penalty_factor']
         penalty += self.scaling_params['penalty_bias']
         return penalty
+
+    def calculate_cost(self, penalty, valid) -> float:
+        """ For safe RL algorithms, we need to compute a cost value > 0.
+        Therefore, it is important to prevent any sign change. """
+        if valid:
+            return 0.0
+        return abs(penalty * self.scaling_params['penalty_factor'])
 
     @abc.abstractmethod
     def adjust_penalty(self, penalty: float, valid: bool) -> float:
@@ -154,7 +158,7 @@ def calculate_minmax_11_params(
     return params
 
 
-def find_reward_distribution(env, num_samples: int=3000) -> dict:
+def estimate_reward_distribution(env, num_samples: int=3000) -> dict:
     """ Get normalization parameters for scaling down the reward. """
     objectives = []
     penalties = []
@@ -209,7 +213,12 @@ class Replacement(RewardFunction):
     https://www.sciencedirect.com/science/article/pii/S2666546824000764"""
     def __init__(self, valid_reward: float = 1.0, **kwargs):
         super().__init__(**kwargs)
-        self.valid_reward = valid_reward
+
+        if isinstance(valid_reward, str):
+            self.valid_reward = get_valid_reward_from_heuristic(
+                valid_reward, self.scaling_params)
+        else:
+            self.valid_reward = valid_reward
 
     def adjust_penalty(self, penalty, valid) -> float:
         return penalty
@@ -227,8 +236,8 @@ class Parameterized(RewardFunction):
     intermediates in between the two to find the best combination.
 
     Example:
-    If valid_reward==0 & objective_share==1: Summation reward
-    If valid_reward>0 & objective_share==0: Replacement reward
+    If valid_reward==0 & invalid_objective_share==1: Summation reward
+    If valid_reward>0 & invalid_objective_share==0: Replacement reward
 
     The range in between represents weighted combinations of both
     The invalid_penalty is added to allow for inverse replacement method
@@ -236,12 +245,26 @@ class Parameterized(RewardFunction):
     def __init__(self,
                  valid_reward: float = 0.0,
                  invalid_penalty: float = 0.5,
-                 objective_share: float = 1.0,
+                 invalid_objective_share: float = 1.0,
                  **kwargs):
         super().__init__(**kwargs)
-        self.valid_reward = valid_reward
-        self.invalid_penalty = invalid_penalty
-        self.objective_share = objective_share
+
+        if isinstance(valid_reward, str):
+            self.valid_reward = get_reward_offset_from_heuristic(
+                valid_reward, self.scaling_params)
+        else:
+            assert valid_reward >= 0, 'Valid reward must be >= 0'
+            self.valid_reward = valid_reward
+
+        if isinstance(invalid_penalty, str):
+            self.invalid_penalty = get_reward_offset_from_heuristic(
+                invalid_penalty, self.scaling_params)
+        else:
+            assert invalid_penalty >= 0, 'Invalid penalty must be >= 0'
+            self.invalid_penalty = invalid_penalty
+
+        assert 0 <= invalid_objective_share <= 1, 'Objective share must be in [0, 1]'
+        self.invalid_objective_share = invalid_objective_share
 
     def adjust_penalty(self, penalty, valid) -> float:
         if valid:
@@ -252,16 +275,39 @@ class Parameterized(RewardFunction):
         if not valid:
             # Make objective part of the reward function smaller to encourage
             # constraint satisfaction first
-            objective *= self.objective_share
+            objective *= self.invalid_objective_share
         return objective
+
+    def calculate_cost(self, penalty, valid) -> float:
+        """ Overwrite base class method to consider invalid_penalty. """
+        if valid:
+            return 0.0
+        return super().calculate_cost(penalty, valid) + self.invalid_penalty
 
 
 class OnlyObjective(RewardFunction):
     """ Only take the objective into account, ignore the penalty. For example,
-    relevant for Safe RL algorithms, where the reward is not responsible for 
-    enforcing constraints. """
+    useful for Safe RL algorithms, where the reward is not responsible for
+    enforcing constraints, which means that the penalty part of the reward 
+    should zero. """
+    def __init__(self, **kwargs):
+        super().__init__(penalty_weight=0.0, **kwargs)
+
     def adjust_penalty(self, penalty, valid) -> float:
         return 0.0
 
     def adjust_objective(self, objective, valid) -> float:
         return objective
+
+
+def get_reward_offset_from_heuristic(variant: str, scaling_params: dict) -> float:
+    """ Heuristic for the valid reward (especially relevant without scaling).
+    Compare https://www.sciencedirect.com/science/article/pii/S2666546824000764
+    """
+    if offset == 'worst':
+        offset = scaling_params['min_obj']
+    elif offset == 'mean':
+        offset = scaling_params['mean_obj']
+    offset *= scaling_params['objective_factor']
+    offset += scaling_params['objective_bias']
+    return offset

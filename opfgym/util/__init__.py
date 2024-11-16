@@ -1,2 +1,2 @@
 from .labeled_data import create_labeled_dataset
-from .normalization import get_normalization_params
+from .import_class import load_class_from_module
