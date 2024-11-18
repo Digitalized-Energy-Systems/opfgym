@@ -12,6 +12,8 @@ from scipy import stats
 from typing import Tuple
 
 import opfgym
+import opfgym.util
+import opfgym.objective
 from opfgym.simbench.data_split import define_test_train_split
 from opfgym.simbench.time_observation import get_simbench_time_observation
 
@@ -138,7 +140,7 @@ class OpfEnv(gym.Env):
         elif isinstance(reward_function, str):
             # Load by string (e.g. 'Summation' or 'summation')
             reward_class = opfgym.util.load_class_from_module(
-                reward_function, '.reward')
+                reward_function, 'opfgym.reward')
             self.reward_function = reward_class(**reward_function_params)
         elif isinstance(reward_function, opfgym.RewardFunction):
             # User-defined reward function
