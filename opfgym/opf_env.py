@@ -2,6 +2,7 @@
 from collections.abc import Callable
 import copy
 import logging
+import inspect
 
 import gymnasium as gym
 import numpy as np
@@ -32,7 +33,6 @@ class OpfEnv(gym.Env):
                  steps_per_episode: int=1,
                  autocorrect_prio='p_mw',
                  bus_wise_obs: bool=False,
-                 diff_objective: bool=False,
                  reward_function: opfgym.RewardFunction=None,
                  reward_function_params: dict=None,
                  remove_normal_obs: bool=False,
@@ -49,6 +49,7 @@ class OpfEnv(gym.Env):
                  diff_action_step_size: float=None,
                  clipped_action_penalty: float=0.0,
                  initial_action: str='center',
+                 objective_function: Callable[[pp.pandapowerNet], np.ndarray | float]=None,
                  power_flow_solver: Callable[[pp.pandapowerNet], None]=None,
                  optimal_power_flow_solver: Callable[[pp.pandapowerNet], None]=None,
                  seed: int=None,
@@ -73,6 +74,13 @@ class OpfEnv(gym.Env):
             self._run_optimal_power_flow = raise_opf_not_converged
         else:
             self._run_optimal_power_flow = optimal_power_flow_solver
+
+        # Define objective function
+        if objective_function is None:
+            self.objective_function = opfgym.objective.get_pandapower_costs
+        else:
+            assert_only_net_in_signature(objective_function)
+            self.objective_function = objective_function
 
         self.evaluate_on = evaluate_on
         self.train_data = train_data
@@ -150,11 +158,6 @@ class OpfEnv(gym.Env):
                 self.pf_for_obs = True
                 break
 
-        self.diff_objective = diff_objective
-        if diff_objective:
-            # An initial power flow is required to compute the initial objective
-            self.pf_for_obs = True
-
         # Define data distribution for training and testing
         self.test_steps, self.validation_steps, self.train_steps = define_test_train_split(**kwargs)
 
@@ -180,7 +183,6 @@ class OpfEnv(gym.Env):
         elif isinstance(reward_function, opfgym.RewardFunction):
             # User-defined reward function
             self.reward_function = reward_function
-
 
     def reset(self, seed=None, options=None) -> tuple:
         super().reset(seed=seed)
@@ -211,8 +213,6 @@ class OpfEnv(gym.Env):
                 logging.warning(
                     'Failed powerflow calculcation in reset. Try again!')
                 return self.reset()
-
-            self.initial_obj = self.calculate_objective(base_objective=True)
 
         return self._get_obs(self.obs_keys, self.add_time_obs), copy.deepcopy(self.info)
 
@@ -501,24 +501,15 @@ class OpfEnv(gym.Env):
 
         return correction
 
-    def calculate_objective(self, net=None, base_objective=True) -> np.ndarray:
-        """ Serves as a wrapper around calculating the objective function
-        and adds some additional functionality. """
-        net = net if net else self.net
-        if base_objective or not self.diff_objective:
-            return self.calculate_base_objective(net)
-        else:
-            return self.calculate_base_objective(net) - self.initial_obj
-
-    def calculate_base_objective(self, net) -> np.ndarray:
+    def calculate_objective(self, net=None) -> np.ndarray:
         """ Can be overwritten by the user. The default is to compute the
         objective function that is defined in pandapower. This method should
         return the objective function as array that is used as basis for the
         reward calculation. """
-        return -opfgym.objective.get_pandapower_costs(net)
+        return -self.objective_function(net or self.net)
 
     def calculate_violations(self, net=None) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        net = net if net else self.net
+        net = net or self.net
         valids = []
         violations = []
         penalties = []
@@ -532,7 +523,7 @@ class OpfEnv(gym.Env):
 
     def calculate_reward(self) -> float:
         """ Combine objective function and the penalties together. """
-        objective = np.sum(self.calculate_objective(base_objective=False))
+        objective = np.sum(self.calculate_objective())
         valids, violations, penalties = self.calculate_violations()
 
         self.info['valids'] = np.array(valids)
@@ -577,7 +568,7 @@ class OpfEnv(gym.Env):
         # Attention: These are not necessarily the actions of the RL agent
         # because some re-scaling might have happened!
         # These are the actions from the original action space [0, 1]
-        net = net if net else self.net
+        net = net or self.net
         res_prefix = 'res_' if from_results_table else ''
         action = []
         for unit_type, column, idxs in self.act_keys:
@@ -616,11 +607,11 @@ class OpfEnv(gym.Env):
 
     def get_objective(self) -> float:
         self.ensure_power_flow_available()
-        return sum(self.calculate_base_objective(self.net))
+        return sum(self.calculate_objective(self.net))
 
     def get_optimal_objective(self) -> float:
-        self.ensure_optimal_power_flow_available
-        return sum(self.calculate_base_objective(self.optimal_net))
+        self.ensure_optimal_power_flow_available()
+        return sum(self.calculate_objective(self.optimal_net))
 
     def run_power_flow(self, **kwargs):
         """ Wrapper around power flow for error handling and to track success. 
@@ -757,6 +748,13 @@ def get_bus_aggregated_obs(net, unit_type, column, idxs) -> np.ndarray:
     state space. """
     df = net[unit_type].iloc[idxs]
     return df.groupby(['bus'])[column].sum().to_numpy()
+
+
+def assert_only_net_in_signature(function):
+    """ Ensure that the function only takes a pandapower net as argument. """
+    signature = inspect.signature(function)
+    message = 'Function must only take a pandapower net as argument!'
+    assert list(signature.parameters.keys()) == ['net'], message
 
 
 def raise_opf_not_converged(net, **kwargs):
