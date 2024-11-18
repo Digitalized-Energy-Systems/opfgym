@@ -14,7 +14,7 @@ from opfgym import opf_env
 from opfgym.simbench.build_simbench_net import build_simbench_net
 
 
-def custom_objective_function(net):
+def custom_objective_function(net) -> np.array:
     """ Use quadratic voltage deviation from 1.0 pu as objective."""
     return (net.res_bus.vm_pu - 1)**2
 
