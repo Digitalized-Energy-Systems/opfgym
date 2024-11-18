@@ -31,7 +31,6 @@ class OpfEnv(gym.Env):
                  profiles: dict[str, pd.DataFrame]=None,
                  evaluate_on: str='validation',
                  steps_per_episode: int=1,
-                 autocorrect_prio='p_mw',
                  bus_wise_obs: bool=False,
                  reward_function: opfgym.RewardFunction=None,
                  reward_function_params: dict=None,
@@ -140,7 +139,6 @@ class OpfEnv(gym.Env):
         self.action_space = gym.spaces.Box(0, 1, shape=(n_actions,), seed=seed)
 
         # Action space details
-        self.priority = autocorrect_prio
         self.autoscale_actions = autoscale_actions
         self.diff_action_step_size = diff_action_step_size
         self.clipped_action_penalty = clipped_action_penalty
@@ -473,33 +471,11 @@ class OpfEnv(gym.Env):
 
             counter += len(idxs)
 
-        # TODO: Not really relevant if active/reactive not optimized together
-        # self._autocorrect_apparent_power(self.priority)
-
         # Did the action need to be corrected to be in bounds?
         mean_correction = np.mean(abs(
             self.get_current_actions(from_results_table=False) - action))
 
         return mean_correction
-
-    def _autocorrect_apparent_power(self, priority='p_mw') -> float:
-        """ Autocorrect to maximum apparent power if necessary. Relevant for
-        sgens, loads, and storages """
-        not_prio = 'p_mw' if priority == 'q_mvar' else 'q_mvar'
-        correction = 0
-        for unit_type in ('sgen', 'load', 'storage'):
-            df = self.net[unit_type]
-            if 'max_s_mva' in df.columns:
-                s_mva2 = df.max_s_mva.to_numpy() ** 2
-                values2 = (df[priority] * df.scaling).to_numpy() ** 2
-                # Make sure to prevent negative values for sqare root
-                max_values = np.maximum(s_mva2 - values2, 0)**0.5 / df.scaling
-                # Reduce non-priority power setpoints
-                new_values = np.sign(df[not_prio]) * np.minimum(df[not_prio].abs(), max_values)
-                correction += (self.net[unit_type][not_prio] - new_values).abs().sum()
-                self.net[unit_type][not_prio] = new_values
-
-        return correction
 
     def calculate_objective(self, net=None) -> np.ndarray:
         """ Can be overwritten by the user. The default is to compute the
