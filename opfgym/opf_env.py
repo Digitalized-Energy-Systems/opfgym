@@ -131,29 +131,6 @@ class OpfEnv(gym.Env):
         n_actions = sum([len(idxs) for _, _, idxs in self.act_keys])
         self.action_space = gym.spaces.Box(0, 1, shape=(n_actions,), seed=seed)
 
-        # Define reward function
-        reward_function_params = reward_function_params or {}
-        if reward_function is None:
-            # Default reward
-            self.reward_function = opfgym.reward.Summation(
-                env=self, **reward_function_params)
-        elif isinstance(reward_function, str):
-            # Load by string (e.g. 'Summation' or 'summation')
-            reward_class = opfgym.util.load_class_from_module(
-                reward_function, 'opfgym.reward')
-            self.reward_function = reward_class(
-                env=self, **reward_function_params)
-        elif isinstance(reward_function, opfgym.RewardFunction):
-            # User-defined reward function
-            self.reward_function = reward_function
-
-        # Constraints
-        if custom_constraints is None:
-            self.constraints = opfgym.constraints.create_default_constraints(
-                self.net, constraint_kwargs)
-        else:
-            self.constraints = custom_constraints
-
         # Action space details
         self.priority = autocorrect_prio
         self.autoscale_actions = autoscale_actions
@@ -178,7 +155,32 @@ class OpfEnv(gym.Env):
             # An initial power flow is required to compute the initial objective
             self.pf_for_obs = True
 
+        # Define data distribution for training and testing
         self.test_steps, self.validation_steps, self.train_steps = define_test_train_split(**kwargs)
+
+        # Constraints
+        if custom_constraints is None:
+            self.constraints = opfgym.constraints.create_default_constraints(
+                self.net, constraint_kwargs)
+        else:
+            self.constraints = custom_constraints
+
+        # Define reward function
+        reward_function_params = reward_function_params or {}
+        if reward_function is None:
+            # Default reward
+            self.reward_function = opfgym.reward.Summation(
+                env=self, **reward_function_params)
+        elif isinstance(reward_function, str):
+            # Load by string (e.g. 'Summation' or 'summation')
+            reward_class = opfgym.util.load_class_from_module(
+                reward_function, 'opfgym.reward')
+            self.reward_function = reward_class(
+                env=self, **reward_function_params)
+        elif isinstance(reward_function, opfgym.RewardFunction):
+            # User-defined reward function
+            self.reward_function = reward_function
+
 
     def reset(self, seed=None, options=None) -> tuple:
         super().reset(seed=seed)
