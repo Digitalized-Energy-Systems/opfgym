@@ -21,10 +21,10 @@ def test_reward_class():
     assert reward_fct.compute_total_reward(penalty=0.4, objective=0.5) == 0.9
 
     # Test reward minmax scaling in range [-1, 1]
-    reward_scaling_params = {'min_objective': 2.0, 'max_objective': 10.0,
+    scaling_params = {'min_objective': 2.0, 'max_objective': 10.0,
                              'min_penalty': 0.0, 'max_penalty': 5.0}
     reward_fct = reward.Summation(reward_scaling='minmax11',
-                                  reward_scaling_params=reward_scaling_params)
+                                  scaling_params=scaling_params)
     assert reward_fct.scale_objective(6.0) == 0.0
     assert reward_fct.scale_objective(2.0) == -1.0
     assert reward_fct.scale_objective(10.0) == 1.0
@@ -33,10 +33,10 @@ def test_reward_class():
     assert reward_fct.scale_penalty(5.0) == 1.0
 
     # Test reward minmax scaling in range [0, 1]
-    reward_scaling_params = {'min_objective': 2.0, 'max_objective': 10.0,
+    scaling_params = {'min_objective': 2.0, 'max_objective': 10.0,
                              'min_penalty': 0.0, 'max_penalty': 5.0}
     reward_fct = reward.Summation(reward_scaling='minmax01',
-                                  reward_scaling_params=reward_scaling_params)
+                                  scaling_params=scaling_params)
     assert reward_fct.scale_objective(6.0) == 0.5
     assert reward_fct.scale_objective(2.0) == 0.0
     assert reward_fct.scale_objective(10.0) == 1.0
@@ -45,10 +45,10 @@ def test_reward_class():
     assert reward_fct.scale_penalty(5.0) == 1.0
 
     # Test reward normalization scaling
-    reward_scaling_params = {'std_objective': 2.0, 'mean_objective': 6.0,
+    scaling_params = {'std_objective': 2.0, 'mean_objective': 6.0,
                              'std_penalty': 1.0, 'mean_penalty': 2.5}
     reward_fct = reward.Summation(reward_scaling='normalization',
-                                  reward_scaling_params=reward_scaling_params)
+                                  scaling_params=scaling_params)
     assert reward_fct.scale_objective(6.0) == 0.0
     assert reward_fct.scale_objective(2.0) == -2.0
     assert reward_fct.scale_objective(8.0) == 1.0

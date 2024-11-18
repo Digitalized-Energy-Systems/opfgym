@@ -136,12 +136,13 @@ class OpfEnv(gym.Env):
         if reward_function is None:
             # Default reward
             self.reward_function = opfgym.reward.Summation(
-                **reward_function_params)
+                env=self, **reward_function_params)
         elif isinstance(reward_function, str):
             # Load by string (e.g. 'Summation' or 'summation')
             reward_class = opfgym.util.load_class_from_module(
                 reward_function, 'opfgym.reward')
-            self.reward_function = reward_class(**reward_function_params)
+            self.reward_function = reward_class(
+                env=self, **reward_function_params)
         elif isinstance(reward_function, opfgym.RewardFunction):
             # User-defined reward function
             self.reward_function = reward_function

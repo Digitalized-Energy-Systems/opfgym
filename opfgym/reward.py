@@ -1,5 +1,6 @@
 
 import abc
+import copy
 
 import numpy as np
 
@@ -9,37 +10,35 @@ class RewardFunction(abc.ABC):
                  penalty_weight: float = 0.5,
                  clip_range: tuple[float, float] = None,
                  reward_scaling: str = None,
-                 reward_scaling_params: dict = None,
+                 scaling_params: dict = None,
                  env = None):
         self.penalty_weight = penalty_weight
         self.clip_range = clip_range
 
-        self.prepare_reward_scaling(reward_scaling, reward_scaling_params, env)
+        self.scaling_params = self.prepare_reward_scaling(
+            reward_scaling, scaling_params, env)
 
     def prepare_reward_scaling(self,
                                reward_scaling: str,
-                               reward_scaling_params: dict,
+                               scaling_params: dict,
                                env) -> None:
         """ Prepare the reward scaling parameters for later use. """
-        reward_scaling_params = reward_scaling_params or {}
-        if reward_scaling_params == 'auto' or (
-                'num_samples' in reward_scaling_params) or (
-                not reward_scaling_params and reward_scaling):
-            scaling_params = estimate_reward_distribution(env, **reward_scaling_params)
-        else:
-            scaling_params = reward_scaling_params
+        if not isinstance(reward_scaling, str):
+            return {'penalty_factor': 1, 'penalty_bias': 0,
+                    'objective_factor': 1, 'objective_bias': 0}
 
-        if not reward_scaling:
-            scaling_params.update({'penalty_factor': 1, 'penalty_bias': 0,
-                                   'objective_factor': 1, 'objective_bias': 0})
-        elif reward_scaling == 'minmax11':
-            scaling_params.update(calculate_minmax_11_params(**scaling_params))
-        elif reward_scaling == 'minmax01':
-            scaling_params.update(calculate_minmax_01_params(**scaling_params))
-        elif reward_scaling == 'normalization':
-            scaling_params.update(calculate_normalization_params(**scaling_params))
-        else:
-            raise NotImplementedError('This reward scaling does not exist!')
+        scaling_params = scaling_params or {}
+        user_scaling_params = copy.copy(scaling_params)
+
+        reward_scaler = select_reward_scaler(reward_scaling)
+        try:
+            scaling_params.update(reward_scaler(**scaling_params))
+        except:
+            scaling_params = estimate_reward_distribution(env, **scaling_params)
+            scaling_params.update(reward_scaler(**scaling_params))
+
+        # If the user defined some values, use these values instead
+        scaling_params.update(user_scaling_params)
 
         # Error handling if there were no constraint violations
         if np.isnan(scaling_params['penalty_bias']):
@@ -47,7 +46,17 @@ class RewardFunction(abc.ABC):
         if np.isinf(scaling_params['penalty_factor']):
             scaling_params['penalty_factor'] = 1
 
-        self.scaling_params = scaling_params
+        return scaling_params
+
+    def get_reward_scaler(self, reward_scaling: str):
+        if reward_scaling == 'minmax11':
+            return calculate_minmax11_params
+        elif reward_scaling == 'minmax01':
+            return calculate_minmax01_params
+        elif reward_scaling == 'normalization':
+            return calculate_normalization_params
+        else:
+            raise NotImplementedError('This reward scaling does not exist!')
 
     def __call__(self, objective: float, penalty: float, valid: bool) -> float:
         objective = self.adjust_objective(objective, valid)
@@ -97,6 +106,17 @@ class RewardFunction(abc.ABC):
         return objective
 
 
+def select_reward_scaler(reward_scaling: str):
+    if reward_scaling == 'minmax11':
+        return calculate_minmax11_params
+    elif reward_scaling == 'minmax01':
+        return calculate_minmax01_params
+    elif reward_scaling == 'normalization':
+        return calculate_normalization_params
+    else:
+        raise NotImplementedError('This reward scaling does not exist!')
+
+
 def calculate_normalization_params(
         std_objective: float,
         mean_objective: float,
@@ -116,7 +136,7 @@ def calculate_normalization_params(
     return params
 
 
-def calculate_minmax_01_params(
+def calculate_minmax01_params(
         min_objective: float,
         max_objective: float,
         min_penalty: float,
@@ -137,7 +157,7 @@ def calculate_minmax_01_params(
     return params
 
 
-def calculate_minmax_11_params(
+def calculate_minmax11_params(
         min_objective: float,
         max_objective: float,
         min_penalty: float,
