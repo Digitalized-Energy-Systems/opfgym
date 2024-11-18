@@ -33,7 +33,7 @@ class RewardFunction(abc.ABC):
         reward_scaler = select_reward_scaler(reward_scaling)
         try:
             scaling_params.update(reward_scaler(**scaling_params))
-        except:
+        except TypeError:
             scaling_params = estimate_reward_distribution(env, **scaling_params)
             scaling_params.update(reward_scaler(**scaling_params))
 
