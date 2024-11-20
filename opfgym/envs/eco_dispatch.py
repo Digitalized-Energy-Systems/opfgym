@@ -45,6 +45,7 @@ class EcoDispatch(opf_env.OpfEnv):
                     ('load', 'q_mvar', net.load.index),
                     ('poly_cost', 'cp1_eur_per_mw', net.poly_cost.index),
                     ('pwl_cost', 'cp1_eur_per_mw', net.pwl_cost.index),
+                    # These 3 are not relevant because len=0, if the default is used
                     ('sgen', 'p_mw', net.sgen.index[~net.sgen.controllable]),
                     ('storage', 'p_mw', net.storage.index),
                     ('storage', 'q_mvar', net.storage.index)]

@@ -83,9 +83,6 @@ class MaxRenewable(opf_env.OpfEnv):
         # Required for data sampling
         net.sgen['mean_max_p_mw'] = net.sgen['mean_p_mw']
         net.sgen['std_dev_max_p_mw'] = net.sgen['std_dev_p_mw']
-        # Required for observation space definition
-        net.sgen['min_min_max_p_mw'] = net.sgen['min_min_p_mw']
-        net.sgen['max_max_max_p_mw'] = net.sgen['max_max_p_mw']
 
         # OPF objective: Maximize active power feed-in to external grid
         active_power_costs = 30/1000  # /1000 to achieve smaller scale

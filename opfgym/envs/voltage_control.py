@@ -23,8 +23,8 @@ class VoltageControl(opf_env.OpfEnv):
 
     """
     def __init__(self, simbench_network_name='1-MV-semiurb--1-sw',
-                 load_scaling=1.3, gen_scaling=1.3, 
-                 cos_phi=0.95, max_q_exchange=1.0, min_sgen_power=0.5, 
+                 load_scaling=1.3, gen_scaling=1.3,
+                 cos_phi=0.95, max_q_exchange=1.0, min_sgen_power=0.5,
                  min_storage_power=0.5, market_based=False,
                  *args, **kwargs):
 
@@ -38,7 +38,7 @@ class VoltageControl(opf_env.OpfEnv):
             load_scaling=load_scaling, *args, **kwargs)
 
         # Define the RL problem
-        # See all load power values, sgen/storage active power, and sgen prices...
+        # See all load power values, sgen/storage active power, and sgen prices
         obs_keys = [
             ('sgen', 'p_mw', net.sgen.index),
             ('storage', 'p_mw', net.storage.index),
@@ -52,7 +52,7 @@ class VoltageControl(opf_env.OpfEnv):
                 ('poly_cost', 'cq2_eur_per_mvar2', net.poly_cost.index)
             )
 
-        # ... and control all units' reactive power values
+        # Control all units' reactive power values
         act_keys = [('sgen', 'q_mvar', net.sgen.index[net.sgen.controllable]),
                     ('storage', 'q_mvar', net.storage.index[net.storage.controllable])]
 

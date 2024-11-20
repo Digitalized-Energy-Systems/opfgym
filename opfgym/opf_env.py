@@ -126,7 +126,7 @@ class OpfEnv(gym.Env):
             if 'ext_grid_power' in add_res_obs:
                 add_obs.append(('res_ext_grid', 'p_mw', self.net.ext_grid.index))
                 add_obs.append(('res_ext_grid', 'q_mvar', self.net.ext_grid.index))
-            self.obs_keys.extend(add_obs)   
+            self.obs_keys.extend(add_obs)
 
         self.add_mean_obs = add_mean_obs
 
@@ -654,6 +654,9 @@ def get_obs_space(net, obs_keys: list, add_time_obs: bool,
         if 'res_' in unit_type:
             # The constraints are never defined in the results table
             unit_type = unit_type[4:]
+        elif 'max_' in column or 'min_' in column:
+            # If the constraint itself is an observation, treat is the same as a normal observation -> remove prefix
+            column = column[4:]
 
         if column == 'va_degree':
             # Usually no constraints for voltage angles defined

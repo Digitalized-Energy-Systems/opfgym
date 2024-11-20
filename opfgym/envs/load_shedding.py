@@ -46,7 +46,7 @@ class LoadShedding(opf_env.OpfEnv):
         # Define the RL problem
         # See all load power values, sgen max active power...
         obs_keys = [('sgen', 'p_mw', net.sgen.index),
-                    ('load', 'p_mw', net.load.index),
+                    ('load', 'max_p_mw', net.load.index),
                     ('load', 'q_mvar', net.load.index),
                     ('storage', 'p_mw', net.storage.index[~net.storage.controllable]),
                     ('poly_cost', 'cp1_eur_per_mw', net.poly_cost.index),
@@ -102,6 +102,10 @@ class LoadShedding(opf_env.OpfEnv):
         net.pwl_cost['max_cp1_eur_per_mw'] = max_storage_price
 
         net.ext_grid['vm_pu'] = 1.0
+
+        # Required for data sampling
+        net.load['mean_max_p_mw'] = net.load['mean_p_mw']
+        net.load['std_dev_max_p_mw'] = net.load['std_dev_p_mw']
 
         return net, profiles
 
