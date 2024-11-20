@@ -28,9 +28,11 @@ class Constraint():
         unit_type: Which pandapower table to look at for constraint data.
         values_column: Which column in the previous table?
         get_values: Function to extract the values from the pandapower network.
-            (def get_values(net) -> np.ndarray)
+            (def get_values(net) -> pd.Series)
+        get_boundaries: Function to extract the boundaries from the pandapower network.
+            (def get_boundaries(net) -> dict[str, pd.Series])
         only_worst_case_violations: Only compute the worst-case violations? (instead of the sum of all)
-        auto_scale_violation: Scale violations to be of similar magnitude?
+        autoscale_violation: Scale violations to be of similar magnitude?
         scale_bounded_values: Apply the scaling column to the bounded values? Required if the constraint is scaled as well, for example, for apparent power s_mva)
         penalty_factor: Penalty scaling factor
         penalty_power: Power to apply to the violation (e.g. 0.5 for square root, 2 for quadratic, etc.)

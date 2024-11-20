@@ -34,15 +34,14 @@ class OpfEnv(gym.Env):
                  bus_wise_obs: bool=False,
                  reward_function: opfgym.RewardFunction=None,
                  reward_function_params: dict=None,
-                 remove_normal_obs: bool=False,
                  add_res_obs: bool=False,
                  add_time_obs: bool=False,
                  add_act_obs: bool=False,
                  add_mean_obs: bool=False,
                  train_data: str='simbench',
                  test_data: str='simbench',
-                 sampling_kwargs: dict=None,
-                 constraint_kwargs: dict={},
+                 sampling_params: dict=None,
+                 constraint_params: dict={},
                  custom_constraints: list=None,
                  autoscale_actions: bool=True,
                  diff_action_step_size: float=None,
@@ -84,26 +83,13 @@ class OpfEnv(gym.Env):
         self.evaluate_on = evaluate_on
         self.train_data = train_data
         self.test_data = test_data
-        self.sampling_kwargs = sampling_kwargs if sampling_kwargs else {}
+        self.sampling_params = sampling_params or {}
 
         # Define the observation space
-        if remove_normal_obs:
-            # Completely overwrite the observation definition
-            assert add_res_obs or add_time_obs or add_act_obs
-            # Make sure to only remove redundant data and not e.g. price data
-            remove_idxs = []
-            for idx, (unit_type, column, _) in enumerate(self.obs_keys):
-                if unit_type in ('load', 'sgen', 'gen') and column in ('p_mw', 'q_mvar'):
-                    remove_idxs.append(idx)
-            self.obs_keys = [value for index, value in enumerate(self.obs_keys)
-                             if index not in remove_idxs]
-
         self.add_act_obs = add_act_obs
         if add_act_obs:
             # The agent can observe its previous actions
             self.obs_keys.extend(self.act_keys)
-            # Does not make sense without observing results from previous act
-            add_res_obs = True
 
         self.add_time_obs = add_time_obs
         # Add observations that require previous pf calculation
@@ -162,7 +148,7 @@ class OpfEnv(gym.Env):
         # Constraints
         if custom_constraints is None:
             self.constraints = opfgym.constraints.create_default_constraints(
-                self.net, constraint_kwargs)
+                self.net, constraint_params)
         else:
             self.constraints = custom_constraints
 
@@ -214,14 +200,14 @@ class OpfEnv(gym.Env):
 
         return self._get_obs(self.obs_keys, self.add_time_obs), copy.deepcopy(self.info)
 
-    def _sampling(self, step=None, test=False, sample_new=True, 
+    def _sampling(self, step=None, test=False, sample_new=True,
                   *args, **kwargs) -> None:
 
         self.power_flow_available = False
         self.optimal_power_flow_available = False
 
         data_distr = self.test_data if test is True else self.train_data
-        kwargs.update(self.sampling_kwargs)
+        kwargs.update(self.sampling_params)
 
         # Maybe also allow different kinds of noise and similar! with `**sampling_params`?
         if data_distr == 'noisy_simbench' or 'noise_factor' in kwargs.keys():
