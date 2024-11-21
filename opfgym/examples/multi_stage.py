@@ -93,7 +93,7 @@ class MultiStageOpf(opf_env.OpfEnv):
         # Rerun the power flow calculation for the new state if required
         # TODO: This results in two power flow calculations for each step() call. Is it possible to avoid this?
         if self.pf_for_obs is True:
-            self._run_pf()
+            self.run_power_flow()
 
         # Create new observation in the new state
         obs = self._get_obs(self.obs_keys, self.add_time_obs)
