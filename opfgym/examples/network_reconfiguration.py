@@ -24,25 +24,26 @@ class NetworkReconfiguration(opf_env.OpfEnv):
 
         # Define the RL problem
         # Observe all load power values, sgen active power
-        self.obs_keys = [
+        obs_keys = [
             ('sgen', 'p_mw', net.sgen.index),
             ('load', 'p_mw', net.load.index),
             ('load', 'q_mvar', net.load.index),
         ]
 
         # ... and control some selected switches in the system
-        self.act_keys = [('switch', 'closed', net.switch.index[net.switch.controllable]),
-                         ('trafo', 'tap_pos', net.trafo.index[net.trafo.controllable])]
+        act_keys = [('switch', 'closed', net.switch.index[net.switch.controllable]),
+                    ('trafo', 'tap_pos', net.trafo.index[net.trafo.controllable])]
 
-        super().__init__(net, profiles=profiles, *args, **kwargs)
+        super().__init__(net, act_keys, obs_keys, profiles=profiles,
+                         optimal_power_flow_solver=False, *args, **kwargs)
 
     def _define_opf(self, simbench_network_name, *args, **kwargs):
         net, profiles = build_simbench_net(
             simbench_network_name, *args, **kwargs)
 
         # Add additional column to the network that states which switches are controllable
-        net.switch['controllable'] = False
-        net.switch['controllable'].loc[self.controllable_switch_idxs] = True
+        net.switch.loc[:, 'controllable'] = False
+        net.switch.loc[self.controllable_switch_idxs, 'controllable'] = True
         # Define the maximum and minimum values of the switches (action constraints)
         # In the current state
         net.switch['min_closed'] = 0
@@ -67,14 +68,6 @@ class NetworkReconfiguration(opf_env.OpfEnv):
             pp.create_poly_cost(net, idx, 'ext_grid', cp1_eur_per_mw=1)
 
         return net, profiles
-
-    def get_optimal_objective(self):
-        # Overwrite because not solvable with pandapower OPF solver
-        return 0
-
-    def run_optimal_power_flow(self, **kwargs):
-        # Overwrite because not solvable with pandapower OPF solver
-        return False
 
 
 if __name__ == '__main__':

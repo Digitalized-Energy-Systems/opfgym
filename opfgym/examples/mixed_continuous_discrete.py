@@ -8,11 +8,15 @@ This example also shows how to easily overwrite the objective function with an
 objective that is not pandapower-compatible. """
 
 
-import pandapower as pp
 import numpy as np
 
 from opfgym import opf_env
 from opfgym.simbench.build_simbench_net import build_simbench_net
+
+
+def custom_objective_function(net) -> np.array:
+    """ Use quadratic voltage deviation from 1.0 pu as objective."""
+    return (net.res_bus.vm_pu - 1)**2
 
 
 class MixedContinuousDiscrete(opf_env.OpfEnv):
@@ -25,7 +29,7 @@ class MixedContinuousDiscrete(opf_env.OpfEnv):
 
         # Define the RL problem
         # Observe all load power values, sgen active power
-        self.obs_keys = [
+        obs_keys = [
             ('ext_grid', 'vm_pu', net.ext_grid.index),  # Slack voltage
             ('sgen', 'p_mw', net.sgen.index),
             ('load', 'p_mw', net.load.index),
@@ -33,10 +37,12 @@ class MixedContinuousDiscrete(opf_env.OpfEnv):
         ]
 
         # ... and control trafos and reactive power for voltage control
-        self.act_keys = [('sgen', 'q_mvar', net.sgen.index),
-                         ('trafo', 'tap_pos', net.trafo.index)]
+        act_keys = [('sgen', 'q_mvar', net.sgen.index),
+                    ('trafo', 'tap_pos', net.trafo.index)]
 
-        super().__init__(net, profiles=profiles, *args, **kwargs)
+        super().__init__(net, act_keys, obs_keys, profiles=profiles,
+                         objective_function=custom_objective_function,
+                         optimal_power_flow_solver=False, *args, **kwargs)
 
     def _define_opf(self, simbench_network_name, *args, **kwargs):
         net, profiles = build_simbench_net(
@@ -68,27 +74,11 @@ class MixedContinuousDiscrete(opf_env.OpfEnv):
     def _sampling(self, *args, **kwargs):
         super()._sampling(*args, **kwargs)
 
-        # Sample slack voltage randomly to make the problem more difficult
-        # so that trafo tap changing is required for voltage control
-        self._sample_from_range('ext_grid', 'vm_pu', self.net.ext_grid.index)
-
         # Active power is not controllable (only relevant for OPF baseline)
         # Set active power boundaries to current active power values
         for unit_type in ('sgen',):
             self.net[unit_type]['max_p_mw'] = self.net[unit_type].p_mw * self.net[unit_type].scaling + 1e-9
             self.net[unit_type]['min_p_mw'] = self.net[unit_type].p_mw * self.net[unit_type].scaling - 1e-9
-
-    def calculate_base_objective(self, net) -> np.ndarray:
-        """ Use quadratic voltage deviation from 1.0 pu as objective."""
-        return -(net.res_bus.vm_pu - 1)**2
-
-    def get_optimal_objective(self):
-        # Overwrite because not solvable with pandapower OPF solver
-        return 0
-
-    def run_optimal_power_flow(self, **kwargs):
-        # Overwrite because not solvable with pandapower OPF solver
-        return False
 
 
 if __name__ == '__main__':

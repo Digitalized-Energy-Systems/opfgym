@@ -8,13 +8,11 @@ from typing import Tuple
 import pandas as pd
 import numpy as np
 
-from opfgym.opf_env import OpfEnv
-
 logger = logging.getLogger(__name__)
 
 
 def create_labeled_dataset(
-        env: OpfEnv,
+        env,
         num_samples: int,
         keep_invalid_samples: bool=False,
         store_to_path: str=None,
@@ -44,8 +42,8 @@ def create_labeled_dataset(
     while counter < num_samples:
         logger.info(f'Create sample {counter+1}/{num_samples}')
         obs, info = env.reset(seed=seed+counter)
-        success = env.run_optimal_power_flow()
-        if not success:
+        env.run_optimal_power_flow()
+        if not env.optimal_power_flow_available:
             continue
 
         if not env.is_optimal_state_valid():

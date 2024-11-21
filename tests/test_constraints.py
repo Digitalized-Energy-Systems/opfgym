@@ -21,8 +21,8 @@ def test_voltage_constraint(net):
     net['bus']['min_vm_pu'] = 0.95
     net['bus']['max_vm_pu'] = 1.05
     net.res_bus['vm_pu'] = 1.0
-    net.res_bus['vm_pu'][0] = 0.9
-    net.res_bus['vm_pu'][1] = 0.94  # Should be ignored for violation
+    net.res_bus.at[0, 'vm_pu'] = 0.9
+    net.res_bus.at[1, 'vm_pu'] = 0.94  # Should be ignored for violation
 
     result = constraint(net)
     assert not result['valid']
@@ -35,7 +35,7 @@ def test_line_overload_constraint(net):
 
     net['line']['max_loading_percent'] = 100
     net.res_line['loading_percent'] = 50
-    net.res_line['loading_percent'][0] = 110
+    net.res_line.at[0, 'loading_percent'] = 110
 
     result = constraint(net)
     assert not result['valid']
@@ -48,7 +48,7 @@ def test_trafo_overload_constraint(net):
 
     net['trafo']['max_loading_percent'] = 100
     net.res_trafo['loading_percent'] = 50
-    net.res_trafo['loading_percent'][0] = 110
+    net.res_trafo.at[0, 'loading_percent'] = 110
 
     result = constraint(net)
     assert not result['valid']
@@ -59,7 +59,7 @@ def test_ext_grid_active_power_constraint(net):
     constraint = constraints.ExtGridActivePowerConstraint(autoscale_violation=0.5)
 
     net['ext_grid']['min_p_mw'] = 0
-    net.res_ext_grid['p_mw'][0] = -0.5
+    net.res_ext_grid.at[0, 'p_mw'] = -0.5
 
     result = constraint(net)
     assert not result['valid']
@@ -70,7 +70,7 @@ def test_ext_grid_reactive_power_constraint(net):
     constraint = constraints.ExtGridReactivePowerConstraint(autoscale_violation=0.5)
 
     net['ext_grid']['min_q_mvar'] = 0
-    net.res_ext_grid['q_mvar'][0] = -0.5
+    net.res_ext_grid.at[0, 'q_mvar'] = -0.5
 
     result = constraint(net)
     assert not result['valid']
@@ -126,3 +126,22 @@ def test_create_default_constraints(net):
     assert constraints.ExtGridReactivePowerConstraint not in [type(c) for c in extracted_constraints]
     assert constraints.ExtGridActivePowerConstraint not in [type(c) for c in extracted_constraints]
     assert constraints.VoltageConstraint not in [type(c) for c in extracted_constraints]
+
+
+def test_custom_constraint_def(net):
+    get_values = lambda net: net.res_sgen.p_mw / 2
+    get_boundaries = lambda net: {'min': 0, 'max': net.sgen.max_p_mw}
+
+    custom_constraint = constraints.Constraint(
+        'sgen', 'p_mw', get_values=get_values, get_boundaries=get_boundaries)
+
+    net['sgen']['min_p_mw'] = 0.8  # Should be ignored (see get_boundaries)
+    net['sgen']['max_p_mw'] = 1
+    net.res_sgen['p_mw'] = 1.5  # Should be interpreted as 1.5/2 = 0.75
+    result = custom_constraint(net)
+    assert result['valid']
+
+    net.res_sgen['p_mw'] = 3.0
+    result = custom_constraint(net)
+    assert not result['valid']
+    assert result['violation'] == 0.5  # 3/2 - 1

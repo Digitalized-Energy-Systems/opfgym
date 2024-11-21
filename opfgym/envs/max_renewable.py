@@ -23,7 +23,7 @@ class MaxRenewable(opf_env.OpfEnv):
 
     def __init__(self, simbench_network_name='1-HV-mixed--1-sw',
                  gen_scaling=0.8, load_scaling=0.8,
-                 min_storage_power=10, min_sgen_power=24, sampling_kwargs={},
+                 min_storage_power=10, min_sgen_power=24, sampling_params={},
                  *args, **kwargs):
 
         self.min_sgen_power = min_sgen_power
@@ -35,7 +35,7 @@ class MaxRenewable(opf_env.OpfEnv):
 
         # Define the RL problem
         # See all load power values, sgen max active power...
-        self.obs_keys = [
+        obs_keys = [
             ('sgen', 'max_p_mw', net.sgen.index),
             ('load', 'p_mw', net.load.index),
             ('load', 'q_mvar', net.load.index),
@@ -43,14 +43,14 @@ class MaxRenewable(opf_env.OpfEnv):
         ]
 
         # ... and control all sgens' active power values + some storage systems
-        self.act_keys = [
+        act_keys = [
             ('sgen', 'p_mw', net.sgen.index[net.sgen.controllable]),
             ('storage', 'p_mw', net.storage.index[net.storage.controllable])
         ]
 
-        sampling_kwargs.update({'after_sampling_hooks': [set_current_power_as_max_hook]})
+        sampling_params.update({'after_sampling_hooks': [set_current_power_as_max_hook]})
 
-        super().__init__(net, profiles=profiles, sampling_kwargs=sampling_kwargs,
+        super().__init__(net, act_keys, obs_keys, profiles=profiles, sampling_params=sampling_params,
                          *args, **kwargs)
 
     def _define_opf(self, simbench_network_name, *args, **kwargs):
@@ -69,26 +69,23 @@ class MaxRenewable(opf_env.OpfEnv):
 
         # Use sampled data for the non-controlled storage systems
         net.storage['controllable'] = net.storage.max_max_p_mw > self.min_storage_power
-        net.storage['q_mvar'] = 0
-        net.storage['max_q_mvar'] = 0
-        net.storage['min_q_mvar'] = 0
+        net.storage['q_mvar'] = 0.0
+        net.storage['max_q_mvar'] = 0.0
+        net.storage['min_q_mvar'] = 0.0
         # Assume that storage systems are completely usable
         # (for example, do not consider state of charge)
         net.storage['max_p_mw'] = net.storage['max_max_p_mw']
         net.storage['min_p_mw'] = net.storage['min_min_p_mw']
 
         net.sgen['controllable'] = net.sgen.max_max_p_mw > self.min_sgen_power
-        net.sgen['min_p_mw'] = 0  # max will be set later in sampling
-        net.sgen['q_mvar'] = 0
-        net.sgen['max_q_mvar'] = 0
-        net.sgen['min_q_mvar'] = 0
+        net.sgen['min_p_mw'] = 0.0  # max will be set later in sampling
+        net.sgen['q_mvar'] = 0.0
+        net.sgen['max_q_mvar'] = 0.0
+        net.sgen['min_q_mvar'] = 0.0
 
         # Required for data sampling
         net.sgen['mean_max_p_mw'] = net.sgen['mean_p_mw']
         net.sgen['std_dev_max_p_mw'] = net.sgen['std_dev_p_mw']
-        # Required for observation space definition
-        net.sgen['min_min_max_p_mw'] = net.sgen['min_min_p_mw']
-        net.sgen['max_max_max_p_mw'] = net.sgen['max_max_p_mw']
 
         # OPF objective: Maximize active power feed-in to external grid
         active_power_costs = 30/1000  # /1000 to achieve smaller scale

@@ -109,7 +109,7 @@ class SimbenchSampler(DatasetSampler):
         else:
             assert step < self.total_n_steps
 
-        # self.current_simbench_step = step
+        self.current_time_step = step
 
         for type_act in self.profiles.keys():
             if not self.profiles[type_act].shape[1]:
@@ -173,8 +173,6 @@ class NormalSampler(DatasetSampler):
                 min_values = (df[f'min_min_{column}'] / df.scaling).to_numpy()
             except KeyError:
                 min_values = (df[f'min_{column}'] / df.scaling).to_numpy()
-
-            print(min_values, max_values)
 
             diff = max_values - min_values
 

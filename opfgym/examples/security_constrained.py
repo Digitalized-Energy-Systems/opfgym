@@ -14,23 +14,24 @@ class SecurityConstrained(opf_env.OpfEnv):
                  *args, **kwargs):
         self.n_minus_one_lines = np.array(n_minus_one_lines)
 
-        self.net = self._define_opf(
+        net, profiles = self._define_opf(
             simbench_network_name, *args, **kwargs)
 
         # Define the RL problem
         # Observe all load power values, sgen active power
-        self.obs_keys = [
-            ('load', 'p_mw', self.net.load.index),
-            ('load', 'q_mvar', self.net.load.index),
+        obs_keys = [
+            ('load', 'p_mw', net.load.index),
+            ('load', 'q_mvar', net.load.index),
         ]
 
         # ... and control some selected switches in the system
-        self.act_keys = [('sgen', 'p_mw', self.net.sgen.index)]
+        act_keys = [('sgen', 'p_mw', net.sgen.index)]
 
-        super().__init__(*args, **kwargs)
+        super().__init__(net, act_keys, obs_keys, profiles=profiles,
+                         optimal_power_flow_solver=False, *args, **kwargs)
 
     def _define_opf(self, simbench_network_name, *args, **kwargs):
-        net, self.profiles = build_simbench_net(
+        net, profiles = build_simbench_net(
             simbench_network_name, *args, **kwargs)
 
         net.sgen['controllable'] = True
@@ -47,7 +48,7 @@ class SecurityConstrained(opf_env.OpfEnv):
         for idx in net.ext_grid.index:
             pp.create_poly_cost(net, idx, 'ext_grid', cp1_eur_per_mw=0.01)
 
-        return net
+        return net, profiles
 
     def calculate_violations(self, original_net=None):
         """ Implement the security constrained power flow by removing the n-1 lines and checking for violations. """
@@ -69,14 +70,6 @@ class SecurityConstrained(opf_env.OpfEnv):
             penalties += new_penalties
 
         return valids, viol, penalties
-
-    def get_optimal_objective(self):
-        # Overwrite because not solvable with pandapower OPF solver
-        return 0
-
-    def run_optimal_power_flow(self, **kwargs):
-        # Overwrite because not solvable with pandapower OPF solver
-        return False
 
 
 if __name__ == '__main__':

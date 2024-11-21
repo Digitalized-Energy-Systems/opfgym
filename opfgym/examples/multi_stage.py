@@ -7,7 +7,7 @@ state. In other words, long-term optimal actions are not necessarily possible
 
 TODO: Add this to the base class as a general method to handle multi-stage OPF?
 TODO: Use all steps for observation? Essentially give the agent a prediction.
-TODO: Add a storage system or something similar to actually make the multi-stage aspect relevant.
+TODO: Add a storage system or something similar to this example to actually make the multi-stage aspect relevant.
 
 """
 
@@ -20,27 +20,35 @@ from opfgym.simbench.build_simbench_net import build_simbench_net
 
 class MultiStageOpf(opf_env.OpfEnv):
     def __init__(self, simbench_network_name='1-LV-urban6--0-sw',
-                 steps_per_episode=4, train_data='simbench',
-                 test_data='simbench',
+                 steps_per_episode=4,
+                 train_sampler='simbench',
+                 test_sampler='simbench',
+                 validation_sampler='simbench',
                  *args, **kwargs):
 
         assert steps_per_episode > 1, "At least two steps required for a multi-stage OPF."
-        assert 'simbench' in train_data and 'simbench' in test_data, "Only simbench networks are supported because time-series data required."
+        assert 'simbench' in train_sampler and 'simbench' in test_sampler and 'simbench' in validation_sampler, "Only simbench networks are supported because time-series data required."
 
         net, profiles = self._define_opf(
             simbench_network_name, *args, **kwargs)
 
         # Observe all load power values
-        self.obs_keys = [
+        obs_keys = [
             ('load', 'p_mw', net.load.index),
             ('load', 'q_mvar', net.load.index),
         ]
 
         # Control all generators in the system
-        self.act_keys = [('sgen', 'p_mw', net.sgen.index)]
+        act_keys = [('sgen', 'p_mw', net.sgen.index)]
 
-        super().__init__(net, profiles=profiles, 
-                         steps_per_episode=steps_per_episode, *args, **kwargs)
+        super().__init__(net, act_keys, obs_keys,
+                         profiles=profiles,
+                         steps_per_episode=steps_per_episode,
+                         optimal_power_flow_solver=False,
+                         train_sampler=train_sampler,
+                         test_sampler=test_sampler,
+                         validation_sampler=validation_sampler,
+                         *args, **kwargs)
 
     def _define_opf(self, simbench_network_name, *args, **kwargs):
         net, profiles = build_simbench_net(
@@ -66,7 +74,7 @@ class MultiStageOpf(opf_env.OpfEnv):
         """ Extend step method to sample the next time step of the simbench data. """
         obs, reward, terminated, truncated, info = super().step(action)
 
-        new_step = self.current_simbench_step + 1
+        new_step = self.current_time_step + 1
 
         # Enforce train/test-split
         if self.test:
@@ -91,20 +99,12 @@ class MultiStageOpf(opf_env.OpfEnv):
         # Rerun the power flow calculation for the new state if required
         # TODO: This results in two power flow calculations for each step() call. Is it possible to avoid this?
         if self.pf_for_obs is True:
-            self._run_pf()
+            self.run_power_flow()
 
         # Create new observation in the new state
         obs = self._get_obs(self.obs_keys, self.add_time_obs)
 
         return obs, reward, terminated, truncated, info
-
-    def get_optimal_objective(self):
-        # Overwrite because not solvable with pandapower OPF solver.
-        return 0
-
-    def run_optimal_power_flow(self, **kwargs):
-        # Overwrite because not solvable with pandapower OPF solver.
-        return False
 
 
 if __name__ == '__main__':

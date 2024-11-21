@@ -1,5 +1,5 @@
 """ Simple example that shows how to define a partially observable RL-OPF
-environment. Especially useful for real-world applications where not all 
+environment. Especially useful for real-world applications where not all
 measurement data will be available. """
 
 
@@ -12,7 +12,7 @@ from opfgym.simbench.build_simbench_net import build_simbench_net
 
 class PartiallyObservable(opf_env.OpfEnv):
     def __init__(self, simbench_network_name='1-LV-rural1--0-sw',
-                 observable_loads=np.arange(10),  # First 20 loads are observable
+                 observable_loads=np.arange(10),  # First 10 loads are observable
                  *args, **kwargs):
 
         net, profiles = self._define_opf(
@@ -22,16 +22,14 @@ class PartiallyObservable(opf_env.OpfEnv):
             observable_loads = net.load.index
 
         # Define the RL problem
-        # Observe all load power values, sgen active power
-        self.obs_keys = [
+        obs_keys = [
             ('load', 'p_mw', observable_loads),  # Only observe selected loads
             ('load', 'q_mvar', observable_loads),
         ]
 
-        # ... and control some selected switches in the system
-        self.act_keys = [('sgen', 'p_mw', net.sgen.index)]
+        act_keys = [('sgen', 'p_mw', net.sgen.index)]
 
-        super().__init__(net, profiles=profiles, *args, **kwargs)
+        super().__init__(net, act_keys, obs_keys, profiles, *args, **kwargs)
 
     def _define_opf(self, simbench_network_name, *args, **kwargs):
         net, profiles = build_simbench_net(

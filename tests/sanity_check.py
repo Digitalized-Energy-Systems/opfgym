@@ -7,7 +7,7 @@ import numpy as np
 
 def env_sanity_check(env):
     env.reset()
-    check_action_space(env.net, env.act_keys)
+    check_action_space(env.unwrapped.net, env.unwrapped.act_keys)
     # Add more checks here if needed
     return True
 

@@ -11,26 +11,30 @@ from opfgym import opf_env
 
 
 class NonSimbenchNet(opf_env.OpfEnv):
-    def __init__(self, train_data='normal_around_mean',
-                 test_data='normal_around_mean',
+    def __init__(self, train_sampler='normal_around_mean',
+                 test_sampler='normal_around_mean',
+                 validation_sampler='normal_around_mean',
                  *args, **kwargs):
 
-        assert 'simbench' not in train_data and 'simbench' not in test_data, "Only non-simbench networks are supported."
+        assert 'simbench' not in train_sampler, "Only non-simbench networks are supported."
+        assert 'simbench' not in test_sampler, "Only non-simbench networks are supported."
+        assert 'simbench' not in validation_sampler, "Only non-simbench networks are supported."
 
         net = self._define_opf()
 
         # Define the RL problem
         # Observe all load power values, sgen active power
-        self.obs_keys = [
+        obs_keys = [
             ('load', 'p_mw', net.load.index),
             ('load', 'q_mvar', net.load.index),
         ]
 
         # ... and control some selected switches in the system
-        self.act_keys = [('gen', 'p_mw', net.gen.index)]
+        act_keys = [('gen', 'p_mw', net.gen.index)]
 
-        super().__init__(net, train_data=train_data,
-                         test_data=test_data, *args, **kwargs)
+        super().__init__(net, act_keys, obs_keys,
+                         train_sampler=train_sampler, test_sampler=test_sampler,
+                         *args, **kwargs)
 
     def _define_opf(self):
         # OPF problem already fully defined by pandapower

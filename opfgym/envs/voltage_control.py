@@ -23,9 +23,9 @@ class VoltageControl(opf_env.OpfEnv):
 
     """
     def __init__(self, simbench_network_name='1-MV-semiurb--1-sw',
-                 load_scaling=1.3, gen_scaling=1.3,
-                 cos_phi=0.95, max_q_exchange=1.0, min_sgen_power=0.5,
-                 min_storage_power=0.5, market_based=False, sampling_kwargs={},
+                 load_scaling=1.5, gen_scaling=1.3,
+                 cos_phi=0.95, max_q_exchange=0.5, min_sgen_power=0.5,
+                 min_storage_power=0.5, market_based=False, sampling_params={},
                  *args, **kwargs):
 
         self.min_sgen_power = min_sgen_power
@@ -38,8 +38,8 @@ class VoltageControl(opf_env.OpfEnv):
             load_scaling=load_scaling, *args, **kwargs)
 
         # Define the RL problem
-        # See all load power values, sgen/storage active power, and sgen prices...
-        self.obs_keys = [
+        # See all load power values, sgen/storage active power, and sgen prices
+        obs_keys = [
             ('sgen', 'p_mw', net.sgen.index),
             ('storage', 'p_mw', net.storage.index),
             ('load', 'p_mw', net.load.index),
@@ -48,19 +48,19 @@ class VoltageControl(opf_env.OpfEnv):
 
         if market_based:
             # Consider reactive power prices in the objective function
-            self.obs_keys.append(
+            obs_keys.append(
                 ('poly_cost', 'cq2_eur_per_mvar2', net.poly_cost.index)
             )
 
         # ... and control all units' reactive power values
-        self.act_keys = [('sgen', 'q_mvar', net.sgen.index[net.sgen.controllable]),
-                         ('storage', 'q_mvar', net.storage.index[net.storage.controllable])]
+        act_keys = [('sgen', 'q_mvar', net.sgen.index[net.sgen.controllable]),
+                    ('storage', 'q_mvar', net.storage.index[net.storage.controllable])]
 
         hooks = [constrain_active_power_hook, set_reactive_boundaries_hook]
-        sampling_kwargs.update({'after_sampling_hooks': hooks})
+        sampling_params.update({'after_sampling_hooks': hooks})
 
-        super().__init__(net, profiles=profiles,
-                         sampling_kwargs=sampling_kwargs, *args, **kwargs)
+        super().__init__(net, act_keys, obs_keys, profiles=profiles,
+                         sampling_params=sampling_params, *args, **kwargs)
 
     def _define_opf(self, simbench_network_name, *args, **kwargs):
         net, profiles = build_simbench_net(

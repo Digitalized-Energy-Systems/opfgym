@@ -24,7 +24,11 @@ def get_pandapower_costs(net) -> np.ndarray:
     if len(net.pwl_cost) > 0:
         all_costs.append(get_piecewise_linear_costs(net))
 
-    return np.concatenate(all_costs)
+    try:
+        return np.concatenate(all_costs)
+    except ValueError:
+        # If no costs are defined, return empty array
+        return np.array([])
 
 
 def get_polynomial_costs(net) -> np.ndarray:
@@ -52,12 +56,12 @@ def get_powers_from_poly_cost(net, column: str) -> pd.Series:
 
 def get_piecewise_linear_costs(net) -> np.ndarray:
     powers = get_powers_from_pwl_cost(net)
-    costs = pd.Series(0, index=net.pwl_cost.index)
+    costs = pd.Series(0.0, index=net.pwl_cost.index)
     for points in zip(*net.pwl_cost.points):
         lower, higher, price = map(np.array, zip(*points))
 
         signs = np.sign(powers)
-        # Warning: Does not work if lower<0 and higher>0
+        # Warning: Does not work if lower<0 and higher>0, respectively
         same_sign_flag = (signs == np.sign(lower + higher))
         lower_abs = np.abs(lower)
         higher_abs = np.abs(higher)

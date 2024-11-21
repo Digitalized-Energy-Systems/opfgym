@@ -26,7 +26,7 @@ class EcoDispatch(opf_env.OpfEnv):
 
     def __init__(self, simbench_network_name='1-HV-urban--0-sw',
                  gen_scaling=1.0, load_scaling=1.5, max_price_eur_gwh=0.5,
-                 min_power=0, sampling_kwargs={}, *args, **kwargs):
+                 min_power=0, sampling_params={}, *args, **kwargs):
 
         # Define range from which to sample active power prices on market
         self.max_price_eur_gwh = max_price_eur_gwh
@@ -41,25 +41,26 @@ class EcoDispatch(opf_env.OpfEnv):
 
         # Define the RL problem
         # See all load power values, non-controlled generators, and generator prices...
-        self.obs_keys = [('load', 'p_mw', net.load.index),
-                         ('load', 'q_mvar', net.load.index),
-                         ('poly_cost', 'cp1_eur_per_mw', net.poly_cost.index),
-                         ('pwl_cost', 'cp1_eur_per_mw', net.pwl_cost.index),
-                         ('sgen', 'p_mw', net.sgen.index[~net.sgen.controllable]),
-                         ('storage', 'p_mw', net.storage.index),
-                         ('storage', 'q_mvar', net.storage.index)]
+        obs_keys = [('load', 'p_mw', net.load.index),
+                    ('load', 'q_mvar', net.load.index),
+                    ('poly_cost', 'cp1_eur_per_mw', net.poly_cost.index),
+                    ('pwl_cost', 'cp1_eur_per_mw', net.pwl_cost.index),
+                    # These 3 are not relevant because len=0, if the default is used
+                    ('sgen', 'p_mw', net.sgen.index[~net.sgen.controllable]),
+                    ('storage', 'p_mw', net.storage.index),
+                    ('storage', 'q_mvar', net.storage.index)]
 
         # ... and control all generators' active power values
-        self.act_keys = [('sgen', 'p_mw', net.sgen.index[net.sgen.controllable]),
-                         ('gen', 'p_mw', net.gen.index[net.gen.controllable])]
+        act_keys = [('sgen', 'p_mw', net.sgen.index[net.sgen.controllable]),
+                    ('gen', 'p_mw', net.gen.index[net.gen.controllable])]
 
         # The pwl costs cannot be directly sampled because they are part of a
         # list of points. Therefore, we need to manually update the costs after
         # sampling the prices.
-        sampling_kwargs.update({'after_sampling_hooks': [update_pwl_costs_hook]})
+        sampling_params.update({'after_sampling_hooks': [update_pwl_costs_hook]})
 
-        super().__init__(net, profiles=profiles,
-                         sampling_kwargs=sampling_kwargs, *args, **kwargs)
+        super().__init__(net, act_keys, obs_keys, profiles=profiles, 
+                         sampling_params=sampling_params, *args, **kwargs)
 
     def _define_opf(self, simbench_network_name, *args, **kwargs):
         net, profiles = build_simbench_net(
@@ -106,7 +107,7 @@ class EcoDispatch(opf_env.OpfEnv):
         net.poly_cost['max_cp1_eur_per_mw'] = self.max_price_eur_gwh
 
         # Define extra column for easy access (for observations)
-        net.pwl_cost['cp1_eur_per_mw'] = 0
+        net.pwl_cost['cp1_eur_per_mw'] = 0.0
         net.pwl_cost['min_cp1_eur_per_mw'] = 0
         net.pwl_cost['max_cp1_eur_per_mw'] = self.max_price_eur_gwh
 
