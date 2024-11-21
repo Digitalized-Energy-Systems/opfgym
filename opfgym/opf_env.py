@@ -34,6 +34,7 @@ class OpfEnv(gym.Env):
                  bus_wise_obs: bool=False,
                  reward_function: opfgym.RewardFunction=None,
                  reward_function_params: dict=None,
+                 diff_objective: bool=False,
                  add_res_obs: bool=False,
                  add_time_obs: bool=False,
                  add_act_obs: bool=False,
@@ -142,6 +143,11 @@ class OpfEnv(gym.Env):
                 self.pf_for_obs = True
                 break
 
+        self.diff_objective = diff_objective
+        if diff_objective:
+            # An initial power flow is required to compute the initial objective
+            self.pf_for_obs = True
+
         # Define data distribution for training and testing
         self.test_steps, self.validation_steps, self.train_steps = define_test_train_split(**kwargs)
 
@@ -197,6 +203,8 @@ class OpfEnv(gym.Env):
                 logging.warning(
                     'Failed powerflow calculcation in reset. Try again!')
                 return self.reset()
+
+            self.initial_obj = self.calculate_objective(diff_objective=False)
 
         return self._get_obs(self.obs_keys, self.add_time_obs), copy.deepcopy(self.info)
 
@@ -463,12 +471,14 @@ class OpfEnv(gym.Env):
 
         return mean_correction
 
-    def calculate_objective(self, net=None) -> np.ndarray:
-        """ Can be overwritten by the user. The default is to compute the
-        objective function that is defined in pandapower. This method should
-        return the objective function as array that is used as basis for the
-        reward calculation. """
-        return -self.objective_function(net or self.net)
+    def calculate_objective(self, net=None, diff_objective=False) -> np.ndarray:
+        """ This method returns the objective function as array that is used as
+        basis for the reward calculation. """
+        net = net or self.net
+        if diff_objective:
+            return -self.objective_function(net) - self.initial_obj
+        else:
+            return -self.objective_function(net)
 
     def calculate_violations(self, net=None) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         net = net or self.net
@@ -485,7 +495,7 @@ class OpfEnv(gym.Env):
 
     def calculate_reward(self) -> float:
         """ Combine objective function and the penalties together. """
-        objective = np.sum(self.calculate_objective())
+        objective = np.sum(self.calculate_objective(diff_objective=self.diff_objective))
         valids, violations, penalties = self.calculate_violations()
 
         self.info['valids'] = np.array(valids)
