@@ -23,8 +23,8 @@ class VoltageControl(opf_env.OpfEnv):
 
     """
     def __init__(self, simbench_network_name='1-MV-semiurb--1-sw',
-                 load_scaling=1.3, gen_scaling=1.3,
-                 cos_phi=0.95, max_q_exchange=1.0, min_sgen_power=0.5,
+                 load_scaling=1.5, gen_scaling=1.3,
+                 cos_phi=0.95, max_q_exchange=0.5, min_sgen_power=0.5,
                  min_storage_power=0.5, market_based=False,
                  *args, **kwargs):
 
