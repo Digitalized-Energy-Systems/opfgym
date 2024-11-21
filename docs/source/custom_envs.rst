@@ -178,7 +178,8 @@ overwrite the :meth:`_sampling` method.
 
 .. code-block:: python
 
-    def _sampling(self):
+    def _sampling(self, **kwargs):
+        super()._sampling(**kwargs)
         # Define dynamic constraints, for example, fixing reactive power of 
         # sgens to the current state so that pandapower OPF does not use them 
         # as control variables
@@ -191,16 +192,18 @@ provide a :func:`optimal_power_flow_solver` function to the base class
 
 .. code-block:: python
 
+    def custom_opf_solver(net, **kwargs):
+        # Custom power flow solver
+        ...
+
+    def custom_power_flow_solver(net, **kwargs):
+        # Custom power flow solver
+        ...
+
     class CustomEnv(OpfEnv):
         def __init__(self):
+            net = ...
             ...
-            def custom_opf_solver(net, **kwargs):
-                # Custom power flow solver
-                ...
-
-            def custom_power_flow_solver(net, **kwargs):
-                # Custom power flow solver
-                ...
-
-            super().__init__(optimal_power_flow_solver=custom_opf_solver,
+            super().__init__(net, ...,
+                             optimal_power_flow_solver=custom_opf_solver,
                              power_flow_solver=custom_power_flow_solver)

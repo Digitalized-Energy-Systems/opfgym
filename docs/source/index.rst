@@ -28,6 +28,9 @@ etc. are easily possible with *OPF-Gym*.
 
 Contact thomas.wolgast@uol.de for questions, feedback, and collaboration.
 
+The repository can be found on 
+`GitHub <https://github.com/Digitalized-Energy-Systems/opfgym>`_.
+
 --------------------------------------------------------------------------
 
 .. toctree::
