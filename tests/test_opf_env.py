@@ -18,16 +18,21 @@ def test_base_class_API():
     net.load.loc[:, 'max_max_p_mw'] = 3
 
     # Define action space
-    act_keys = [('load', 'q_mvar', net.load.index)]
-    net.load.loc[:, 'min_q_mvar'] = -1
-    net.load.loc[:, 'max_q_mvar'] = 1
+    act_keys = [('sgen', 'p_mw', net.sgen.index)]
+    print(act_keys)
+    net.sgen.loc[:, 'min_p_mw'] = 0
+    net.sgen.loc[:, 'max_p_mw'] = net.sgen.loc[:, 'p_mw']
 
-    env = opf_env.OpfEnv(net, act_keys, obs_keys, 
+    env = opf_env.OpfEnv(net, act_keys, obs_keys,
                          test_data='full_uniform', train_data='full_uniform',
                          seed=42)
-    env.reset()
-    env.step(env.action_space.sample())
 
+    # Test API
+    obs, info = env.reset(options={'seed': 1})
+    env.step(np.array([0.5, 0.5]))
+    assert env.get_current_actions().shape == env.action_space.shape
+    assert env.get_state().shape == env.state_space.shape
+    # TODO: Add rest of the API (problem: pf not converging currently)
 
 def test_obs_space_def():
     dummy_env.reset()
@@ -43,11 +48,11 @@ def test_obs_space_def():
         ('res_ext_grid', 'q_mvar', np.array([0])),
     )
 
-    obs_space = opf_env.get_obs_space(
+    obs_space = opf_env.get_obs_and_state_space(
         dummy_env.net, obs_keys, add_time_obs=False, seed=42)
     assert len(obs_space.low) == 9
 
-    obs_space = opf_env.get_obs_space(
+    obs_space = opf_env.get_obs_and_state_space(
         dummy_env.net, obs_keys, add_time_obs=True, seed=42)
     assert len(obs_space.high) == 15
 

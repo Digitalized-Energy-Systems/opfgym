@@ -45,7 +45,7 @@ class AddCustomConstraint(opf_env.OpfEnv):
             **constraint_kwargs)
         constraints_list.append(s_mva_constraint)
 
-        super().__init__(net, act_keys, obs_keys, profiles,
+        super().__init__(net, act_keys, obs_keys, profiles=profiles,
                          optimal_power_flow_solver=False,
                          constraints=constraints_list,
                          *args, **kwargs)

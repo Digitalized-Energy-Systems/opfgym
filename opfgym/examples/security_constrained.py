@@ -27,7 +27,7 @@ class SecurityConstrained(opf_env.OpfEnv):
         # ... and control some selected switches in the system
         act_keys = [('sgen', 'p_mw', net.sgen.index)]
 
-        super().__init__(net, act_keys, obs_keys, profiles,
+        super().__init__(net, act_keys, obs_keys, profiles=profiles,
                          optimal_power_flow_solver=False, *args, **kwargs)
 
     def _define_opf(self, simbench_network_name, *args, **kwargs):

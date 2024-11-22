@@ -21,7 +21,7 @@ class ConstraintSatisfaction(opf_env.OpfEnv):
         # ... and control some selected switches in the system
         act_keys = [('sgen', 'p_mw', net.sgen.index)]
 
-        super().__init__(net, act_keys, obs_keys, profiles, **kwargs)
+        super().__init__(net, act_keys, obs_keys, profiles=profiles, **kwargs)
 
     def _define_opf(self):
         net, profiles = build_simbench_net('1-LV-rural1--0-sw')

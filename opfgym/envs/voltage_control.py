@@ -56,7 +56,8 @@ class VoltageControl(opf_env.OpfEnv):
         act_keys = [('sgen', 'q_mvar', net.sgen.index[net.sgen.controllable]),
                     ('storage', 'q_mvar', net.storage.index[net.storage.controllable])]
 
-        super().__init__(net, act_keys, obs_keys, profiles, *args, **kwargs)
+        super().__init__(net, act_keys, obs_keys, profiles=profiles,
+                         *args, **kwargs)
 
     def _define_opf(self, simbench_network_name, *args, **kwargs):
         net, profiles = build_simbench_net(

@@ -28,10 +28,18 @@ class PartiallyObservable(opf_env.OpfEnv):
             ('load', 'q_mvar', observable_loads),
         ]
 
+        # Since state and observation are not equal for this env, we need to
+        # define the state space explicitly (e.g. required for sampling)
+        state_keys = [
+            ('load', 'p_mw', net.load.index),
+            ('load', 'q_mvar', net.load.index)
+        ]
+
         # ... and control some selected switches in the system
         act_keys = [('sgen', 'p_mw', net.sgen.index)]
 
-        super().__init__(net, act_keys, obs_keys, profiles, *args, **kwargs)
+        super().__init__(net, act_keys, obs_keys, state_keys=state_keys,
+                         profiles=profiles, *args, **kwargs)
 
     def _define_opf(self, simbench_network_name, *args, **kwargs):
         net, profiles = build_simbench_net(

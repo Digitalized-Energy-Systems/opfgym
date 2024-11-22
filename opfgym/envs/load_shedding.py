@@ -56,7 +56,8 @@ class LoadShedding(opf_env.OpfEnv):
         act_keys = [('load', 'p_mw', net.load.index[net.load.controllable]),
                     ('storage', 'p_mw', net.storage.index[net.storage.controllable])]
 
-        super().__init__(net, act_keys, obs_keys, profiles, *args, **kwargs)
+        super().__init__(net, act_keys, obs_keys, profiles=profiles,
+                         *args, **kwargs)
 
     def _define_opf(self, simbench_network_name, *args, **kwargs):
         net, profiles = build_simbench_net(

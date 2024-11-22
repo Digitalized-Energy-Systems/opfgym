@@ -40,7 +40,7 @@ class MixedContinuousDiscrete(opf_env.OpfEnv):
         act_keys = [('sgen', 'q_mvar', net.sgen.index),
                     ('trafo', 'tap_pos', net.trafo.index)]
 
-        super().__init__(net, act_keys, obs_keys, profiles,
+        super().__init__(net, act_keys, obs_keys, profiles=profiles,
                          objective_function=custom_objective_function,
                          optimal_power_flow_solver=False, *args, **kwargs)
 

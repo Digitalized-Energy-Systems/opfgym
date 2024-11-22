@@ -28,6 +28,7 @@ class OpfEnv(gym.Env):
                  net: pp.pandapowerNet,
                  action_keys: tuple[tuple[str, str, np.ndarray], ...],
                  observation_keys: tuple[tuple[str, str, np.ndarray], ...],
+                 state_keys: tuple[tuple[str, str, np.ndarray], ...]=None,
                  profiles: dict[str, pd.DataFrame]=None,
                  evaluate_on: str='validation',
                  steps_per_episode: int=1,
@@ -56,6 +57,7 @@ class OpfEnv(gym.Env):
 
         self.net = net
         self.obs_keys = observation_keys
+        self.state_keys = state_keys or copy.copy(observation_keys)
         self.act_keys = action_keys
         self.profiles = profiles
 
@@ -117,11 +119,13 @@ class OpfEnv(gym.Env):
 
         self.add_mean_obs = add_mean_obs
 
-        # Define observation and action space
+        # Define observation, state, and action spaces
         self.bus_wise_obs = bus_wise_obs
-        self.observation_space = get_obs_space(
+        self.observation_space = get_obs_and_state_space(
             self.net, self.obs_keys, add_time_obs, add_mean_obs,
-            seed, bus_wise_obs=bus_wise_obs)
+            seed=seed, bus_wise_obs=bus_wise_obs)
+        self.state_space = get_obs_and_state_space(
+            self.net, self.state_keys, seed=seed)
         n_actions = sum([len(idxs) for _, _, idxs in self.act_keys])
         self.action_space = gym.spaces.Box(0, 1, shape=(n_actions,), seed=seed)
 
@@ -206,7 +210,9 @@ class OpfEnv(gym.Env):
 
             self.initial_obj = self.calculate_objective(diff_objective=False)
 
-        return self._get_obs(self.obs_keys, self.add_time_obs), copy.deepcopy(self.info)
+        obs = self._get_obs(self.obs_keys, self.add_time_obs, self.add_mean_obs)
+
+        return obs, copy.deepcopy(self.info)
 
     def _sampling(self, step=None, test=False, sample_new=True,
                   *args, **kwargs) -> None:
@@ -248,7 +254,7 @@ class OpfEnv(gym.Env):
         """
         assert sample_new, 'Currently only implemented for sample_new=True'
         if not sample_keys:
-            sample_keys = self.obs_keys
+            sample_keys = self.state_keys
         for unit_type, column, idxs in sample_keys:
             if 'res_' not in unit_type:
                 self._sample_from_range(unit_type, column, idxs)
@@ -277,7 +283,7 @@ class OpfEnv(gym.Env):
                        sample_new=True, **kwargs) -> None:
         """ Sample data around mean values from simbench data. """
         assert sample_new, 'Currently only implemented for sample_new=True'
-        for unit_type, column, idxs in self.obs_keys:
+        for unit_type, column, idxs in self.state_keys:
             if 'res_' in unit_type or 'poly_cost' in unit_type:
                 continue 
 
@@ -396,7 +402,7 @@ class OpfEnv(gym.Env):
             terminated = False
             truncated = False
 
-        obs = self._get_obs(self.obs_keys, self.add_time_obs)
+        obs = self._get_obs(self.obs_keys, self.add_time_obs, self.add_mean_obs)
         assert not np.isnan(obs).any()
 
         return obs, reward, terminated, truncated, copy.deepcopy(self.info)
@@ -510,13 +516,14 @@ class OpfEnv(gym.Env):
 
         return reward
 
-    def _get_obs(self, obs_keys, add_time_obs) -> np.ndarray:
+    def _get_obs(self, obs_keys, add_time_obs=False, add_mean_obs=False
+                 ) -> np.ndarray:
         obss = [(self.net[unit_type].loc[idxs, column].to_numpy())
                 if (unit_type != 'load' or not self.bus_wise_obs)
                 else get_bus_aggregated_obs(self.net, 'load', column, idxs)
                 for unit_type, column, idxs in obs_keys]
 
-        if self.add_mean_obs:
+        if add_mean_obs:
             mean_obs = [np.mean(partial_obs) for partial_obs in obss 
                         if len(partial_obs) > 1]
             obss.append(mean_obs)
@@ -527,6 +534,12 @@ class OpfEnv(gym.Env):
             obss = [time_obs] + obss
 
         return np.concatenate(obss)
+
+    def get_state(self) -> np.ndarray:
+        """ Steal the popgym API to provide the full state of the system.
+        Compare https://popgym.readthedocs.io/en/latest/autoapi/popgym/core/env/index.html
+        """
+        return self._get_obs(self.state_keys)
 
     def render(self, **kwargs):
         """ Render the current state of the power system. Uses the `simple_plot`
@@ -632,12 +645,12 @@ class OpfEnv(gym.Env):
         pp.runopp(net, calculate_voltage_angles=calculate_voltage_angles, **kwargs)
 
 
-
-def get_obs_space(net, obs_keys: list, add_time_obs: bool,
-                  add_mean_obs: bool=False,
-                  seed: int=None, last_n_obs: int=1, bus_wise_obs=False
-                  ) -> gym.spaces.Box:
-    """ Get observation space from the constraints of the power network. """
+def get_obs_and_state_space(net: pp.pandapowerNet, obs_or_state_keys: list,
+                            add_time_obs: bool=False, add_mean_obs: bool=False,
+                            seed: int=None, last_n_obs: int=1,
+                            bus_wise_obs=False) -> gym.spaces.Box:
+    """ Get observation or state space from the constraints of the power
+    network. """
     lows, highs = [], []
 
     if add_time_obs:
@@ -646,7 +659,7 @@ def get_obs_space(net, obs_keys: list, add_time_obs: bool,
         lows.append(-np.ones(6))
         highs.append(np.ones(6))
 
-    for unit_type, column, idxs in obs_keys:
+    for unit_type, column, idxs in obs_or_state_keys:
         if 'res_' in unit_type:
             # The constraints are never defined in the results table
             unit_type = unit_type[4:]

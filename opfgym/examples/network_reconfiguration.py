@@ -34,7 +34,7 @@ class NetworkReconfiguration(opf_env.OpfEnv):
         act_keys = [('switch', 'closed', net.switch.index[net.switch.controllable]),
                     ('trafo', 'tap_pos', net.trafo.index[net.trafo.controllable])]
 
-        super().__init__(net, act_keys, obs_keys, profiles,
+        super().__init__(net, act_keys, obs_keys, profiles=profiles,
                          optimal_power_flow_solver=False, *args, **kwargs)
 
     def _define_opf(self, simbench_network_name, *args, **kwargs):

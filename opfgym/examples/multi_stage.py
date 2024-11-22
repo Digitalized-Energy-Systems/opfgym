@@ -39,7 +39,7 @@ class MultiStageOpf(opf_env.OpfEnv):
         # Control all generators in the system
         act_keys = [('sgen', 'p_mw', net.sgen.index)]
 
-        super().__init__(net, act_keys, obs_keys, profiles,
+        super().__init__(net, act_keys, obs_keys, profiles=profiles,
                          steps_per_episode=steps_per_episode,
                          optimal_power_flow_solver=False,
                          *args, **kwargs)
