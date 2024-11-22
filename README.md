@@ -1,3 +1,13 @@
+
+[PyPi](https://pypi.org/project/opfgym/) 
+| [Read the Docs](https://opf-gym.readthedocs.io)
+| [Github](https://github.com/Digitalized-Energy-Systems/opfgym) 
+| [mail](mailto:thomas.wolgast@uni-oldenburg.de)
+
+![lifecycle](https://img.shields.io/badge/lifecycle-maturing-blue.svg)
+[![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/Digitalized-Energy-Systems/opfgym/blob/development/LICENSE)
+[![Test OPF-gym](https://github.com/Digitalized-Energy-Systems/opfgym/actions/workflows/test-opfgym.yml/badge.svg)](https://github.com/Digitalized-Energy-Systems/opfgym/actions/workflows/test-opfgym.yml)
+
 ### General
 A set of benchmark environments to solve the Optimal Power Flow (OPF) problem
 with reinforcement learning (RL) algorithms. It is also easily possible to create custom OPF environments. 
