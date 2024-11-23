@@ -604,10 +604,10 @@ class OpfEnv(gym.Env):
         try:
             self._run_power_flow(self.net, **kwargs)
             self.power_flow_available = True
+            return True
         except pp.powerflow.LoadflowNotConverged:
             logging.warning('Powerflow not converged!!!')
             return False
-        return True
 
     def run_optimal_power_flow(self, **kwargs):
         """ Wrapper around OPF for error handling and to track success. """
@@ -615,10 +615,10 @@ class OpfEnv(gym.Env):
         try:
             self._run_optimal_power_flow(self.optimal_net, **kwargs)
             self.optimal_power_flow_available = True
+            return True
         except pp.optimal_powerflow.OPFNotConverged:
             logging.warning('OPF not converged!!!')
             return False
-        return True
 
     def ensure_power_flow_available(self):
         if not self.power_flow_available:
