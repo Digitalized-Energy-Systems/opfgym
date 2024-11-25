@@ -312,7 +312,7 @@ class OpfEnv(gym.Env):
 
     def _set_simbench_state(self, step: int=None, test=False,
                             noise_factor=0.1, noise_distribution='uniform',
-                            in_between_steps=False, *args, **kwargs) -> None:
+                            interpolate_steps=False, *args, **kwargs) -> None:
         """ Standard pre-implemented method to sample a random state from the
         simbench time-series data and set that state.
 
@@ -338,7 +338,7 @@ class OpfEnv(gym.Env):
             unit_type, actuator = type_act
             data = self.profiles[type_act].loc[step, self.net[unit_type].index]
 
-            if in_between_steps and step < total_n_steps - 1:
+            if interpolate_steps and step < total_n_steps - 1:
                 # Random linear interpolation between two steps
                 next_data = self.profiles[type_act].loc[step + 1, self.net[unit_type].index]
                 r = self.np_random.random()
