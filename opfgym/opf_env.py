@@ -285,7 +285,7 @@ class OpfEnv(gym.Env):
         assert sample_new, 'Currently only implemented for sample_new=True'
         for unit_type, column, idxs in self.state_keys:
             if 'res_' in unit_type or 'poly_cost' in unit_type:
-                continue 
+                continue
 
             df = self.net[unit_type].loc[idxs]
             mean = df[f'mean_{column}']

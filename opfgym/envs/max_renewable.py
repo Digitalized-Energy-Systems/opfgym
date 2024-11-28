@@ -42,13 +42,22 @@ class MaxRenewable(opf_env.OpfEnv):
             ('storage', 'p_mw', net.storage.index[~net.storage.controllable])
         ]
 
+        # TODO: This is a workaround. Better would be to have identical obs and state keys.
+        state_keys = [
+            ('sgen', 'p_mw', net.sgen.index),
+            ('load', 'p_mw', net.load.index),
+            ('load', 'q_mvar', net.load.index),
+            ('storage', 'p_mw', net.storage.index[~net.storage.controllable])
+        ]
+
         # ... and control all sgens' active power values + some storage systems
         act_keys = [
             ('sgen', 'p_mw', net.sgen.index[net.sgen.controllable]),
             ('storage', 'p_mw', net.storage.index[net.storage.controllable])
         ]
 
-        super().__init__(net, act_keys, obs_keys, profiles=profiles,
+        super().__init__(net, act_keys, obs_keys, state_keys=state_keys,
+                         profiles=profiles,
                          *args, **kwargs)
 
     def _define_opf(self, simbench_network_name, *args, **kwargs):
@@ -80,10 +89,6 @@ class MaxRenewable(opf_env.OpfEnv):
         net.sgen['q_mvar'] = 0.0
         net.sgen['max_q_mvar'] = 0.0
         net.sgen['min_q_mvar'] = 0.0
-
-        # Required for data sampling
-        net.sgen['mean_max_p_mw'] = net.sgen['mean_p_mw']
-        net.sgen['std_dev_max_p_mw'] = net.sgen['std_dev_p_mw']
 
         # OPF objective: Maximize active power feed-in to external grid
         active_power_costs = 30/1000  # /1000 to achieve smaller scale
