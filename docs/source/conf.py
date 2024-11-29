@@ -6,6 +6,10 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
+import os
+import sys
+sys.path.insert(0, os.path.abspath('..'))  # Adjust '..' to match your project structure
+
 project = 'OPF-Gym'
 copyright = '2024, Thomas Wolgast'
 author = 'Thomas Wolgast'
