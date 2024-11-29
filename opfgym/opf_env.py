@@ -217,8 +217,7 @@ class OpfEnv(gym.Env):
     def _sampling(self, step=None, test=False, sample_new=True,
                   *args, **kwargs) -> None:
 
-        self.power_flow_available = False
-        self.optimal_power_flow_available = False
+        self.set_power_flow_unavailable()
 
         data_distr = self.test_data if test is True else self.train_data
         kwargs.update(self.sampling_params)
@@ -408,9 +407,11 @@ class OpfEnv(gym.Env):
         return obs, reward, terminated, truncated, copy.deepcopy(self.info)
 
     def _apply_actions(self, action, diff_action_step_size=None) -> float:
-        """ Apply agent actions as setpoints to the power system at hand. 
+        """ Apply agent actions as setpoints to the power system at hand.
         Returns the mean correction that was necessary to make the actions
         valid."""
+
+        self.set_power_flow_unavailable()
 
         # Clip invalid actions
         action = np.clip(action, self.action_space.low, self.action_space.high)
@@ -636,6 +637,7 @@ class OpfEnv(gym.Env):
         """
         pp.runpp(net, enforce_q_lims=enforce_q_lims, **kwargs)
 
+
     @staticmethod
     def default_optimal_power_flow(net, calculate_voltage_angles=False, **kwargs):
         """ Default OPF: Use the pandapower OPF.
@@ -643,6 +645,12 @@ class OpfEnv(gym.Env):
         Default setting: Do not calculate voltage angles because often results
         in errors for SimBench nets. """
         pp.runopp(net, calculate_voltage_angles=calculate_voltage_angles, **kwargs)
+
+    def set_power_flow_unavailable(self):
+        """ Reset the power flow availability to indicate that a new power flow
+        or OPF calculation is required. """
+        self.power_flow_available = False
+        self.optimal_power_flow_available = False
 
 
 def get_obs_and_state_space(net: pp.pandapowerNet, obs_or_state_keys: list,
