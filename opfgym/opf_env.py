@@ -178,7 +178,16 @@ class OpfEnv(gym.Env):
             # User-defined reward function
             self.reward_function = reward_function
 
-    def reset(self, seed=None, options=None) -> tuple:
+    def reset(self, seed: int=None, options: dict=None) -> tuple[np.ndarray, dict]:
+        """ gymnasium API. Reset the environment to a new state. Samples a 
+        random state from the given data distribution, applies an initial action,
+        runs a power flow calculation (optional), and returns the initial
+        observation.
+
+        :param seed: Seed for the random number generator.
+        :param options: Additional options for the reset method. 
+            Available options: 'step' (int) to control the data sampling, 
+            'test' (bool) to sample from test data."""
         super().reset(seed=seed)
         self.info = {}
         self.current_simbench_step = None
@@ -366,7 +375,14 @@ class OpfEnv(gym.Env):
             self.net[unit_type].loc[self.net[unit_type].index,
                                     actuator] = new_values
 
-    def step(self, action, *args, **kwargs) -> tuple:
+    def step(self, action: np.ndarray) -> tuple[np.ndarray, float, bool, bool, dict]:
+        """ gymnasium API: Step the environment to a new state. 
+        Applies the actions, runs a power flow, checks for constraint
+        violations, calculates the reward, and returns all information requires
+        for learning
+
+        :param action: The action to apply to the power system.
+        """
         assert not np.isnan(action).any()
         self.info = {}
         self.step_in_episode += 1
@@ -537,13 +553,14 @@ class OpfEnv(gym.Env):
         return np.concatenate(obss)
 
     def get_state(self) -> np.ndarray:
-        """ Steal the popgym API to provide the full state of the system.
-        Compare https://popgym.readthedocs.io/en/latest/autoapi/popgym/core/env/index.html
+        """ Return the state of the underlying power system. Relevant for
+        partially observable environments. Steal the popgym API for this, compare
+        https://popgym.readthedocs.io/en/latest/autoapi/popgym/core/env/index.html
         """
         return self._get_obs(self.state_keys)
 
     def render(self, **kwargs):
-        """ Render the current state of the power system. Uses the `simple_plot`
+        """ gymnasium API. Render the current state of the power system. Uses the `simple_plot`
         pandapower method. Overwrite for more sophisticated rendering. For
         kwargs information, refer to the pandapower docs:
         https://pandapower.readthedocs.io/en/latest/plotting/matplotlib/simple_plot.html"""
@@ -574,33 +591,71 @@ class OpfEnv(gym.Env):
 
         return np.concatenate(action)
 
+    def get_actions(self) -> np.ndarray:
+        """ Returns the current actions that were applied to the power system.
+
+        Warning: Not necessarily the exact same actions that were used
+        in the :meth:`step` method because some rounding, clipping, etc. might
+        have happened. However, the resulting power flows should be same.
+        Useful for storing and reproducing results.
+        """
+        if self.power_flow_available:
+            return self.get_current_actions(from_results_table=True)
+        return self.get_current_actions(from_results_table=False)
+
     def get_optimal_actions(self) -> np.ndarray:
+        """ Returns the optimal actions that were calculated by the OPF.
+        Useful for creating datasets for supervised learning.
+
+        Warning: Can only be called if :meth:`run_optimal_power_flow` method was
+        called before.
+        """
         self.ensure_optimal_power_flow_available()
         # The pandapower OPF stores the optimal settings only in the results table
         return self.get_current_actions(self.optimal_net, from_results_table=True)
 
     def is_state_valid(self) -> bool:
-        """ Returns True if the current state is valid. """
+        """ Returns True if the current state does not contain constraint
+        violations. """
         self.ensure_power_flow_available()
         valids, _, _ = self.calculate_violations(self.net)
         return valids.all()
 
     def is_optimal_state_valid(self) -> bool:
-        """ Returns True if the state after OPF calculation is valid. """
+        """ Returns True if the state after OPF calculation does not contain
+        constraint violations.
+
+        Warning: Can only be called if :meth:`run_optimal_power_flow` method was called before. 
+
+        Warning 2: Usually, the OPF does not converge if no valid solutions
+        can be found. This method is only applicable if the OPF yielded a
+        solution. However, a non-converged OPF can be counted as an invalid
+        state in most cases.
+        """
         self.ensure_optimal_power_flow_available()
         valids, _, _ = self.calculate_violations(self.optimal_net)
         return valids.all()
 
     def get_objective(self) -> float:
+        """ Returns the currrent value of the objective function. """
         self.ensure_power_flow_available()
         return sum(self.calculate_objective(self.net))
 
     def get_optimal_objective(self) -> float:
+        """ Returns the optimal value of the objective function. Warning: Can
+        only be called if :meth:`run_optimal_power_flow` method was called before. """
         self.ensure_optimal_power_flow_available()
         return sum(self.calculate_objective(self.optimal_net))
 
     def run_power_flow(self, **kwargs):
-        """ Wrapper around power flow for error handling and to track success. 
+        """ Updates the current power system state with
+        the respective power flow (line loading, voltage magnitudes, etc.).
+        Should be called whenever the power system state changed. The keyword
+        arguments can be used to pass additional arguments to the
+        power flow solver.
+
+        :param kwargs: Additional arguments for the power flow solver. 
+            (default: pandapower. Compare: https://pandapower.readthedocs.io/en/latest/powerflow/ac.html)
         """
         try:
             self._run_power_flow(self.net, **kwargs)
@@ -611,7 +666,14 @@ class OpfEnv(gym.Env):
             return False
 
     def run_optimal_power_flow(self, **kwargs):
-        """ Wrapper around OPF for error handling and to track success. """
+        """ Creates and internal copy of the power system with its current state
+        and performs the OPF on that copy. Should be called to compare the current solution
+        with the optimal solution. The keyword arguments can be used to pass additional
+        arguments to the pandapower OPF solver.
+
+        :param kwargs: Additional arguments for the OPF solver.
+            (default: pandapower. Compare: https://pandapower.readthedocs.io/en/latest/opf/formulation.html)
+        """
         self.optimal_net = copy.deepcopy(self.net)
         try:
             self._run_optimal_power_flow(self.optimal_net, **kwargs)
@@ -629,6 +691,12 @@ class OpfEnv(gym.Env):
         if not self.optimal_power_flow_available:
             raise PowerFlowNotAvailable('Please call `run_optimal_power_flow` first!')
 
+    def set_power_flow_unavailable(self):
+        """ Reset the power flow availability to indicate that a new power flow
+        or OPF calculation is required. """
+        self.power_flow_available = False
+        self.optimal_power_flow_available = False
+
     @staticmethod
     def default_power_flow(net, enforce_q_lims=True, **kwargs):
         """ Default power flow: Use the pandapower power flow.
@@ -637,7 +705,6 @@ class OpfEnv(gym.Env):
         """
         pp.runpp(net, enforce_q_lims=enforce_q_lims, **kwargs)
 
-
     @staticmethod
     def default_optimal_power_flow(net, calculate_voltage_angles=False, **kwargs):
         """ Default OPF: Use the pandapower OPF.
@@ -645,12 +712,6 @@ class OpfEnv(gym.Env):
         Default setting: Do not calculate voltage angles because often results
         in errors for SimBench nets. """
         pp.runopp(net, calculate_voltage_angles=calculate_voltage_angles, **kwargs)
-
-    def set_power_flow_unavailable(self):
-        """ Reset the power flow availability to indicate that a new power flow
-        or OPF calculation is required. """
-        self.power_flow_available = False
-        self.optimal_power_flow_available = False
 
 
 def get_obs_and_state_space(net: pp.pandapowerNet, obs_or_state_keys: list,

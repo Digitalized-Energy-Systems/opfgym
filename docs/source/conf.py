@@ -17,6 +17,8 @@ release = '0.3.2'
 extensions = [
     'sphinx.ext.autosectionlabel',
     'sphinx.ext.mathjax',
+    'sphinx.ext.autodoc',
+    'sphinx.ext.viewcode',
 ]
 
 templates_path = ['_templates']

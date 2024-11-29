@@ -1,5 +1,5 @@
 The :class:`OpfEnv` Base Class
-=======================
+==============================
 
 The `OpfEnv` base class is the core of the *OPF-Gym* library. 
 It inherits from the :class:`gymnasium.Env` class and implements the gymnasium API. 
@@ -12,15 +12,33 @@ Additionally, it provides the following main functionalities:
   problem as an RL environment. (see :ref:`Environment Design Options`)
 
 All environments that inherit from the :class:`OpfEnv` base class will have these
-functionalities.
+functionalities. 
 
-TODO: Work in progress, more information will follow.
+Methods:
+--------
 
-.. TODO: Add list of methods
+The `OpfEnv` base class provides the following methods:
 
-.. Methods
-.. -------
+.. automethod:: opfgym.OpfEnv.reset
 
-.. The `OpfEnv` base class provides the following methods:
+.. automethod:: opfgym.OpfEnv.step
 
+.. automethod:: opfgym.OpfEnv.render 
 
+.. automethod:: opfgym.OpfEnv.get_state 
+
+.. automethod:: opfgym.OpfEnv.run_power_flow
+
+.. automethod:: opfgym.OpfEnv.run_optimal_power_flow
+
+.. automethod:: opfgym.OpfEnv.get_objective
+
+.. automethod:: opfgym.OpfEnv.get_optimal_objective
+
+.. automethod:: opfgym.OpfEnv.is_state_valid
+
+.. automethod:: opfgym.OpfEnv.is_optimal_state_valid
+
+.. automethod:: opfgym.OpfEnv.get_actions
+
+.. automethod:: opfgym.OpfEnv.get_optimal_actions
