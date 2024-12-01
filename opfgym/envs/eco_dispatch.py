@@ -41,14 +41,16 @@ class EcoDispatch(opf_env.OpfEnv):
 
         # Define the RL problem
         # See all load power values, non-controlled generators, and generator prices...
-        obs_keys = [('load', 'p_mw', net.load.index),
-                    ('load', 'q_mvar', net.load.index),
-                    ('poly_cost', 'cp1_eur_per_mw', net.poly_cost.index),
-                    ('pwl_cost', 'cp1_eur_per_mw', net.pwl_cost.index),
-                    # These 3 are not relevant because len=0, if the default is used
-                    ('sgen', 'p_mw', net.sgen.index[~net.sgen.controllable]),
-                    ('storage', 'p_mw', net.storage.index),
-                    ('storage', 'q_mvar', net.storage.index)]
+        obs_keys = [
+            ('load', 'p_mw', net.load.index),
+            ('load', 'q_mvar', net.load.index),
+            ('poly_cost', 'cp1_eur_per_mw', net.poly_cost.index),
+            ('pwl_cost', 'cp1_eur_per_mw', net.pwl_cost.index),
+            # These 3 are not relevant because len=0, if the default is used
+            ('sgen', 'p_mw', net.sgen.index[~net.sgen.controllable]),
+            ('storage', 'p_mw', net.storage.index),
+            ('storage', 'q_mvar', net.storage.index)
+        ]
 
         # ... and control all generators' active power values
         act_keys = [('sgen', 'p_mw', net.sgen.index[net.sgen.controllable]),
@@ -111,11 +113,11 @@ class EcoDispatch(opf_env.OpfEnv):
     def _sampling(self, *args, **kwargs):
         super()._sampling(*args, **kwargs)
 
-        # Sample prices uniformly from min/max range for gens/sgens/ext_grids
-        self._sample_from_range(
-            'poly_cost', 'cp1_eur_per_mw', self.net.poly_cost.index)
-        self._sample_from_range(
-            'pwl_cost', 'cp1_eur_per_mw', self.net.pwl_cost.index)
+        # # Sample prices uniformly from min/max range for gens/sgens/ext_grids
+        # self._sample_from_range(
+        #     'poly_cost', 'cp1_eur_per_mw', self.net.poly_cost.index)
+        # self._sample_from_range(
+        #     'pwl_cost', 'cp1_eur_per_mw', self.net.pwl_cost.index)
 
         # Manually update the costs in the pwl 'points' definition
         for idx in self.net.ext_grid.index:

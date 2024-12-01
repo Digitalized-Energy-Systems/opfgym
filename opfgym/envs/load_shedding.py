@@ -124,11 +124,11 @@ class LoadShedding(opf_env.OpfEnv):
 
         # Sample prices for loads and storages
         # The idea is that not always the same loads should be shedded. Instead,
-        # the current situation should be considered, represented by some price.
-        self._sample_from_range(
-            'poly_cost', 'cp1_eur_per_mw', self.net.poly_cost.index)
-        self._sample_from_range(
-            'pwl_cost', 'cp1_eur_per_mw', self.net.pwl_cost.index)
+        # # the current situation should be considered, represented by some price.
+        # self._sample_from_range(
+        #     'poly_cost', 'cp1_eur_per_mw', self.net.poly_cost.index)
+        # self._sample_from_range(
+        #     'pwl_cost', 'cp1_eur_per_mw', self.net.pwl_cost.index)
 
         # Manually update the points of the piece-wise linear costs for storage
         for idx in self.net.pwl_cost.index:

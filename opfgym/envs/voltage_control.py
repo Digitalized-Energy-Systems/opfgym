@@ -111,12 +111,12 @@ class VoltageControl(opf_env.OpfEnv):
     def _sampling(self, *args, **kwargs):
         super()._sampling(*args, **kwargs)
 
-        # Sample reactive power prices uniformly from min/max range
-        if self.market_based:
-            for unit_type in ('sgen', 'ext_grid', 'storage'):
-                self._sample_from_range(
-                'poly_cost', 'cq2_eur_per_mvar2',
-                self.net.poly_cost[self.net.poly_cost.et == unit_type].index)
+        # # Sample reactive power prices uniformly from min/max range
+        # if self.market_based:
+        #     for unit_type in ('sgen', 'ext_grid', 'storage'):
+        #         self._sample_from_range(
+        #         'poly_cost', 'cq2_eur_per_mvar2',
+        #         self.net.poly_cost[self.net.poly_cost.et == unit_type].index)
 
         # Active power is not controllable (only relevant for OPF baseline)
         # Set active power boundaries to current active power values
