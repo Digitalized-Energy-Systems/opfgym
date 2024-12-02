@@ -24,8 +24,8 @@ def test_base_class_API():
     net.sgen.loc[:, 'max_p_mw'] = net.sgen.loc[:, 'p_mw']
 
     env = opf_env.OpfEnv(net, act_keys, obs_keys,
-                         test_data='full_uniform', train_data='full_uniform',
-                         seed=42)
+                         test_sampling='full_uniform', train_sampling='full_uniform',
+                         validation_sampling='full_uniform',seed=42)
 
     # Test API
     obs, info = env.reset(options={'seed': 1})

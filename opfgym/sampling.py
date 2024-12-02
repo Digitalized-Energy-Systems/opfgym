@@ -68,38 +68,6 @@ class SequentialSampler(DatasetSampler):
         raise AttributeError(f'None of the samplers has the attribute {attr}.')
 
 
-def create_default_sampler(sampler: str,
-                           state_keys: tuple,
-                           profiles: dict,
-                           available_steps: np.ndarray=None,
-                           seed=None,
-                           **kwargs) -> DatasetSampler:
-    """ Default sampler: Always use uniform sampling for prices and one of
-    'simbench', 'uniform', or 'normal' distribution sampling for the rest.
-
-    :param state_keys: Keys to sample from the state space.
-    TODO: Add params for all this
-    """
-
-    uniform_keys = [key for key in state_keys if 'cost' in key[0]]
-    uniform_sampler = UniformSampler(uniform_keys, seed=seed, **kwargs)
-
-    rest_keys = [key for key in state_keys if 'cost' not in key[0]]
-    if sampler == 'simbench':
-        user_sampler = SimbenchSampler(rest_keys,
-                                       profiles=profiles,
-                                       available_steps=available_steps,
-                                       **kwargs)
-    elif sampler == 'normal':
-        user_sampler = NormalSampler(rest_keys, **kwargs)
-    elif sampler == 'uniform':
-        user_sampler = UniformSampler(rest_keys, **kwargs)
-    else:
-        raise ValueError(f"Sampler {sampler} not availabe in opfgym.")
-
-    return SequentialSampler((user_sampler, uniform_sampler), seed=seed)
-
-
 class SimbenchSampler(DatasetSampler):
     def __init__(self,
                  state_keys: tuple,
@@ -166,11 +134,6 @@ class SimbenchSampler(DatasetSampler):
                 self.profiles[type_act].min()[idxs],
                 self.profiles[type_act].max()[idxs]
             )
-            # = np.clip(
-            #     new_values,
-            #     self.profiles[type_act].min()[idxs],
-            #     self.profiles[type_act].max()[idxs]
-            # )
 
             net[unit_type].loc[idxs, column] = new_values
 
@@ -315,3 +278,41 @@ class StandardMixedRandomSampler(MixedRandomSampler):
         uniform_sampler = UniformSampler(**kwargs)
         samplers = (simbench_sampler, normal_sampler, uniform_sampler)
         super().__init__(samplers, **kwargs)
+
+
+def create_default_sampler(sampler: str,
+                           state_keys: tuple,
+                           profiles: dict,
+                           available_steps: np.ndarray=None,
+                           seed=None,
+                           **kwargs) -> DatasetSampler:
+    """ Default sampler: Always use uniform sampling for prices and one of
+    'simbench', 'full_uniform', or 'normal_around_mean' distribution sampling for the rest.
+
+    :param state_keys: Keys to sample from the state space.
+    TODO: Add params for all this
+    """
+
+    # Simbench provides only time-series data for power values (e.g. no costs)
+    simbench_condition = lambda key: 'p_mw' in key[1] or 'q_mvar' in key[1]
+
+    # Use uniform distribution for everything else by default
+    uniform_keys = [key for key in state_keys if not simbench_condition(key)]
+    uniform_sampler = UniformSampler(uniform_keys, seed=seed, **kwargs)
+
+    rest_keys = [key for key in state_keys if simbench_condition(key)]
+    if sampler == 'simbench':
+        user_sampler = SimbenchSampler(rest_keys,
+                                       profiles=profiles,
+                                       available_steps=available_steps,
+                                       **kwargs)
+    elif sampler == 'normal_around_mean':
+        user_sampler = NormalSampler(rest_keys, **kwargs)
+    elif sampler == 'full_uniform':
+        user_sampler = UniformSampler(rest_keys, **kwargs)
+    elif sampler == 'mixed':
+        user_sampler = StandardMixedRandomSampler(rest_keys, **kwargs)
+    else:
+        raise ValueError(f"Sampler {sampler} not availabe in opfgym.")
+
+    return SequentialSampler((user_sampler, uniform_sampler), seed=seed)
