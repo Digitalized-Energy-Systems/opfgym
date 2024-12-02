@@ -703,7 +703,14 @@ class OpfEnv(gym.Env):
 
         Default setting: Enforce q limits as automatic constraint satisfaction.
         """
-        pp.runpp(net, enforce_q_lims=enforce_q_lims, **kwargs)
+        try:
+            pp.runpp(net, enforce_q_lims=enforce_q_lims, **kwargs)
+        except pp.powerflow.LoadflowNotConverged:
+            logging.warning('Powerflow not converged! Try again without lightsim2grid.')
+            # This happened more often after lightsim2grid was added.
+            # Test if removing lightsim2grid solves the issue.
+            pp.runpp(net, enforce_q_lims=enforce_q_lims, lightsim2grid=False, **kwargs)
+            logging.warning('Powerflow converged without lightsim2grid.')
 
     @staticmethod
     def default_optimal_power_flow(net, calculate_voltage_angles=False, **kwargs):
