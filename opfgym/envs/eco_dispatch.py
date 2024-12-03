@@ -113,12 +113,6 @@ class EcoDispatch(opf_env.OpfEnv):
     def _sampling(self, *args, **kwargs):
         super()._sampling(*args, **kwargs)
 
-        # # Sample prices uniformly from min/max range for gens/sgens/ext_grids
-        # self._sample_from_range(
-        #     'poly_cost', 'cp1_eur_per_mw', self.net.poly_cost.index)
-        # self._sample_from_range(
-        #     'pwl_cost', 'cp1_eur_per_mw', self.net.pwl_cost.index)
-
         # Manually update the costs in the pwl 'points' definition
         for idx in self.net.ext_grid.index:
             price = self.net.pwl_cost.at[idx, 'cp1_eur_per_mw']

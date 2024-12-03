@@ -15,7 +15,7 @@ from typing import Tuple
 import opfgym
 import opfgym.util
 import opfgym.objective
-import opfgym.sampling
+from opfgym.sampling import DatasetSampler, create_default_sampler
 from opfgym.simbench.data_split import define_test_train_split
 from opfgym.simbench.time_observation import get_simbench_time_observation
 
@@ -40,9 +40,9 @@ class OpfEnv(gym.Env):
                  add_time_obs: bool=False,
                  add_act_obs: bool=False,
                  add_mean_obs: bool=False,
-                 train_sampling: str='simbench',
-                 test_sampling: str='simbench',
-                 validation_sampling: str='simbench',
+                 train_sampling: DatasetSampler | str='simbench',
+                 test_sampling: DatasetSampler | str='simbench',
+                 validation_sampling: DatasetSampler | str='simbench',
                  evaluate_on: str='validation',
                  sampling_params: dict=None,
                  constraint_params: dict=None,
@@ -74,22 +74,22 @@ class OpfEnv(gym.Env):
         sampling_params = sampling_params or {}
         split = define_test_train_split(**kwargs)
         self.test_steps, self.validation_steps, self.train_steps = split
-        if isinstance(train_sampling, opfgym.sampling.DatasetSampler):
+        if isinstance(train_sampling, DatasetSampler):
             self.train_sampling = train_sampling
         elif isinstance(train_sampling, str):
-            self.train_sampling = opfgym.sampling.create_default_sampler(
+            self.train_sampling = create_default_sampler(
                 train_sampling, self.state_keys, profiles, self.train_steps,
                 seed, **sampling_params)
-        if isinstance(validation_sampling, opfgym.sampling.DatasetSampler):
+        if isinstance(validation_sampling, DatasetSampler):
             self.validation_sampling = validation_sampling
         elif isinstance(validation_sampling, str):
-            self.validation_sampling = opfgym.sampling.create_default_sampler(
+            self.validation_sampling = create_default_sampler(
                 validation_sampling, self.state_keys, profiles,
                 self.validation_steps, seed, **sampling_params)
-        if isinstance(test_sampling, opfgym.sampling.DatasetSampler):
+        if isinstance(test_sampling, DatasetSampler):
             self.test_sampling = test_sampling
         elif isinstance(test_sampling, str):
-            self.test_sampling = opfgym.sampling.create_default_sampler(
+            self.test_sampling = create_default_sampler(
                 test_sampling, self.state_keys, profiles, self.test_steps, seed,
                 **sampling_params)
         self.current_sampler = None
@@ -110,11 +110,6 @@ class OpfEnv(gym.Env):
         else:
             assert_only_net_in_signature(objective_function)
             self.objective_function = objective_function
-
-        # self.evaluate_on = evaluate_on
-        # self.train_sampling = train_sampling
-        # self.test_sampling = test_sampling
-        # self.sampling_params = sampling_params or {}
 
         # Define the observation space
         self.add_act_obs = add_act_obs
@@ -180,9 +175,6 @@ class OpfEnv(gym.Env):
             # An initial power flow is required to compute the initial objective
             self.pf_for_obs = True
 
-        # # Define data distribution for training and testing
-        # self.test_steps, self.validation_steps, self.train_steps = define_test_train_split(**kwargs)
-
         # Constraints
         if custom_constraints is None:
             self.constraints = opfgym.constraints.create_default_constraints(
@@ -221,7 +213,6 @@ class OpfEnv(gym.Env):
 
         test = options.get('test', False)
         step = options.get('step', None)
-        # self.apply_action = options.get('new_action', True)
 
         self._sampling(step, test, seed)
 
@@ -281,7 +272,6 @@ class OpfEnv(gym.Env):
         self.info = {}
         self.step_in_episode += 1
 
-        # if self.apply_action:
         correction = self._apply_actions(action, self.diff_action_step_size)
         self.run_power_flow()
 
@@ -298,7 +288,7 @@ class OpfEnv(gym.Env):
 
         reward = self.calculate_reward()
 
-        if self.clipped_action_penalty: #  and self.apply_action:
+        if self.clipped_action_penalty:
             reward -= correction * self.clipped_action_penalty
 
         if self.steps_per_episode == 1:

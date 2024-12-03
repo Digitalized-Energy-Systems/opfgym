@@ -3,12 +3,18 @@
 import abc
 
 import numpy as np
+import pandas as pd
 import pandapower as pp
 import scipy
 from scipy import stats
 
 
 class DatasetSampler(abc.ABC):
+    """ Abstract class for sampling state data from some distribution.
+
+    :param seed: Seed for the random number generator.
+
+    """
     def __init__(self, seed=None, **kwargs) -> None:
         self.np_random = np.random.RandomState(seed=seed)
 
@@ -32,13 +38,13 @@ class SequentialSampler(DatasetSampler):
     by sampling load data from simbench and price data with uniform distribution
     in some range (price data is not available for simbench).
 
-    Args:
-        samplers: Tuple of samplers to be combined.
+    :param samplers: Tuple of samplers to be combined.
+    :param seed: Seed for the random number generator (used for all samplers).
 
     """
     def __init__(self, samplers: tuple, seed=None, **kwargs) -> None:
-        super().__init__(seed=seed, **kwargs)
         self.samplers = samplers
+        super().__init__(seed=seed, **kwargs)
 
         # Make sure that all samplers have the same starting seed
         self.set_seed(seed)
@@ -60,8 +66,8 @@ class SequentialSampler(DatasetSampler):
         return self.samplers[idx]
 
     def __getattr__(self, attr: str):
-        for sampler in self.samplers:
-            try: 
+        for sampler in self.__dict__.get('samplers', ()):
+            try:
                 return getattr(sampler, attr)
             except AttributeError:
                 pass
@@ -69,9 +75,27 @@ class SequentialSampler(DatasetSampler):
 
 
 class SimbenchSampler(DatasetSampler):
+    """ Sample states from simbench time-series datasets. Can only be used to
+    sample active and reactive power values. Not suitable for sampling prices
+    or voltage data.
+
+    :param state_keys: Tuple of keys to define the state space for sampling.
+        Each key is a (unit_type, column, idxs) tuple.
+    :param profiles: Dictionary of profiles for each unit type and column.
+        Assumes the SimBench data structure.
+    :param available_steps: Array of available time steps to sample from.
+        Useful to define separate training and testing samplers.
+    :param in_between_steps: If True, linearly interpolate between two steps to
+        create more diverse data.
+    :param noise_factor: Relative factor to add noise to the data to create more
+        diverse data. E.g. 0.1 can be interpreted as 10% noise of the
+        available data range.
+    :param noise_distribution: Distribution to sample noise from. Can be either
+        'uniform' or 'normal'.
+    """
     def __init__(self,
-                 state_keys: tuple,
-                 profiles: dict,
+                 state_keys: tuple[tuple[str, str, np.ndarray]],
+                 profiles: dict[tuple[str, str], pd.DataFrame],
                  available_steps: np.ndarray=None,
                  in_between_steps=False,
                  noise_factor=0.0,
@@ -95,7 +119,9 @@ class SimbenchSampler(DatasetSampler):
         """ Standard pre-implemented method to sample a random state from the
         simbench time-series data and set that state.
 
-        Works only for simbench systems!
+        :param net: The power system to update.
+        :param step: Time step for deterministic sampling. If None, sample
+            randomly from available steps.
         """
 
         if step is None:
@@ -141,10 +167,21 @@ class SimbenchSampler(DatasetSampler):
 
 
 class NormalSampler(DatasetSampler):
-    def __init__(self, 
-                 state_keys: tuple, 
-                 relative_standard_deviation: float=None, 
-                 truncated: bool=False, 
+    """ Sample states from normal distribution around mean values.
+    Warning: Assumes the existence of mean_{column}, std_dev_{column},
+    min_{column}, and max_{column} of the column to sample in the dataframe.
+
+    :param state_keys: Tuple of keys to define the state space for sampling.
+        Each key is a (unit_type, column, idxs) tuple.
+    :param relative_standard_deviation: Relative standard deviation to sample
+        from. If None, the std_dev_{column} column is used.
+    :param truncated: If True, values are sampled from the truncated range
+        instead of only clipping afterwards. Results in less extremes.
+    """
+    def __init__(self,
+                 state_keys: tuple,
+                 relative_standard_deviation: float=None,
+                 truncated: bool=False,
                  **kwargs
             ) -> None:
         self.state_keys = state_keys
@@ -194,6 +231,13 @@ class NormalSampler(DatasetSampler):
 
 
 class UniformSampler(DatasetSampler):
+    """ Sample states from uniform distribution within the given range.
+    Warning: Assumes the existence of min_{column} and max_{column} of the
+    column to sample in the dataframe.
+
+    :param state_keys: Tuple of keys to define the state space for sampling.
+        Each key is a (unit_type, column, idxs) tuple.
+    """
     def __init__(self, state_keys: tuple, **kwargs) -> None:
         self.state_keys = state_keys
         super().__init__(**kwargs)
@@ -206,6 +250,7 @@ class UniformSampler(DatasetSampler):
         """
         for unit_type, column, idxs in self.state_keys:
             # Results cannot be sampled but only be computed by the power flow
+            # TODO: Actually not necessary because not part of the state space?!
             if 'res_' not in unit_type:
                 self._sample_from_range(net, unit_type, column, idxs)
 
@@ -245,8 +290,8 @@ class MixedRandomSampler(DatasetSampler):
             and from the second sampler with 60% probability.
     """
     def __init__(self,
-                 samplers: tuple,
-                 sampler_probabilities_cumulated: tuple,
+                 samplers: tuple[DatasetSampler, ...],
+                 sampler_probabilities_cumulated: tuple[float, ...],
                  seed=None,
                  **kwargs) -> None:
         self.samplers = samplers
@@ -266,6 +311,21 @@ class MixedRandomSampler(DatasetSampler):
         super().set_seed(seed)
         for sampler in self.samplers:
             sampler.set_seed(seed)
+
+    # Lots of repetition here -> Define extra wrapper class?!
+    def __len__(self):
+        return len(self.samplers)
+
+    def __getitem__(self, idx: int):
+        return self.samplers[idx]
+
+    def __getattr__(self, attr: str):
+        for sampler in self.__dict__.get('samplers', ()):
+            try:
+                return getattr(sampler, attr)
+            except AttributeError:
+                pass
+        raise AttributeError(f'None of the samplers has the attribute {attr}.')
 
 
 class StandardMixedRandomSampler(MixedRandomSampler):
