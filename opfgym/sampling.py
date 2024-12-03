@@ -32,32 +32,29 @@ class DatasetSampler(abc.ABC):
         self.np_random.seed(seed)
 
 
-class SequentialSampler(DatasetSampler):
-    """ Combines multiple samplers to one sampler by calling them sequentially.
-    Should be used to combine different sampling strategies, for example,
-    by sampling load data from simbench and price data with uniform distribution
-    in some range (price data is not available for simbench).
-
-    :param samplers: Tuple of samplers to be combined.
-    :param seed: Seed for the random number generator (used for all samplers).
-
-    """
-    def __init__(self, samplers: tuple, seed=None, **kwargs) -> None:
+class DatasetSamplerWrapper(abc.ABC):
+    """ A wrapper class around dataset samplers to combine multiple samplers 
+    and still provide the same API. """
+    def __init__(self,
+                 samplers: tuple[DatasetSampler, ...],
+                 seed=None,
+                 **kwargs) -> None:
         self.samplers = samplers
-        super().__init__(seed=seed, **kwargs)
-
-        # Make sure that all samplers have the same starting seed
+        self.np_random = np.random.RandomState(seed=seed)
         self.set_seed(seed)
 
+    def __call__(self, net, step: int=None, *args, **kwargs):
+        self.sample_state(net, step=step, *args, **kwargs)
+        return net
+
+    @abc.abstractmethod
+    def sample_state(self, net: pp.pandapowerNet, *args, **kwargs):
+        pass
+
     def set_seed(self, seed):
-        super().set_seed(seed)
+        self.np_random.seed(seed)
         for sampler in self.samplers:
             sampler.set_seed(seed)
-
-    def sample_state(self, net, *args, **kwargs):
-        for sampler in self.samplers:
-            net = sampler.sample_state(net, *args, **kwargs)
-        return net
 
     def __len__(self):
         return len(self.samplers)
@@ -72,6 +69,46 @@ class SequentialSampler(DatasetSampler):
             except AttributeError:
                 pass
         raise AttributeError(f'None of the samplers has the attribute {attr}.')
+
+
+class SequentialSampler(DatasetSamplerWrapper):
+    """ Combines multiple samplers by calling them sequentially.
+    Should be used to combine different sampling strategies, for example,
+    by sampling load data from simbench and price data with uniform distribution
+    in some range (price data is not available for simbench).
+    """
+    def sample_state(self, net, *args, **kwargs):
+        for sampler in self.samplers:
+            net = sampler.sample_state(net, *args, **kwargs)
+        return net
+
+
+class MixedRandomSampler(DatasetSamplerWrapper):
+    """ Combines multiple samplers to one sampler by calling one of them
+    randomly. For example, can be used to sample either from simbench data or
+    from random data to create a more diverse dataset.
+
+    :param samplers: Tuple of samplers to be combined.
+    :param sampler_probabilities_cumulated: Tuple of probabilities to sample from
+        the corresponding sampler. Must be in ascending order. For example,
+        (0.4, 1.0) to sample from the first sampler with 40% probability
+        and from the second sampler with 60% probability.
+    """
+    def __init__(self,
+                 samplers: tuple[DatasetSampler, ...],
+                 sampler_probabilities_cumulated: tuple[float, ...],
+                 seed=None,
+                 **kwargs) -> None:
+        self.sampler_probabilities_cumulated = sampler_probabilities_cumulated
+        assert len(samplers) == len(sampler_probabilities_cumulated)
+        assert sampler_probabilities_cumulated[-1] == 1
+        super().__init__(samplers=samplers, seed=seed, **kwargs)
+
+    def sample_state(self, net: pp.pandapowerNet, *args, **kwargs):
+        random_number = self.np_random.random()
+        for idx, sampler in enumerate(self.samplers):
+            if random_number < self.sampler_probabilities_cumulated[idx]:
+                return sampler.sample_state(net, *args, **kwargs)
 
 
 class SimbenchSampler(DatasetSampler):
@@ -182,8 +219,7 @@ class NormalSampler(DatasetSampler):
                  state_keys: tuple,
                  relative_standard_deviation: float=None,
                  truncated: bool=False,
-                 **kwargs
-            ) -> None:
+                 **kwargs) -> None:
         self.state_keys = state_keys
         self.relative_standard_deviation = relative_standard_deviation
         self.truncated = truncated
@@ -256,7 +292,11 @@ class UniformSampler(DatasetSampler):
 
         return net
 
-    def _sample_from_range(self, net, unit_type:str, column: str, idxs: np.ndarray) -> None:
+    def _sample_from_range(self,
+                           net: pp.pandapowerNet,
+                           unit_type: str,
+                           column: str,
+                           idxs: np.ndarray) -> None:
         df = net[unit_type]
         # Make sure to sample from biggest possible range
         try:
@@ -277,57 +317,6 @@ class UniformSampler(DatasetSampler):
             net[unit_type][column].loc[idxs] = r
 
 
-class MixedRandomSampler(DatasetSampler):
-    """ Combines multiple samplers to one sampler by calling one of them
-    randomly. For example, can be used to sample either from simbench data or
-    from random data to create a more diverse dataset.
-
-    Args:
-        samplers: Tuple of samplers to be combined.
-        sampler_probabilities_cumulated: Tuple of probabilities to sample from
-            the corresponding sampler. Must be in ascending order. For example,
-            (0.4, 1.0) to sample from the first sampler with 40% probability
-            and from the second sampler with 60% probability.
-    """
-    def __init__(self,
-                 samplers: tuple[DatasetSampler, ...],
-                 sampler_probabilities_cumulated: tuple[float, ...],
-                 seed=None,
-                 **kwargs) -> None:
-        self.samplers = samplers
-        self.sampler_probabilities_cumulated = sampler_probabilities_cumulated
-        assert len(samplers) == len(sampler_probabilities_cumulated)
-        assert sampler_probabilities_cumulated[-1] == 1
-        super().__init__(seed=seed, **kwargs)
-        self.set_seed(seed)
-
-    def sample_state(self, net: pp.pandapowerNet, *args, **kwargs):
-        random_number = self.np_random.random()
-        for idx, sampler in enumerate(self.samplers):
-            if random_number < self.sampler_probabilities_cumulated[idx]:
-                return sampler.sample_state(net, *args, **kwargs)
-
-    def set_seed(self, seed):
-        super().set_seed(seed)
-        for sampler in self.samplers:
-            sampler.set_seed(seed)
-
-    # Lots of repetition here -> Define extra wrapper class?!
-    def __len__(self):
-        return len(self.samplers)
-
-    def __getitem__(self, idx: int):
-        return self.samplers[idx]
-
-    def __getattr__(self, attr: str):
-        for sampler in self.__dict__.get('samplers', ()):
-            try:
-                return getattr(sampler, attr)
-            except AttributeError:
-                pass
-        raise AttributeError(f'None of the samplers has the attribute {attr}.')
-
-
 class StandardMixedRandomSampler(MixedRandomSampler):
     """ Standard combination of sampling from either simbench data, uniform,
     distributed data or normal distributed data (combination of the three 
@@ -341,37 +330,42 @@ class StandardMixedRandomSampler(MixedRandomSampler):
 
 
 def create_default_sampler(sampler: str,
-                           state_keys: tuple,
-                           profiles: dict,
+                           state_keys: tuple[tuple[str, str, np.ndarray]],
+                           profiles: dict[tuple[str, str], pd.DataFrame],
                            available_steps: np.ndarray=None,
-                           seed=None,
+                           seed: int=None,
                            **kwargs) -> DatasetSampler:
     """ Default sampler: Always use uniform sampling for prices and one of
     'simbench', 'full_uniform', or 'normal_around_mean' distribution sampling for the rest.
 
-    :param state_keys: Keys to sample from the state space.
-    TODO: Add params for all this
+    :param state_keys: Keys to sample from the state space. Each key is a
+        (unit_type, column, idxs) tuple.
+    :param profiles: Dictionary of profiles for each unit type and column.
+        Assumes the SimBench data structure.
+    :param available_steps: Array of available time steps to sample from.
+        Useful to define separate training and testing samplers.
+    :param seed: Seed for the random number generator.
     """
 
-    # Simbench provides only time-series data for power values (e.g. no costs)
-    simbench_condition = lambda key: 'p_mw' in key[1] or 'q_mvar' in key[1]
+    # User defined sampling for active and reactive power
+    condition = lambda key: ('p_mw' in key[1]) or ('q_mvar' in key[1])
+    user_keys = [key for key in state_keys if condition(key)]
 
     # Use uniform distribution for everything else by default
-    uniform_keys = [key for key in state_keys if not simbench_condition(key)]
+    uniform_keys = [key for key in state_keys if not condition(key)]
     uniform_sampler = UniformSampler(uniform_keys, seed=seed, **kwargs)
 
-    rest_keys = [key for key in state_keys if simbench_condition(key)]
     if sampler == 'simbench':
-        user_sampler = SimbenchSampler(rest_keys,
+        user_sampler = SimbenchSampler(user_keys,
                                        profiles=profiles,
                                        available_steps=available_steps,
                                        **kwargs)
     elif sampler == 'normal_around_mean':
-        user_sampler = NormalSampler(rest_keys, **kwargs)
+        user_sampler = NormalSampler(user_keys, **kwargs)
     elif sampler == 'full_uniform':
-        user_sampler = UniformSampler(rest_keys, **kwargs)
+        user_sampler = UniformSampler(user_keys, **kwargs)
     elif sampler == 'mixed':
-        user_sampler = StandardMixedRandomSampler(rest_keys, **kwargs)
+        user_sampler = StandardMixedRandomSampler(user_keys, **kwargs)
     else:
         raise ValueError(f"Sampler {sampler} not availabe in opfgym.")
 
