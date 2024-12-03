@@ -33,7 +33,7 @@ class OpfEnv(gym.Env):
                  evaluate_on: str='validation',
                  steps_per_episode: int=1,
                  bus_wise_obs: bool=False,
-                 reward_function: opfgym.RewardFunction=None,
+                 reward_function: str | opfgym.RewardFunction = 'summation',
                  reward_function_params: dict=None,
                  diff_objective: bool=False,
                  add_res_obs: bool=False,
@@ -164,11 +164,7 @@ class OpfEnv(gym.Env):
 
         # Define reward function
         reward_function_params = reward_function_params or {}
-        if reward_function is None:
-            # Default reward
-            self.reward_function = opfgym.reward.Summation(
-                env=self, **reward_function_params)
-        elif isinstance(reward_function, str):
+        if isinstance(reward_function, str):
             # Load by string (e.g. 'Summation' or 'summation')
             reward_class = opfgym.util.load_class_from_module(
                 reward_function, 'opfgym.reward')
