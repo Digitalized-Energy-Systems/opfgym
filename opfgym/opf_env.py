@@ -45,7 +45,7 @@ class OpfEnv(gym.Env):
                  validation_sampling: str='simbench',
                  evaluate_on: str='validation',
                  sampling_params: dict=None,
-                 constraint_params: dict={},
+                 constraint_params: dict=None,
                  custom_constraints: list=None,
                  autoscale_actions: bool=True,
                  diff_action_step_size: float=None,
@@ -186,7 +186,7 @@ class OpfEnv(gym.Env):
         # Constraints
         if custom_constraints is None:
             self.constraints = opfgym.constraints.create_default_constraints(
-                self.net, constraint_params)
+                self.net, constraint_params or {})
         else:
             self.constraints = custom_constraints
 
