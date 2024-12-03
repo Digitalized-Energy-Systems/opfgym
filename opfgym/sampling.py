@@ -5,7 +5,6 @@ import abc
 import numpy as np
 import pandas as pd
 import pandapower as pp
-import scipy
 from scipy import stats
 
 
