@@ -8,7 +8,7 @@ import pandapower as pp
 from scipy import stats
 
 
-class DatasetSampler(abc.ABC):
+class DataSampler(abc.ABC):
     """ Abstract class for sampling state data from some distribution.
 
     :param seed: Seed for the random number generator.
@@ -31,11 +31,11 @@ class DatasetSampler(abc.ABC):
         self.np_random.seed(seed)
 
 
-class DatasetSamplerWrapper(abc.ABC):
+class DataSamplerWrapper(abc.ABC):
     """ A wrapper class around dataset samplers to combine multiple samplers 
     and still provide the same API. """
     def __init__(self,
-                 samplers: tuple[DatasetSampler, ...],
+                 samplers: tuple[DataSampler, ...],
                  seed=None,
                  **kwargs) -> None:
         self.samplers = samplers
@@ -70,7 +70,7 @@ class DatasetSamplerWrapper(abc.ABC):
         raise AttributeError(f'None of the samplers has the attribute {attr}.')
 
 
-class SequentialSampler(DatasetSamplerWrapper):
+class SequentialSampler(DataSamplerWrapper):
     """ Combines multiple samplers by calling them sequentially.
     Should be used to combine different sampling strategies, for example,
     by sampling load data from simbench and price data with uniform distribution
@@ -82,10 +82,11 @@ class SequentialSampler(DatasetSamplerWrapper):
         return net
 
 
-class MixedRandomSampler(DatasetSamplerWrapper):
+class MixedRandomSampler(DataSamplerWrapper):
     """ Combines multiple samplers to one sampler by calling one of them
     randomly. For example, can be used to sample either from simbench data or
-    from random data to create a more diverse dataset.
+    from random data to create a more diverse dataset that included edge cases
+    and does not have too much data repetition.
 
     :param samplers: Tuple of samplers to be combined.
     :param sampler_probabilities_cumulated: Tuple of probabilities to sample from
@@ -94,7 +95,7 @@ class MixedRandomSampler(DatasetSamplerWrapper):
         and from the second sampler with 60% probability.
     """
     def __init__(self,
-                 samplers: tuple[DatasetSampler, ...],
+                 samplers: tuple[DataSampler, ...],
                  sampler_probabilities_cumulated: tuple[float, ...],
                  seed=None,
                  **kwargs) -> None:
@@ -110,7 +111,7 @@ class MixedRandomSampler(DatasetSamplerWrapper):
                 return sampler.sample_state(net, *args, **kwargs)
 
 
-class SimbenchSampler(DatasetSampler):
+class SimbenchSampler(DataSampler):
     """ Sample states from simbench time-series datasets. Can only be used to
     sample active and reactive power values. Not suitable for sampling prices
     or voltage data.
@@ -202,7 +203,7 @@ class SimbenchSampler(DatasetSampler):
         return net
 
 
-class NormalSampler(DatasetSampler):
+class NormalSampler(DataSampler):
     """ Sample states from normal distribution around mean values.
     Warning: Assumes the existence of mean_{column}, std_dev_{column},
     min_{column}, and max_{column} of the column to sample in the dataframe.
@@ -265,7 +266,7 @@ class NormalSampler(DatasetSampler):
         return net
 
 
-class UniformSampler(DatasetSampler):
+class UniformSampler(DataSampler):
     """ Sample states from uniform distribution within the given range.
     Warning: Assumes the existence of min_{column} and max_{column} of the
     column to sample in the dataframe.
@@ -316,24 +317,12 @@ class UniformSampler(DatasetSampler):
             net[unit_type][column].loc[idxs] = r
 
 
-class StandardMixedRandomSampler(MixedRandomSampler):
-    """ Standard combination of sampling from either simbench data, uniform,
-    distributed data or normal distributed data (combination of the three 
-    standard samplers)."""
-    def __init__(self, **kwargs) -> None:
-        simbench_sampler = SimbenchSampler(**kwargs)
-        normal_sampler = NormalSampler(**kwargs)
-        uniform_sampler = UniformSampler(**kwargs)
-        samplers = (simbench_sampler, normal_sampler, uniform_sampler)
-        super().__init__(samplers, **kwargs)
-
-
 def create_default_sampler(sampler: str,
                            state_keys: tuple[tuple[str, str, np.ndarray]],
                            profiles: dict[tuple[str, str], pd.DataFrame],
                            available_steps: np.ndarray=None,
                            seed: int=None,
-                           **kwargs) -> DatasetSampler:
+                           **kwargs) -> DataSampler:
     """ Default sampler: Always use uniform sampling for prices and one of
     'simbench', 'full_uniform', or 'normal_around_mean' distribution sampling for the rest.
 
@@ -364,8 +353,25 @@ def create_default_sampler(sampler: str,
     elif sampler == 'full_uniform':
         user_sampler = UniformSampler(user_keys, **kwargs)
     elif sampler == 'mixed':
-        user_sampler = StandardMixedRandomSampler(user_keys, **kwargs)
+        user_sampler = StandardMixedRandomSampler(
+            state_keys=state_keys,
+            profiles=profiles,
+            available_steps=available_steps,
+            seed=seed,
+            **kwargs)
     else:
         raise ValueError(f"Sampler {sampler} not availabe in opfgym.")
 
     return SequentialSampler((user_sampler, uniform_sampler), seed=seed)
+
+
+class StandardMixedRandomSampler(MixedRandomSampler):
+    """ Standard combination of sampling from either simbench data, uniform,
+    distributed data or normal distributed data (combination of the three 
+    standard samplers)."""
+    def __init__(self, **kwargs) -> None:
+        simbench_sampler = create_default_sampler('simbench', **kwargs)
+        normal_sampler = create_default_sampler('normal_around_mean', **kwargs)
+        uniform_sampler = create_default_sampler('full_uniform', **kwargs)
+        samplers = (simbench_sampler, normal_sampler, uniform_sampler)
+        super().__init__(samplers, **kwargs)
