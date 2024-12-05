@@ -35,14 +35,17 @@ def test_simbench_sampling(net):
 
     sampler = sampling.SimbenchSampler(state_keys=state_keys,
                                        profiles=profiles)
+    net.sgen.at[0, 'p_mw'] = 1.5
     net = sampler(net)
-    assert net.sgen.p_mw[0] in [0, 1, 2]
+    assert net.sgen.at[0, 'p_mw'] in [0, 1, 2]
 
+    net.sgen.at[0, 'p_mw'] = 1.5
     net = sampler(net, step=1)
-    assert net.sgen.p_mw[0] == 1
+    assert net.sgen.at[0, 'p_mw'] == 1
 
+    net.sgen.at[0, 'p_mw'] = 1.5
     net = sampler(net, step=2)
-    assert net.sgen.p_mw[0] == 2
+    assert net.sgen.at[0, 'p_mw'] == 2
 
 def test_normal_sampling(net):
     state_keys = [('sgen', 'p_mw', np.array([0]))]
@@ -59,14 +62,15 @@ def test_normal_sampling(net):
     net.sgen['max_p_mw'] = 1
     net.sgen['p_mw'] = np.nan
     net = sampler(net)
-    assert ~np.isnan(net.sgen.p_mw[0])
-    assert -1 <= net.sgen.p_mw[0] <= 1
+    assert ~np.isnan(net.sgen.at[0, 'p_mw'])
+    assert -1 <= net.sgen.at[0, 'p_mw'] <= 1
 
     # Should always be clipped to allowed data range
     net.sgen['min_p_mw'] = 0
     net.sgen['max_p_mw'] = 0
+    net.sgen.at[0, 'p_mw'] = 1
     net = sampler(net)
-    assert net.sgen.p_mw[0] == 0
+    assert net.sgen.at[0, 'p_mw'] == 0
 
 def test_uniform_sampling(net):
     state_keys = [('sgen', 'p_mw', np.array([0]))]
@@ -79,14 +83,16 @@ def test_uniform_sampling(net):
     # Define min/max range -> should not raise an error anymore
     net.sgen['min_p_mw'] = 0
     net.sgen['max_p_mw'] = 0.1
+    net.sgen.at[0, 'p_mw'] = 0.2
     net = sampler(net)
-    assert 0 <= net.sgen.p_mw[0] <= 0.1
+    assert 0 <= net.sgen.at[0, 'p_mw'] <= 0.1
 
     # If full data range is defined, that range should be used instead of the pandapower OPF constraints
     net.sgen['min_min_p_mw'] = 0.1
     net.sgen['max_max_p_mw'] = 0.2
+    net.sgen.at[0, 'p_mw'] = 0.5
     net = sampler(net)
-    assert 0.1 <= net.sgen.p_mw[0] <= 0.2
+    assert 0.1 <= net.sgen.at[0, 'p_mw'] <= 0.2
 
 def test_sequential_sampling(net):
     state_keys1 = [('sgen', 'p_mw', np.array([0]))]
@@ -113,9 +119,13 @@ def test_sequential_sampling(net):
     net.load['mean_p_mw'] = 0
     net.load['std_dev_p_mw'] = 2
 
+    # Create initial out-of-range data (should be overwritten)
+    net.sgen.at[0, 'p_mw'] = 1.0
+    net.load.at[0, 'p_mw'] = 1.0
+
     net = sampler(net)
-    assert 0 <= net.sgen.p_mw[0] <= 0.1
-    assert -0.1 <= net.load.p_mw[0] <= 0
+    assert 0 <= net.sgen.at[0, 'p_mw'] <= 0.1
+    assert -0.1 <= net.load.at[0, 'p_mw'] <= 0
 
 def test_mixed_sampling(net):
     state_keys = [('sgen', 'p_mw', np.array([0]))]
@@ -141,11 +151,13 @@ def test_mixed_sampling(net):
         profiles=profiles,
         sampler_probabilities_cumulated=sampler_probabilities_cumulated)
 
+    net.sgen['p_mw'] = 2
     net.sgen['min_p_mw'] = 0
     net.sgen['max_p_mw'] = 1
     net.sgen['mean_p_mw'] = 0
     net.sgen['std_dev_p_mw'] = 2
+    net.sgen.at[0, 'p_mw'] = 1.5
 
-    assert 0 <= sampler(net).sgen.p_mw[0] <= 1
-    assert 0 <= sampler(net).sgen.p_mw[0] <= 1
-    assert 0 <= sampler(net).sgen.p_mw[0] <= 1
+    assert 0 <= sampler(net).sgen.at[0, 'p_mw'] <= 1
+    assert 0 <= sampler(net).sgen.at[0, 'p_mw'] <= 1
+    assert 0 <= sampler(net).sgen.at[0, 'p_mw'] <= 1
