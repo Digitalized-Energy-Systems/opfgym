@@ -19,12 +19,14 @@ from opfgym.simbench.build_simbench_net import build_simbench_net
 
 class MultiStageOpf(MultiStageOpfEnv):
     def __init__(self, simbench_network_name='1-LV-urban6--0-sw',
-                 steps_per_episode=4, train_data='simbench',
-                 test_data='simbench',
+                 steps_per_episode=4, train_sampling='simbench',
+                 test_sampling='simbench', validation_sampling='simbench',
                  *args, **kwargs):
 
         assert steps_per_episode > 1, "At least two steps required for a multi-stage OPF."
-        assert 'simbench' in train_data and 'simbench' in test_data, "Only simbench networks are supported because time-series data required."
+        assert 'simbench' in train_sampling, "Only simbench networks are supported because time-series data required."
+        assert 'simbench' in test_sampling, "Only simbench networks are supported because time-series data required."
+        assert 'simbench' in validation_sampling, "Only simbench networks are supported because time-series data required."
 
         net, profiles = self._define_opf(
             simbench_network_name, *args, **kwargs)
@@ -41,6 +43,9 @@ class MultiStageOpf(MultiStageOpfEnv):
         super().__init__(net, act_keys, obs_keys, profiles=profiles,
                          steps_per_episode=steps_per_episode,
                          optimal_power_flow_solver=False,
+                         train_sampling=train_sampling,
+                         test_sampling=test_sampling,
+                         validation_sampling=validation_sampling,
                          *args, **kwargs)
 
     def _define_opf(self, simbench_network_name, *args, **kwargs):
