@@ -33,7 +33,7 @@ class OpfEnv(gym.Env):
                  profiles: dict[str, pd.DataFrame] = None,
                  steps_per_episode: int = 1,
                  bus_wise_obs: bool = False,
-                 reward_function: str | opfgym.RewardFunction  =  'summation',
+                 reward_function: str | opfgym.RewardFunction = 'summation',
                  reward_function_params: dict = None,
                  diff_objective: bool = False,
                  add_res_obs: bool = False,
