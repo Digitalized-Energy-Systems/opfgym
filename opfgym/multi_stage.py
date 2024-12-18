@@ -16,18 +16,27 @@ class MultiStageOpfEnv(OpfEnv):
         Same as the base class
 
     """
-    def __init__(self, *args, steps_per_episode: int=4, **kwargs):
+    def __init__(self, *args, steps_per_episode: int = 4, **kwargs):
         assert steps_per_episode > 1, "At least two steps required for a multi-stage OPF."
-        if kwargs.get('train_data') and isinstance(kwargs.get('train_data')):
-            assert 'simbench' in kwargs.get('train_data')
+        assert 'simbench' in kwargs.get('train_sampling', 'simbench')
+        assert 'simbench' in kwargs.get('validation_sampling', 'simbench')
+        assert 'simbench' in kwargs.get('test_sampling', 'simbench')
         super().__init__(*args, steps_per_episode=steps_per_episode, **kwargs)
+
+
+    def reset(self, seed=None, options=None):
+        super().reset(seed=seed, options=options)
+        if options:
+            self.test = options.get('test', False)
+        else:
+            self.test = False
 
 
     def step(self, action):
         """ Extend step method to sample the next time step of the simbench data. """
         obs, reward, terminated, truncated, info = super().step(action)
 
-        new_step = self.current_simbench_step + 1
+        new_step = self.current_time_step + 1
 
         # Enforce train/test-split
         if self.test:
@@ -47,7 +56,7 @@ class MultiStageOpfEnv(OpfEnv):
             return obs, reward, terminated, truncated, info
 
         # Increment the time-series states
-        self._sampling(step=new_step)
+        self._sampling(step=new_step, test=self.test)
 
         # Rerun the power flow calculation for the new state if required
         if self.pf_for_obs is True:

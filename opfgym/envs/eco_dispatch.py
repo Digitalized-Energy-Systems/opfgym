@@ -24,7 +24,7 @@ class EcoDispatch(opf_env.OpfEnv):
 
     """
 
-    def __init__(self, simbench_network_name='1-HV-urban--0-sw', 
+    def __init__(self, simbench_network_name='1-HV-urban--0-sw',
                  gen_scaling=1.0, load_scaling=1.5, max_price_eur_gwh=0.5,
                  min_power=0, *args, **kwargs):
 
@@ -41,14 +41,16 @@ class EcoDispatch(opf_env.OpfEnv):
 
         # Define the RL problem
         # See all load power values, non-controlled generators, and generator prices...
-        obs_keys = [('load', 'p_mw', net.load.index),
-                    ('load', 'q_mvar', net.load.index),
-                    ('poly_cost', 'cp1_eur_per_mw', net.poly_cost.index),
-                    ('pwl_cost', 'cp1_eur_per_mw', net.pwl_cost.index),
-                    # These 3 are not relevant because len=0, if the default is used
-                    ('sgen', 'p_mw', net.sgen.index[~net.sgen.controllable]),
-                    ('storage', 'p_mw', net.storage.index),
-                    ('storage', 'q_mvar', net.storage.index)]
+        obs_keys = [
+            ('load', 'p_mw', net.load.index),
+            ('load', 'q_mvar', net.load.index),
+            ('poly_cost', 'cp1_eur_per_mw', net.poly_cost.index),
+            ('pwl_cost', 'cp1_eur_per_mw', net.pwl_cost.index),
+            # These 3 are not relevant because len=0, if the default is used
+            ('sgen', 'p_mw', net.sgen.index[~net.sgen.controllable]),
+            ('storage', 'p_mw', net.storage.index),
+            ('storage', 'q_mvar', net.storage.index)
+        ]
 
         # ... and control all generators' active power values
         act_keys = [('sgen', 'p_mw', net.sgen.index[net.sgen.controllable]),
@@ -89,14 +91,14 @@ class EcoDispatch(opf_env.OpfEnv):
 
         # Add price params to the network (as poly cost so that the OPF works)
         # Note that the external grids are seen as normal power plants
-        for idx in net.ext_grid.index:
-            # Use piece-wise linear costs to prevent negative costs for negative
-            # power, which would incentivize a constraint violation (see above)
-            pp.create_pwl_cost(net, idx, 'ext_grid', points=[[0, 10000, 1]])
         for idx in net.sgen.index[net.sgen.controllable]:
             pp.create_poly_cost(net, idx, 'sgen', cp1_eur_per_mw=0)
         for idx in net.gen.index[net.gen.controllable]:
             pp.create_poly_cost(net, idx, 'gen', cp1_eur_per_mw=0)
+        # Use piece-wise linear costs to prevent negative costs for negative
+        # power, which would incentivize a constraint violation (see above)
+        for idx in net.ext_grid.index:
+            pp.create_pwl_cost(net, idx, 'ext_grid', points=[[0, 10000, 1]])
 
         net.poly_cost['min_cp1_eur_per_mw'] = 0
         net.poly_cost['max_cp1_eur_per_mw'] = self.max_price_eur_gwh
@@ -111,13 +113,8 @@ class EcoDispatch(opf_env.OpfEnv):
     def _sampling(self, *args, **kwargs):
         super()._sampling(*args, **kwargs)
 
-        # Sample prices uniformly from min/max range for gens/sgens/ext_grids
-        self._sample_from_range(
-            'poly_cost', 'cp1_eur_per_mw', self.net.poly_cost.index)
-        self._sample_from_range(
-            'pwl_cost', 'cp1_eur_per_mw', self.net.pwl_cost.index)
-
-        # Manually update the costs in the pwl 'points' definition
+        # Manually update the costs in the pwl 'points' definition so that it's
+        # usable for the pandapower OPF
         for idx in self.net.ext_grid.index:
             price = self.net.pwl_cost.at[idx, 'cp1_eur_per_mw']
             self.net.pwl_cost.at[idx, 'points'] = [[0, 10000, price]]
