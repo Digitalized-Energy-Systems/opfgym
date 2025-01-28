@@ -1,5 +1,5 @@
 Create Custom Environments
-===========================
+==========================
 
 By inheriting from the :code:`OpfEnv` base class, a wide variety of custom 
 environments can be created. In the process, some steps have to be considered.

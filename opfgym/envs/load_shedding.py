@@ -60,8 +60,8 @@ class LoadShedding(opf_env.OpfEnv):
             ('load', 'p_mw', net.load.index),
             ('load', 'q_mvar', net.load.index),
             ('storage', 'p_mw', net.storage.index[~net.storage.controllable]),
-            # ('poly_cost', 'cp1_eur_per_mw', net.poly_cost.index),  # Separately sampled in _sampling(), see below
-            # ('pwl_cost', 'cp1_eur_per_mw', net.pwl_cost.index)
+            ('poly_cost', 'cp1_eur_per_mw', net.poly_cost.index),
+            ('pwl_cost', 'cp1_eur_per_mw', net.pwl_cost.index)
         ]
 
         # Control active power of loads and storages
@@ -121,14 +121,6 @@ class LoadShedding(opf_env.OpfEnv):
 
     def _sampling(self, *args, **kwargs):
         super()._sampling(*args, **kwargs)
-
-        # Sample prices for loads and storages
-        # The idea is that not always the same loads should be shedded. Instead,
-        # the current situation should be considered, represented by some price.
-        self._sample_from_range(
-            'poly_cost', 'cp1_eur_per_mw', self.net.poly_cost.index)
-        self._sample_from_range(
-            'pwl_cost', 'cp1_eur_per_mw', self.net.pwl_cost.index)
 
         # Manually update the points of the piece-wise linear costs for storage
         for idx in self.net.pwl_cost.index:

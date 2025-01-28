@@ -11,11 +11,15 @@ from opfgym import opf_env
 
 
 class NonSimbenchNet(opf_env.OpfEnv):
-    def __init__(self, train_data='normal_around_mean',
-                 test_data='normal_around_mean',
+    def __init__(self,
+                 train_sampling='normal_around_mean',
+                 test_sampling='normal_around_mean',
+                 validation_sampling='normal_around_mean',
                  *args, **kwargs):
 
-        assert 'simbench' not in train_data and 'simbench' not in test_data, "Only non-simbench networks are supported."
+        assert 'simbench' not in train_sampling, "Only non-simbench networks are supported."
+        assert 'simbench' not in test_sampling, "Only non-simbench networks are supported."
+        assert 'simbench' not in validation_sampling, "Only non-simbench networks are supported."
 
         net = self._define_opf()
 
@@ -30,7 +34,9 @@ class NonSimbenchNet(opf_env.OpfEnv):
         act_keys = [('gen', 'p_mw', net.gen.index)]
 
         super().__init__(net, act_keys, obs_keys,
-                         train_data=train_data, test_data=test_data,
+                         train_sampling=train_sampling,
+                         test_sampling=test_sampling,
+                         validation_sampling=validation_sampling,
                          *args, **kwargs)
 
     def _define_opf(self):

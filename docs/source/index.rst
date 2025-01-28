@@ -43,6 +43,7 @@ The repository can be found on
    benchmarks
    api_base_class
    environment_design
+   sampling 
    custom_envs
    advanced_features
    supervised_learning

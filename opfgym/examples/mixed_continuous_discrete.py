@@ -74,10 +74,6 @@ class MixedContinuousDiscrete(opf_env.OpfEnv):
     def _sampling(self, *args, **kwargs):
         super()._sampling(*args, **kwargs)
 
-        # Sample slack voltage randomly to make the problem more difficult
-        # so that trafo tap changing is required for voltage control
-        self._sample_from_range('ext_grid', 'vm_pu', self.net.ext_grid.index)
-
         # Active power is not controllable (only relevant for OPF baseline)
         # Set active power boundaries to current active power values
         for unit_type in ('sgen',):

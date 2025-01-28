@@ -2,9 +2,14 @@
 import numpy as np
 
 
-def define_test_train_split(test_share=0.2, random_test_steps=False, 
-                            validation_share=0.2, random_validation_steps=False,
-                            **kwargs):
+def define_test_train_split(
+        test_share=0.2,
+        random_test_steps=False,
+        validation_share=0.2,
+        random_validation_steps=False,
+        seed: int=None,
+        **kwargs
+        ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """ Return the indices of the simbench test data points. """
     assert test_share + validation_share <= 1.0
     if random_test_steps:
