@@ -15,7 +15,7 @@ from typing import Tuple
 import opfgym
 import opfgym.util
 import opfgym.objective
-from opfgym.sampling import DataSampler, create_default_sampler
+from opfgym.sampling import StateSampler, create_default_sampler
 from opfgym.simbench.data_split import define_test_train_split
 from opfgym.simbench.time_observation import get_simbench_time_observation
 
@@ -40,9 +40,9 @@ class OpfEnv(gym.Env):
                  add_time_obs: bool = False,
                  add_act_obs: bool = False,
                  add_mean_obs: bool = False,
-                 train_sampling: DataSampler | str = 'simbench',
-                 test_sampling: DataSampler | str = 'simbench',
-                 validation_sampling: DataSampler | str = 'simbench',
+                 train_sampling: StateSampler | str = 'simbench',
+                 test_sampling: StateSampler | str = 'simbench',
+                 validation_sampling: StateSampler | str = 'simbench',
                  evaluate_on: str = 'validation',
                  sampling_params: dict = None,
                  constraint_params: dict = None,
@@ -74,19 +74,19 @@ class OpfEnv(gym.Env):
         sampling_params = sampling_params or {}
         split = define_test_train_split(**kwargs)
         self.test_steps, self.validation_steps, self.train_steps = split
-        if isinstance(train_sampling, DataSampler):
+        if isinstance(train_sampling, StateSampler):
             self.train_sampling = train_sampling
         elif isinstance(train_sampling, str):
             self.train_sampling = create_default_sampler(
                 train_sampling, self.state_keys, profiles, self.train_steps,
                 seed, **sampling_params)
-        if isinstance(validation_sampling, DataSampler):
+        if isinstance(validation_sampling, StateSampler):
             self.validation_sampling = validation_sampling
         elif isinstance(validation_sampling, str):
             self.validation_sampling = create_default_sampler(
                 validation_sampling, self.state_keys, profiles,
                 self.validation_steps, seed, **sampling_params)
-        if isinstance(test_sampling, DataSampler):
+        if isinstance(test_sampling, StateSampler):
             self.test_sampling = test_sampling
         elif isinstance(test_sampling, str):
             self.test_sampling = create_default_sampler(

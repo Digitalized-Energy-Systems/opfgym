@@ -8,7 +8,7 @@ import pandapower as pp
 from scipy import stats
 
 
-class DataSampler(abc.ABC):
+class StateSampler(abc.ABC):
     """ Abstract class for sampling state data from some distribution.
 
     :param seed: Seed for the random number generator.
@@ -31,11 +31,11 @@ class DataSampler(abc.ABC):
         self.np_random.seed(seed)
 
 
-class DataSamplerWrapper(abc.ABC):
+class StateSamplerWrapper(abc.ABC):
     """ A wrapper class around dataset samplers to combine multiple samplers 
     and still provide the same API. """
     def __init__(self,
-                 samplers: tuple[DataSampler, ...],
+                 samplers: tuple[StateSampler, ...],
                  seed=None,
                  **kwargs) -> None:
         self.samplers = samplers
@@ -70,7 +70,7 @@ class DataSamplerWrapper(abc.ABC):
         raise AttributeError(f'None of the samplers has the attribute {attr}.')
 
 
-class SequentialSampler(DataSamplerWrapper):
+class SequentialSampler(StateSamplerWrapper):
     """ Combines multiple samplers by calling them sequentially.
     Should be used to combine different sampling strategies, for example,
     by sampling load data from simbench and price data with uniform distribution
@@ -82,7 +82,7 @@ class SequentialSampler(DataSamplerWrapper):
         return net
 
 
-class MixedRandomSampler(DataSamplerWrapper):
+class MixedRandomSampler(StateSamplerWrapper):
     """ Combines multiple samplers to one sampler by calling one of them
     randomly. For example, can be used to sample either from simbench data or
     from random data to create a more diverse dataset that included edge cases
@@ -95,7 +95,7 @@ class MixedRandomSampler(DataSamplerWrapper):
         and from the second sampler with 60% probability.
     """
     def __init__(self,
-                 samplers: tuple[DataSampler, ...],
+                 samplers: tuple[StateSampler, ...],
                  sampler_probabilities_cumulated: tuple[float, ...],
                  seed=None,
                  **kwargs) -> None:
@@ -111,7 +111,7 @@ class MixedRandomSampler(DataSamplerWrapper):
                 return sampler.sample_state(net, *args, **kwargs)
 
 
-class SimbenchSampler(DataSampler):
+class SimbenchSampler(StateSampler):
     """ Sample states from simbench time-series datasets. Can only be used to
     sample active and reactive power values. Not suitable for sampling prices
     or voltage data.
@@ -203,7 +203,7 @@ class SimbenchSampler(DataSampler):
         return net
 
 
-class NormalSampler(DataSampler):
+class NormalSampler(StateSampler):
     """ Sample states from normal distribution around mean values.
     Warning: Assumes the existence of mean_{column}, std_dev_{column},
     min_{column}, and max_{column} of the column to sample in the dataframe.
@@ -266,7 +266,7 @@ class NormalSampler(DataSampler):
         return net
 
 
-class UniformSampler(DataSampler):
+class UniformSampler(StateSampler):
     """ Sample states from uniform distribution within the given range.
     Warning: Assumes the existence of min_{column} and max_{column} of the
     column to sample in the dataframe.
@@ -322,7 +322,7 @@ def create_default_sampler(sampler: str,
                            profiles: dict[tuple[str, str], pd.DataFrame],
                            available_steps: np.ndarray=None,
                            seed: int=None,
-                           **kwargs) -> DataSampler:
+                           **kwargs) -> StateSampler:
     """ Default sampler: Always use uniform sampling for prices and one of
     'simbench', 'full_uniform', or 'normal_around_mean' distribution sampling for the rest.
 

@@ -13,7 +13,7 @@ def net():
     return pn.example_simple()
 
 def test_base_class(net):
-    class MockSampler(sampling.DataSampler):
+    class MockSampler(sampling.StateSampler):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
 
