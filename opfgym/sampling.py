@@ -23,7 +23,8 @@ class StateSampler(abc.ABC):
 
     @abc.abstractmethod
     def sample_state(
-        self, net: pp.pandapowerNet, *args, **kwargs
+        self,
+        net: pp.pandapowerNet, *args, **kwargs
             ) -> pp.pandapowerNet:
         pass
 

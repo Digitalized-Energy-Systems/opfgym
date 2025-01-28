@@ -15,7 +15,7 @@ from typing import Tuple
 import opfgym
 import opfgym.util
 import opfgym.objective
-from opfgym.sampling import StateSampler, create_default_sampler
+from opfgym.sampling import StateSampler, StateSamplerWrapper, create_default_sampler
 from opfgym.simbench.data_split import define_test_train_split
 from opfgym.simbench.time_observation import get_simbench_time_observation
 
@@ -45,6 +45,7 @@ class OpfEnv(gym.Env):
                  validation_sampling: StateSampler | str = 'simbench',
                  evaluate_on: str = 'validation',
                  sampling_params: dict = None,
+                 simbench_data_split: tuple[np.ndarray, np.ndarray, np.ndarray] = None,
                  constraint_params: dict = None,
                  custom_constraints: list = None,
                  autoscale_actions: bool = True,
@@ -69,24 +70,25 @@ class OpfEnv(gym.Env):
             assert 'simbench' not in validation_sampling
             assert not add_time_obs
 
-        # Define data sampling
+        # Define state sampling
         self.evaluate_on = evaluate_on
         sampling_params = sampling_params or {}
-        split = define_test_train_split(**kwargs)
-        self.test_steps, self.validation_steps, self.train_steps = split
-        if isinstance(train_sampling, StateSampler):
+        if not simbench_data_split:
+            simbench_data_split = define_test_train_split(**kwargs)
+        self.test_steps, self.validation_steps, self.train_steps = simbench_data_split
+        if isinstance(train_sampling, (StateSampler, StateSamplerWrapper)):
             self.train_sampling = train_sampling
         elif isinstance(train_sampling, str):
             self.train_sampling = create_default_sampler(
                 train_sampling, self.state_keys, profiles, self.train_steps,
                 seed, **sampling_params)
-        if isinstance(validation_sampling, StateSampler):
+        if isinstance(validation_sampling, (StateSampler, StateSamplerWrapper)):
             self.validation_sampling = validation_sampling
         elif isinstance(validation_sampling, str):
             self.validation_sampling = create_default_sampler(
                 validation_sampling, self.state_keys, profiles,
                 self.validation_steps, seed, **sampling_params)
-        if isinstance(test_sampling, StateSampler):
+        if isinstance(test_sampling, (StateSampler, StateSamplerWrapper)):
             self.test_sampling = test_sampling
         elif isinstance(test_sampling, str):
             self.test_sampling = create_default_sampler(
