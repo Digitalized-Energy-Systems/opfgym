@@ -3,6 +3,7 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
+
 OPF-Gym
 =======
 
@@ -24,7 +25,7 @@ benchmarks power grids and time-series data by default.
 All pandapower OPF variants can be represented as an RL environment by 
 *OPF-Gym*. Additionally, advanced OPF problems like multi-stage OPF,
 security-constrained OPF, mixed continuous and discrete actions, stochastic OPF,
-etc. are easily possible with *OPF-Gym*.
+etc. are possible as well.
 
 Contact thomas.wolgast@uol.de for questions, feedback, and collaboration.
 

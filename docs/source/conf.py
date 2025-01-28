@@ -35,3 +35,9 @@ exclude_patterns = []
 
 html_theme = 'furo'
 html_static_path = ['_static']
+
+html_theme_options = {
+    "source_repository": "https://github.com/Digitalized-Energy-Systems/opfgym",
+    "source_branch": "development",
+    "source_directory": "docs/source/",
+}

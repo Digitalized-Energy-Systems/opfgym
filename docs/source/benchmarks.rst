@@ -35,55 +35,90 @@ gymnasium environments. For example, compare with the commonly used
 `MuJoCo <https://gymnasium.farama.org/environments/mujoco/>`_ environments
 that have only six actions on average.
 
-All benchmark problems represent standard OPF problems with different 
+The benchmark problems represent standard OPF problems with different 
 objectives and actuators. Advanced OPF problems like multi-stage OPF or the 
 security-constrained OPF are not considered (yet). However, they are possible 
 in *OPF-Gym* by creating custom environments. 
 See :ref:`Create Custom Environments`.
 
-By default all benchmarks consider the voltage band constraints, power balance
-constraints, line overload constraints, and transformer loading constraints. 
+All environments share the same general constraints. They consider the voltage 
+band constraints of all buses :math:`B`, 
 
-.. TODO: Maybe add references to the constraints in the documentation.
+:math:`V_{\text{min}} \leq V_b \leq V_{\text{max}} \quad \forall \; b \in B`, 
 
-Economic Dispatch (:code:`EcoDispatch`)
+line overload constraints of all lines :math:`L`, 
+
+:math:`S_l \leq S_l^\text{max} \quad \forall \; l \; \in \; L`,
+
+transformer overload constraints of all transformers :math:`T`,
+
+:math:`S_t \leq S^\text{max} \quad \forall \; t \; \in \; T`,
+
+and the maximum active/reactive power flows over the slack bus :math:`s`,
+
+:math:`Q^\text{min} \leq Q_s \leq Q^\text{max}`
+
+:math:`P^\text{min} \leq P_s \leq P^\text{max}`.
+
+Some constraints are more relevant than other for specific environments, which 
+will be made explicit in the respective environment description below. 
+
+Additionally, the minimum/maximum power setpoints of the controllable units and 
+the power balance equations are considered by-design, i.e., they cannot by 
+violated. 
+
+
+Economic Dispatch
 ---------------------------------
 Use :code:`from opfgym.envs import EcoDispatch` to import this environment.
 The environment represents an economic dispatch problem. The goal is to 
 find the optimal active power generator setpoints of a given state that 
-minimize the generation costs while satisfying the power balance constraints.
+minimize the generation costs while satisfying the slack power balance constraints.
+
+:math:`\text{min} \; J = \sum_{a \in A} P_a \cdot p_a^P(s)`
+
 With its 42 actions, this is the most difficult-to-solve environment.
 
-Voltage Control (:code:`VoltageControl`)
+Voltage Control
 ---------------------------------
 Use :code:`from opfgym.envs import VoltageControl` to import this environment.
-The environment represents a voltage control problem. The goal is to find 
+It represents a voltage control problem. The goal is to find 
 the optimal reactive power setpoints of generators and a single storage system 
-that minimize the overall power losses while satisfying the voltage band
-constraints and all other default constraints.
+to minimize the overall power losses while satisfying especially the voltage band
+constraints.
 
-Load Shedding (:code:`LoadShedding`)
-------------------------------
+:math:`\text{min} \; J = P_\text{loss}`
+
+Load Shedding
+--------------------------------
 Use :code:`from opfgym.envs import LoadShedding` to import this environment.
 The environment represents a load shedding problem. The goal is to find the
 least amount of load shedding that is required to satisfy all constraints.
-All loads are assigned with different priorities, represented by cost codetions.
-Further, the agent can utilize storage systems to reduce the amount of load
-shedding required.
+All loads are assigned with different priorities, represented by their 
+respective load shedding prices. Further, the agent can utilize storage systems
+to reduce the amount of load shedding required.
 
-Reactive Power Market (:code:`QMarket`)
---------------------------------
+:math:`\text{min} \; J = \sum_{a \in A} P_a \cdot p_a^P(s)`
+
+Reactive Power Market
+---------------------------------
 Use :code:`from opfgym.envs import QMarket` to import this environment.
-The environment represents a reactive power market problem, which is an 
+It represents a reactive power market problem, which is an 
 extension to the voltage control problem. The goal is again to find optimal 
 reactive power setpoints of generators that minimize the overall power losses. 
-However, this time, the reactive power providers need to be paid. Therefore,
+Additionally, this time, the reactive power providers need to be paid. Therefore,
 a trade-off needs to be found between minimizing power losses and minimizing
 the reactive power costs.
 
-Maximize Renewable Feed-In (:code:`MaxRenewable`)
+:math:`\text{min} \; J = P_\text{loss} \cdot p_\text{loss}^P + \sum_{a \in A} Q_a \cdot p_a^Q(s)`
+
+Maximize Renewable Feed-In
 -------------------------------------------
 Use :code:`from opfgym.envs import MaxRenewable` to import this environment.
 The environment represents a renewable feed-in maximization problem. The goal
-is to find the optimal active power setpoints of generators and storage systems
+is to find the optimal active power setpoints of generators
 that maximizes the renewable feed-in while satisfying all constraints.
+Additionally, storage systems can be utilized for constraint satisfaction but
+are not part of the objective function.
+
+:math:`\text{min} \; J = -\sum_{g \in G} P_g`

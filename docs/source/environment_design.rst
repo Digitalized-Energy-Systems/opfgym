@@ -18,65 +18,65 @@ Most environment design options are described in detail in
 
 TODO: Work in progress, more information will follow.
 
-Reward function
----------------
+.. Reward function
+.. ---------------
 
-The reward function represents the goal of the agent. In the case of the RL-OPF,
-the goal is to minimize the objective function while satisfying all constraints,
-which can be represented by penalties. 
+.. The reward function represents the goal of the agent. In the case of the RL-OPF,
+.. the goal is to minimize the objective function while satisfying all constraints,
+.. which can be represented by penalties. 
 
-Three different standard reward functions to combine the objective function and
-the constraint violations are available:
+.. Three different standard reward functions to combine the objective function and
+.. the constraint violations are available:
 
-Summation reward
-^^^^^^^^^^^^^^^^
-In the summation reward, we simply add the penalties :math:`p_i(x)` 
-for constraint violations in the current state :math:`x`
-to the negative objective function value :math:`f(x)`:
+.. Summation reward
+.. ^^^^^^^^^^^^^^^^
+.. In the summation reward, we simply add the penalties :math:`p_i(x)` 
+.. for constraint violations in the current state :math:`x`
+.. to the negative objective function value :math:`f(x)`:
 
-:math:`r = -f(x) - \sum_{i} p_i(x)`
+.. :math:`r = -f(x) - \sum_{i} p_i(x)`
 
-Replacement reward
-^^^^^^^^^^^^^^^^^^
-In the replacement reward, we only provide either the objective function value
-as a learning feedback or the penalty:
+.. Replacement reward
+.. ^^^^^^^^^^^^^^^^^^
+.. In the replacement reward, we only provide either the objective function value
+.. as a learning feedback or the penalty:
 
-If valid: :math:`r = -f(x) + C`
+.. If valid: :math:`r = -f(x) + C`
 
-Else: :math:`r = -\sum_{i} p_i(x)`
+.. Else: :math:`r = -\sum_{i} p_i(x)`
 
-Additionally, we need a constant :math:`C` to ensure that the valid reward is 
-always better than the invalid one.
+.. Additionally, we need a constant :math:`C` to ensure that the valid reward is 
+.. always better than the invalid one.
 
-Parameterized reward
-^^^^^^^^^^^^^^^^^^^^
-This reward combines the previous two and allows for all possible combinations:
+.. Parameterized reward
+.. ^^^^^^^^^^^^^^^^^^^^
+.. This reward combines the previous two and allows for all possible combinations:
 
-If valid: :math:`r = -f(x) + C_{valid}`
+.. If valid: :math:`r = -f(x) + C_{valid}`
 
-Else: :math:`r = w * -f(x) - \sum_{i} p_i(x) - C_{invalid}`
+.. Else: :math:`r = w * -f(x) - \sum_{i} p_i(x) - C_{invalid}`
 
-Note that if the objective weight :math:`w` is set to zero, it is equivalent to
-the replacement reward. If it is set to one and both constants 
-:math:`C` are set to zero, it is equivalent to the summation reward. 
+.. Note that if the objective weight :math:`w` is set to zero, it is equivalent to
+.. the replacement reward. If it is set to one and both constants 
+.. :math:`C` are set to zero, it is equivalent to the summation reward. 
 
 
-Observation space
------------------
+.. Observation space
+.. -----------------
 
-TODO: Work in progress, more information will follow.
+.. TODO: Work in progress, more information will follow.
 
-Action space
-------------
+.. Action space
+.. ------------
 
-TODO: Work in progress, more information will follow.
+.. TODO: Work in progress, more information will follow.
 
-Episode definition
-------------------
+.. Episode definition
+.. ------------------
 
-TODO: Work in progress, more information will follow.
+.. TODO: Work in progress, more information will follow.
 
-Training and test data
-----------------------
+.. Training and test data
+.. ----------------------
 
-TODO: Work in progress, more information will follow.
+.. TODO: Work in progress, more information will follow.
