@@ -76,7 +76,7 @@ design options:
     env = QMarket(**kwargs)  
 
     # Interact with the environment in the usual way (see above)
-    # env.reset()
+    obs, info = env.reset()
     # ...
 
 For more information on environment design and why it is important, see
@@ -152,15 +152,16 @@ More details can be found in :ref:`Create Custom Environments`.
 
             return net, profiles
 
-    # Note that by inheriting from `OpfEnv`, all env design options are available
+    # Note that by inheriting from `OpfEnv`, all standard env design options are available
     kwargs = {
         # Add current line load to the observation space
         'add_res_obs': ['line_loading'],
+        # ...
     }
 
     # Load the custom environment
     env = CustomEnv(**kwargs)
 
     # Interact with the environment in the usual way (see above)
-    # env.reset()
+    obs, info = env.reset()
     # ...

@@ -1,5 +1,5 @@
 Support for Supervised Learning
-==========
+===============================
 
 While the focus of *OPF-Gym* is on reinforcement learning and its environments, 
 it also enables comparability with other machine learning approaches like 
@@ -30,6 +30,5 @@ with the pandapower conventional OPF to generate ground-truth labels. That is
 the case for all provided :ref:`Benchmarks`. However, it might not be the case
 for custom environments, especially when implementing advanced OPF concepts 
 like multi-stage OPF or stochastic OPF. These are not solvable with the 
-pandapower OPF. In that case, you have to overwrite the 
-:py:meth:`env.run_optimal_power_flow` method of your custom environment and 
-provide your own OPF solver.
+pandapower OPF. In that case, you also have to provide your own OPF solver to 
+your custom environment, as described in :ref:`Create Custom Environments`.

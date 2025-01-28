@@ -14,15 +14,17 @@ Multi-Stage OPF
 The multi-stage OPF problem is an OPF that is performed over multiple time 
 steps, including constraint satisfaction over multiple time steps, for example,
 storage state-of-charge or ramping constraints.
-The multi-stage OPF can be implemented by overwriting the :meth:`step` method, as 
-shown in the 
+The multi-stage OPF can be implemented by overwriting the :meth:`step` method, 
+which can be done by inheriting from the :class:`MultiStageOpfEnv` class, 
+as shown in the 
 `multi-stage OPF example <https://github.com/Digitalized-Energy-Systems/opfgym/blob/development/opfgym/examples/multi_stage.py>`_.
 
 Security-Constrained OPF
 ------------------------
 The security-constrained OPF problem is an OPF were all constraints are also
 consideref for the N-1 case with line outages. It can be implemented by adding
-a loop to the :meth:`calculate_violations` method, as shown in the
+a loop to the :meth:`calculate_violations` method, which can be easily done by 
+inheriting from the :class:`SecurityConstrainedOpfEnv` class, as shown in the
 `security-constrained OPF example <https://github.com/Digitalized-Energy-Systems/opfgym/blob/development/opfgym/examples/security_constrained.py>`_.
 
 Mixed Continuous and Discrete Actions
