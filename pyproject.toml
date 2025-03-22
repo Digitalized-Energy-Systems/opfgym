@@ -29,7 +29,7 @@ dependencies = [
     "pandas>=1.3.5",
     "matplotlib",
     "lightsim2grid",  # Actually not strictly required but speeds up pandapower power flow significantly
-    "pandapower>=2.13.1",
+    "pandapower>=2.13.1,<3.0",
     "simbench>=1.4.0",
     "gymnasium>=0.29.0",
 ]
