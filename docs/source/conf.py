@@ -11,9 +11,9 @@ import sys
 sys.path.insert(0, os.path.abspath('..'))  # Adjust '..' to match your project structure
 
 project = 'OPF-Gym'
-copyright = '2024, Thomas Wolgast'
+copyright = '2025, Thomas Wolgast'
 author = 'Thomas Wolgast'
-release = '0.3.2'
+release = '1.0.0'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

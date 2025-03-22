@@ -19,14 +19,7 @@ taken from [SimBench](https://simbench.de/en/).
 
 Documentation can be found on https://opf-gym.readthedocs.io/en/latest/.
 
-Warning: The whole repository is work-in-progress. Feel free to use the 
-environments as benchmarks for your research. However, the environments can be 
-expected to change slightly in the next months. The release of version 1.0 is 
-planned for winter 2024. Afterward, the benchmarks will be kept as 
-stable as possible. 
-
-If you want to use the benchmark environments or the general framework to build 
-own environments, please cite this repository (see CITATION.cff) and/or cite
+If you want to use the benchmark environments or the general framework to build your own environments, please cite this repository (see CITATION.cff) and/or cite
 the following publication, where the framework is 
 first mentioned (in an early stage): https://doi.org/10.1016/j.egyai.2024.100410
 
